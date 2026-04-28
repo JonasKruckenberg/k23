@@ -164,6 +164,20 @@ rust_toolchain(
         "constraints//:strip[none]": ["-Cstrip=none"],
         "constraints//:strip[debuginfo]": ["-Cstrip=debuginfo"],
         "constraints//:strip[symbols]": ["-Cstrip=symbols"],
+    }) + select({
+        "constraints//:sanitizer[address]": [
+            "-Zsanitizer=address",
+            "-Cpasses=sancov-module",
+            "-Cllvm-args=-sanitizer-coverage-level=4",
+            "-Cllvm-args=-sanitizer-coverage-trace-compares",
+            "-Cllvm-args=-sanitizer-coverage-inline-8bit-counters",
+            "-Cllvm-args=-sanitizer-coverage-pc-table",
+        ] + select({
+            "prelude//os:macos": ["-Clink-arg=-lc++"],
+            "prelude//os:linux": ["-Clink-arg=-lstdc++"],
+            "DEFAULT": [],
+        }),
+        "constraints//:sanitizer[none]": [],
     }),
     explicit_sysroot_deps = select({
         "constraints//:rust-std[bootstrap]": {},
@@ -188,6 +202,9 @@ clang_toolchain(
         "constraints//:opt-level[0]": ["-O0"],
         "constraints//:opt-level[3]": ["-O3"],
         "DEFAULT": [],
+    }) + select({
+        "constraints//:sanitizer[address]": ["-fsanitize=address"],
+        "constraints//:sanitizer[none]": [],
     }),
     cxx_flags = select({
         "prelude//os:linux": ["-stdlib=libstdc++"],
@@ -196,6 +213,9 @@ clang_toolchain(
         "constraints//:opt-level[0]": ["-O0"],
         "constraints//:opt-level[3]": ["-O3"],
         "DEFAULT": [],
+    }) + select({
+        "constraints//:sanitizer[address]": ["-fsanitize=address"],
+        "constraints//:sanitizer[none]": [],
     }),
 
     link_flags = select({
@@ -204,6 +224,9 @@ clang_toolchain(
             "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
         ],
         "DEFAULT": [],
+    }) + select({
+        "constraints//:sanitizer[address]": ["-fsanitize=address"],
+        "constraints//:sanitizer[none]": [],
     }),
 
     visibility = ["PUBLIC"],
