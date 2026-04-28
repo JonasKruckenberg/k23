@@ -73,6 +73,8 @@ test-log = { version = "0.2", optional = true }
 wat = { version = "1.219.1", optional = true }
 brie-tree = { version = "0.1.2", optional = true }
 libc-errno = { package = "errno", version = "0.3.14", optional = true }
+arbitrary = { version = "1.4", features = ["derive"], optional = true }
+libfuzzer-sys = { version = "0.4", optional = true }
 
 [features]
 default = [
@@ -100,7 +102,9 @@ default = [
     "dep:syn",
     "dep:wat",
     "dep:brie-tree",
-    "dep:libc-errno"
+    "dep:libc-errno",
+    "dep:arbitrary",
+    "dep:libfuzzer-sys"
 ]
 no_std = []
 
