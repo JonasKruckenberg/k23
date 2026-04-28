@@ -51,6 +51,10 @@ rust_fuzz(
     name = "range-tree_fuzz",
     srcs = ["./fuzz/fuzz_targets/range_tree.rs"],
     crate_root = "./fuzz/fuzz_targets/range_tree.rs",
-    deps = [":range-tree"],
+    deps = [
+        ":range-tree",
+        "//third-party:libfuzzer-sys",
+        "//third-party:arbitrary",
+    ],
     visibility = ["PUBLIC"],
 )

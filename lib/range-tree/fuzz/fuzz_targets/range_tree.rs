@@ -11,8 +11,7 @@ use std::range::RangeInclusive;
 
 use libfuzzer_sys::arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use range_tree::OverlapError;
-use range_tree::{RangeTree, RangeTreeIndex};
+use range_tree::{OverlapError, RangeTree, RangeTreeIndex};
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 struct Index<Int>(Int);

@@ -54,6 +54,10 @@ lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck
 @loom targets="" *buck2_args:
     {{ _buck2 }} test {{_uquery(_q_loom_tests(_targets_query(targets)))}} {{_platform_args}} {{buck2_args}}
 
+# run fuzz tests for a crate or the entire workspace.
+@fuzz targets="" *buck2_args:
+    {{ _buck2 }} test {{_uquery(_q_fuzz_tests(_targets_query(targets)))}} {{_platform_args}} {{buck2_args}}
+
 # ===== formatting =====
 
 # check formatting for a crate or the entire workspace.
@@ -138,6 +142,7 @@ _q_buildables(q) := f"kind(rust_binary, {{q}}) + kind(rust_library, {{q}})"
 _q_tests(q)      := f"kind(rust_test, {{q}}) + kind(rust_test, testsof({{q}}))"
 _q_unit_tests(q) := f"nattrfilter(labels, loom, ({{_q_tests(q)}}))"
 _q_loom_tests(q) := f"attrfilter(labels, loom, ({{_q_tests(q)}}))"
+_q_fuzz_tests(q) := f"kind(rust_fuzz, set({{_q_tests(q)}}))"
 _q_benchmarks(q) := f"kind(_rust_benchmark_runner, {{q}})"
 _q_inputs(q)     := f"inputs({{q}})"
 
