@@ -224,11 +224,7 @@ clang_toolchain(
             "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
         ],
         "DEFAULT": [],
-    }) + select({
-        "constraints//:sanitizer[address]": ["-fsanitize=address"],
-        "constraints//:sanitizer[none]": [],
     }),
-
     visibility = ["PUBLIC"],
 )
 

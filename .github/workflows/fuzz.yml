@@ -1,0 +1,41 @@
+name: Fuzzing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changed-targets:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/_changed-targets.yml
+
+  fuzz:
+    runs-on: ubuntu-latest
+    needs: [changed-targets]
+    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: fetch impacted targets
+        if: needs.changed-targets.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: impacted-targets
+      - run: ./.github/workflows/run-filtered.sh fuzz '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}' fuzz_args=--test-arg=-max_total_time=60
+      - name: upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: fuzz-artifacts/
+          if-no-files-found: ignore
