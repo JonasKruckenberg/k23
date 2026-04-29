@@ -172,6 +172,9 @@ rust_toolchain(
             "-Cllvm-args=-sanitizer-coverage-trace-compares",
             "-Cllvm-args=-sanitizer-coverage-inline-8bit-counters",
             "-Cllvm-args=-sanitizer-coverage-pc-table",
+            # Keep dead code so sancov instrumentation isn't dropped by the
+            # linker before the fuzzer can reach it. Mirrors cargo-fuzz.
+            "-Clink-dead-code",
         ] + select({
             "prelude//os:macos": ["-Clink-arg=-lc++"],
             "prelude//os:linux": ["-Clink-arg=-lstdc++"],
