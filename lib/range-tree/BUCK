@@ -49,8 +49,8 @@ rust_benchmark(
 
 rust_fuzz(
     name = "range-tree_fuzz",
-    srcs = ["./fuzz/fuzz_targets/range_tree.rs"],
-    crate_root = "./fuzz/fuzz_targets/range_tree.rs",
+    srcs = ["./fuzz/range_tree.rs"],
+    crate_root = "./fuzz/range_tree.rs",
     deps = [
         ":range-tree",
         "//third-party:libfuzzer-sys",

@@ -1,32 +1,33 @@
 load("@prelude//test:inject_test_run_info.bzl", "inject_test_run_info")
 
 # Wrapper invoked by `buck2 run` / `buck2 test` for any rust_fuzz target.
-#
 # Three responsibilities:
 #
-# 1. Pass two per-target directories to libfuzzer as positional corpus args:
-#      - `fuzz/corpus/$NAME/` — gitignored running corpus, persisted between
-#        CI runs via actions/cache. First positional, so libfuzzer writes
-#        newly-discovered coverage-increasing inputs back into it.
+# 1. Pass two per-target directories to libfuzzer as positional corpus args.
+#    libfuzzer reads inputs from every positional and writes new corpus
+#    entries only to the first one, so the order is load-bearing:
+#      - `fuzz/corpus/$NAME/` — running corpus, gitignored, persisted out
+#        of band (e.g. as a CI cache). Passed first so libfuzzer treats it
+#        as the writable corpus for newly-discovered coverage-increasing
+#        inputs.
 #      - `fuzz/artifacts/$NAME/` — committed crash repros (`crash-*`,
-#        `leak-*`, `oom-*`, `slow-unit-*`). Also set as `-artifact_prefix=`
-#        so libfuzzer writes new failures here. Passing it as a positional
-#        means past crashes are replayed at startup — once a crash is
-#        committed, every future run re-executes it (proptest-regressions
-#        semantics, but unified with the live crash dump).
+#        `leak-*`, `oom-*`, `slow-unit-*`). Also passed via
+#        `-artifact_prefix=` so libfuzzer writes new failures here.
+#        Passing it as a positional too means every committed input is
+#        replayed at startup, so a checked-in crash file acts as a
+#        permanent regression test.
 #
-# 2. We inject `-artifact_prefix=` *before* user args so explicit user
-#    overrides still win, and put the corpus dir before the artifacts dir
-#    so libfuzzer's "first positional is the writable corpus" rule keeps
-#    artifact entries read-only at fuzz time.
+# 2. The `-artifact_prefix=` flag is placed before "$@" so a user override
+#    in $@ takes precedence (libfuzzer honors the last occurrence of a
+#    flag).
 #
 # 3. On a non-zero exit, scan libfuzzer's stderr for the
 #       "Test unit written to <path>"
-#    line, then re-run the binary with that single input under
-#    RUST_LIBFUZZER_DEBUG_PATH so libfuzzer-sys's `fuzz_target!` macro emits
-#    the typed input via its Debug impl (libfuzzer-sys/src/lib.rs:341).
-#    Mirrors what `cargo fuzz fmt` does — but inline, so a crash reproduces
-#    with structured output by default instead of raw bytes.
+#    line and re-run the binary with that single input under
+#    RUST_LIBFUZZER_DEBUG_PATH. libfuzzer-sys's `fuzz_target!` macro reads
+#    that env var and, if set, prints the typed input via its `Debug` impl
+#    instead of running the body — so a crash reproduces with structured
+#    output by default rather than raw bytes.
 _FUZZ_WRAPPER = """#!/usr/bin/env bash
 set -uo pipefail
 NAME="$1"

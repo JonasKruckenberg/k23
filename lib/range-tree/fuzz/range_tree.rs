@@ -115,11 +115,9 @@ enum ValueType {
     U128(IndexType<u128>),
 }
 
-/// Returns `true` if the bounds are reversed in the same sense the
-/// `RangeTree::range` debug_assert uses — i.e. the inclusive-start integer
-/// would be strictly greater than the exclusive-end integer. We skip those
-/// inputs in `Action::Range` so the fuzzer doesn't trip the lib's assert if
-/// debug_assertions are ever turned on for the fuzz transition.
+/// Returns `true` if the start bound is strictly greater than the end bound.
+/// Passing reversed bounds to `RangeTree::range` is a programmer error, so
+/// `Action::Range` filters these inputs out before they reach the lib.
 fn bounds_reversed<T: Ord>(start: Bound<T>, end: Bound<T>) -> bool {
     match (start, end) {
         (Bound::Unbounded, _) | (_, Bound::Unbounded) => false,
@@ -310,13 +308,12 @@ fn run<
                             }
                         }
                         CursorMutAction::Insert { start, end, value } => {
-                            // The new entry lands at vec[index]; for vec to stay sorted by `.end`
-                            // (every other action's partition_point depends on this) we need
-                            //   vec[index-1].end <= end <= vec[index].end
-                            // when those neighbors exist. If the fuzzer's input satisfies that,
-                            // exercise the novel-range path; otherwise fall back to duplicating a
-                            // neighbor's range, which trivially preserves sortedness and keeps
-                            // the multimap-style insert path covered.
+                            // The new entry lands at vec[index]. The model vec is sorted by
+                            // `.end` (every other action's partition_point relies on this), so
+                            // we need vec[index-1].end <= end <= vec[index].end whenever those
+                            // neighbors exist. When the fuzzer's range satisfies that, use it
+                            // directly. Otherwise duplicate a neighbor's range — sortedness is
+                            // trivially preserved and the multimap-insert path stays covered.
                             let lo_ok = index == 0 || vec[index - 1].0.end <= end;
                             let hi_ok = index == vec.len() || end <= vec[index].0.end;
                             let range = if lo_ok && hi_ok {
