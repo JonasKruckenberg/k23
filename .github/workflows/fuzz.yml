@@ -37,5 +37,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-artifacts
-          path: fuzz-artifacts/
+          path: fuzz/artifacts/
           if-no-files-found: ignore

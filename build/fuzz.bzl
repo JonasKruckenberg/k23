@@ -5,7 +5,7 @@ load("@prelude//test:inject_test_run_info.bzl", "inject_test_run_info")
 # Two responsibilities:
 #
 # 1. Route libfuzzer's crash artifacts (`crash-*`, `leak-*`, `oom-*`, `slow-unit-*`)
-#    into a per-target subdirectory under `fuzz-artifacts/` instead of the
+#    into a per-target subdirectory under `fuzz/artifacts/` instead of the
 #    project root, so they're easy to gitignore and to upload as a CI artifact
 #    bundle. We inject `-artifact_prefix=...` *before* user args so explicit
 #    user overrides still win.
@@ -24,7 +24,7 @@ shift
 BIN="$1"
 shift
 
-ARTIFACT_DIR="fuzz-artifacts/$NAME"
+ARTIFACT_DIR="fuzz/artifacts/$NAME"
 mkdir -p "$ARTIFACT_DIR"
 
 LOG="$(mktemp)"
