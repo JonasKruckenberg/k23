@@ -21,19 +21,19 @@ run target buck2_args="" *qemu_args="":
     {{ _buck2 }} run {{target}} {{buck2_args}} {{qemu_args}}
 
 # quick check for development
-@check targets=_rust_targets *buck2_args:
+@check targets=_all_rust_targets() *buck2_args:
     {{ _buck2 }} build {{append("[check]", targets)}} {{_platform_args}} {{buck2_args}}
 
 # run all lints and tests on a crate or the entire workspace.
-preflight targets=_rust_targets *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) # (loom targets buck2_args)
+preflight targets=_all_rust_targets() *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) # (loom targets buck2_args)
 
 # run linters on a crate or the entire workspace.
-lint targets=_rust_targets *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
+lint targets=_all_rust_targets() *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
 
 # ===== linting =====
 
 # run clippy on a crate or the entire workspace.
-@clippy targets=_rust_targets *buck2_args:
+@clippy targets=_all_rust_targets() *buck2_args:
     {{ _buck2 }} build {{append("[clippy.txt]", targets)}} {{_platform_args}} {{buck2_args}}
 
 # check the workspace for typos
@@ -43,31 +43,31 @@ lint targets=_rust_targets *buck2_args: (clippy targets buck2_args) (check-fmt t
 # ===== testing =====
 
 # run unit tests for a crate or the entire workspace.
-@unittests targets=_rust_targets *buck2_args:
+@unittests targets=_all_rust_targets() *buck2_args:
     {{ _buck2 }} test {{_unit_tests(targets)}} {{_platform_args}} {{buck2_args}}
 
 # run miri tests for a crate or the entire workspace.
-@miri targets=_rust_targets *buck2_args:
+@miri targets=_all_rust_targets() *buck2_args:
     {{ _buck2 }} test {{append("[miri]", _unit_tests(targets))}} {{_platform_args}} {{buck2_args}}
 
 # run loom tests for a crate or the entire workspace.
-@loom targets=_rust_targets *buck2_args:
+@loom targets=_all_rust_targets() *buck2_args:
     {{ _buck2 }} test {{_loom_tests(targets)}} {{_platform_args}} {{buck2_args}}
 
 # ===== formatting =====
 
 # check formatting for a crate or the entire workspace.
-@check-fmt targets=_rust_targets *buck2_args:
+@check-fmt targets=_all_rust_targets() *buck2_args:
     {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 --check {{ _source_files(targets) }} {{buck2_args}}
 
 # format a crate or the entire workspace.
-@format targets=_rust_targets *buck2_args:
+@format targets=_all_rust_targets() *buck2_args:
     {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 {{ _source_files(targets) }} {{buck2_args}}
 
 # ===== documentation =====
 
 # build the documentation for a crate or the entire workspace.
-@doc targets=_rust_targets *buck2_args:
+@doc targets=_all_rust_targets() *buck2_args:
     {{ _buck2 }} build {{append("[doc]", targets)}} --show-output {{_platform_args}} {{buck2_args}}
 
 manual:
@@ -75,13 +75,14 @@ manual:
 
 # ===== benchmarking =====
 
-benchmark targets=_rust_targets *buck2_args:
+benchmark targets=_all_rust_targets() *buck2_args:
     # echo "{{_micro_benchmarks(targets)}}"
     {{ _buck2 }} run {{_micro_benchmarks(targets)}} {{_platform_args}} {{buck2_args}}
 
 # ===== target set construction helpers =====
 
-_rust_targets := `buck2 uquery "kind(rust_binary, '//...') + kind(rust_library, '//...') except '//third-party/...'"`
+_rust_targets_query := "kind(rust_binary, '//...') + kind(rust_library, '//...') except '//third-party/...'"
+_all_rust_targets() := _replace_newlines(shell('buck2 uquery "$1"', _rust_targets_query))
 
 # ===== changed-targets (powered by buck2-change-detector) =====
 #
