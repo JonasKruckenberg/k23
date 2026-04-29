@@ -34,7 +34,7 @@ trap 'rm -f "$LOG"' EXIT
 rc=$?
 
 if [ "$rc" -ne 0 ]; then
-    CRASH=$(grep -oE 'Test unit written to [^[:space:]]+' "$LOG" | tail -1 | awk '{print $NF}')
+    CRASH=$(sed -n 's/.*Test unit written to //p' "$LOG" | tail -1)
     if [ -n "$CRASH" ] && [ -f "$CRASH" ]; then
         DBG="$(mktemp)"
         RUST_LIBFUZZER_DEBUG_PATH="$DBG" "$BIN" "$CRASH" >/dev/null 2>&1 || true
