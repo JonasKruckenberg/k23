@@ -52,8 +52,9 @@ where
 }
 
 /// Resume an unwind previously caught with [`catch_unwind`].
+#[expect(clippy::missing_panics_doc, reason = "internal assertion")]
 pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
-    debug_assert!(panic_count::increase(false).is_none());
+    assert!(panic_count::increase(false).is_none());
     kunwind::with_context(|regs, pc| rust_panic(payload, regs.clone(), pc))
 }
 
@@ -63,8 +64,9 @@ pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
 ///
 /// This will start walking the stack and calling `Drop` implementations starting the the `pc` and
 /// register set you provided. Be VERY careful that it is actually correctly captured.
+#[expect(clippy::missing_panics_doc, reason = "internal assertion")]
 pub unsafe fn begin_unwind(payload: Box<dyn Any + Send>, regs: kunwind::Registers, pc: usize) -> ! {
-    debug_assert!(panic_count::increase(false).is_none());
+    assert!(panic_count::increase(false).is_none());
     rust_panic(payload, regs, pc)
 }
 
