@@ -361,8 +361,10 @@ fn handle_kernel_exception(
     };
     regs.gp[2] = sscratch::read();
 
-    let backtrace = Backtrace::<32>::from_registers(regs.clone(), epc.add(1)).unwrap();
-    tracing::error!("{backtrace}");
+    match Backtrace::<32>::from_registers(regs.clone(), epc) {
+        Ok(bt) => tracing::error!("{bt}"),
+        Err(e) => tracing::error!("backtrace unavailable: {e}; epc={epc}"),
+    }
 
     // FIXME it would be great to get rid of the allocation here :/
     let payload = Box::new(cause);
