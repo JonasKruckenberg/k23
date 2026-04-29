@@ -2,21 +2,24 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use fastrand::FastRand;
-use kasync2::executor::{Executor, Worker};
+use kasync::executor::{Executor, Worker};
+use lazy_static::lazy_static;
 
 async fn work() -> usize {
     let val = 1 + 1;
-    kasync2::task::yield_now().await;
+    kasync::task::yield_now().await;
     black_box(val)
 }
 
 fn single_threaded_spawn(c: &mut Criterion) {
-    static EXEC: Executor = Executor::new();
-    let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
+    lazy_static! {
+        static ref EXEC: Executor = Executor::new().unwrap();
+    }
+    let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
 
     c.bench_function("single_threaded_spawn", |b| {
         b.iter(|| {
-            kasync2::test_util::block_on(worker.run(async {
+            kasync::test_util::block_on(worker.run(async {
                 let h = EXEC.try_spawn(work()).unwrap();
                 assert_eq!(h.await.unwrap(), 2);
             }))
@@ -25,12 +28,14 @@ fn single_threaded_spawn(c: &mut Criterion) {
 }
 
 fn single_threaded_spawn10(c: &mut Criterion) {
-    static EXEC: Executor = Executor::new();
-    let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
+    lazy_static! {
+        static ref EXEC: Executor = Executor::new().unwrap();
+    }
+    let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
 
     c.bench_function("single_threaded_spawn10", |b| {
         b.iter(|| {
-            kasync2::test_util::block_on(worker.run(async {
+            kasync::test_util::block_on(worker.run(async {
                 let mut handles = Vec::with_capacity(10);
                 for _ in 0..10 {
                     let h = EXEC.build_task().try_spawn(work()).unwrap();
