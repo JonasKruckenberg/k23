@@ -115,6 +115,21 @@ enum ValueType {
     U128(IndexType<u128>),
 }
 
+/// Returns `true` if the bounds are reversed in the same sense the
+/// `RangeTree::range` debug_assert uses — i.e. the inclusive-start integer
+/// would be strictly greater than the exclusive-end integer. We skip those
+/// inputs in `Action::Range` so the fuzzer doesn't trip the lib's assert if
+/// debug_assertions are ever turned on for the fuzz transition.
+fn bounds_reversed<T: Ord>(start: Bound<T>, end: Bound<T>) -> bool {
+    match (start, end) {
+        (Bound::Unbounded, _) | (_, Bound::Unbounded) => false,
+        (Bound::Included(s), Bound::Included(e))
+        | (Bound::Included(s), Bound::Excluded(e))
+        | (Bound::Excluded(s), Bound::Included(e)) => s > e,
+        (Bound::Excluded(s), Bound::Excluded(e)) => s >= e,
+    }
+}
+
 fn run<
     'a,
     Index: Ord + RangeTreeIndex + Arbitrary<'a> + Debug + Idx,
@@ -167,6 +182,9 @@ fn run<
                 }
             }
             Action::Range(start, end) => {
+                if bounds_reversed(start, end) {
+                    continue;
+                }
                 let range = tree.range((start, end));
                 let entries: Vec<_> = range.map(|(k, &v)| (k, v)).collect();
                 let start = match start {

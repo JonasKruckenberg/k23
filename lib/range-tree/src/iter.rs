@@ -420,6 +420,43 @@ where
     }
 }
 
+/// Resolves a [`Bound::start_bound`] to the inclusive raw integer the iterator
+/// should start at, or `None` for [`Bound::Unbounded`] (which means "iterate
+/// from the very beginning of the tree").
+#[inline]
+fn bounds_start<I: RangeTreeIndex>(bound: Bound<&I>) -> Option<<I::Int as RangeTreeInteger>::Raw> {
+    match bound {
+        Bound::Included(&pivot) => Some(int_from_pivot(pivot)),
+        Bound::Excluded(&pivot) => Some(I::Int::increment(int_from_pivot(pivot))),
+        Bound::Unbounded => None,
+    }
+}
+
+/// Resolves a [`Bound::end_bound`] to the exclusive raw integer the iterator
+/// should stop at.
+#[inline]
+fn bounds_end<I: RangeTreeIndex>(bound: Bound<&I>) -> <I::Int as RangeTreeInteger>::Raw {
+    match bound {
+        Bound::Included(&pivot) => I::Int::increment(int_from_pivot(pivot)),
+        Bound::Excluded(&pivot) => int_from_pivot(pivot),
+        Bound::Unbounded => I::Int::MAX,
+    }
+}
+
+/// Asserts in debug builds that `start <= end` so that callers don't silently
+/// receive an empty iterator when they reverse the bounds.
+#[inline]
+fn debug_assert_bounds_ordered<I: RangeTreeIndex>(
+    start: Option<<I::Int as RangeTreeInteger>::Raw>,
+    end: <I::Int as RangeTreeInteger>::Raw,
+) {
+    debug_assert!(
+        start.is_none_or(|start| !I::Int::cmp(start, end).is_gt()),
+        "RangeTree::range called with reversed bounds (start > end); \
+         empty iterator returned in release builds",
+    );
+}
+
 impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     /// Returns a [`RawIter`] pointing at the first element of the tree.
     #[inline]
@@ -536,17 +573,19 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     ///
     /// Unlike `BTreeMap`, this is not a [`DoubleEndedIterator`]: it only allows
     /// forward iteration.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if the start bound is greater than the end bound.
+    /// In release builds the iterator yields no elements.
     #[inline]
     pub fn range(&self, range: impl RangeBounds<I>) -> Range<'_, I, V, A> {
-        let raw = match range.start_bound() {
-            Bound::Included(&pivot) => self.raw_iter_from(int_from_pivot(pivot)),
-            Bound::Excluded(&pivot) => self.raw_iter_from(I::Int::increment(int_from_pivot(pivot))),
-            Bound::Unbounded => self.raw_iter(),
-        };
-        let end = match range.end_bound() {
-            Bound::Included(&pivot) => I::Int::increment(int_from_pivot(pivot)),
-            Bound::Excluded(&pivot) => int_from_pivot(pivot),
-            Bound::Unbounded => I::Int::MAX,
+        let start = bounds_start::<I>(range.start_bound());
+        let end = bounds_end::<I>(range.end_bound());
+        debug_assert_bounds_ordered::<I>(start, end);
+        let raw = match start {
+            Some(start) => self.raw_iter_from(start),
+            None => self.raw_iter(),
         };
         Range {
             raw,
@@ -559,17 +598,19 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     ///
     /// Unlike `BTreeMap`, this is not a [`DoubleEndedIterator`]: it only allows
     /// forward iteration.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if the start bound is greater than the end bound.
+    /// In release builds the iterator yields no elements.
     #[inline]
     pub fn range_mut(&mut self, range: impl RangeBounds<I>) -> RangeMut<'_, I, V, A> {
-        let raw = match range.start_bound() {
-            Bound::Included(&pivot) => self.raw_iter_from(int_from_pivot(pivot)),
-            Bound::Excluded(&pivot) => self.raw_iter_from(I::Int::increment(int_from_pivot(pivot))),
-            Bound::Unbounded => self.raw_iter(),
-        };
-        let end = match range.end_bound() {
-            Bound::Included(&pivot) => I::Int::increment(int_from_pivot(pivot)),
-            Bound::Excluded(&pivot) => int_from_pivot(pivot),
-            Bound::Unbounded => I::Int::MAX,
+        let start = bounds_start::<I>(range.start_bound());
+        let end = bounds_end::<I>(range.end_bound());
+        debug_assert_bounds_ordered::<I>(start, end);
+        let raw = match start {
+            Some(start) => self.raw_iter_from(start),
+            None => self.raw_iter(),
         };
         RangeMut {
             raw,
@@ -625,5 +666,55 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> IntoIterator for &'a mut RangeTree<
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core::num::NonZeroU64;
+    use core::ops::Bound;
+    use core::range::RangeInclusive;
+
+    use crate::RangeTree;
+
+    /// In debug builds the reversed-bounds assert in [`RangeTree::range`] is
+    /// active and trips immediately. The release-mode counterpart lives in
+    /// [`range_reversed_bounds_yields_empty_in_release`].
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "reversed bounds")]
+    fn range_reversed_bounds_panics_in_debug() {
+        let tree: RangeTree<NonZeroU64, u32> = RangeTree::try_new().unwrap();
+        let _ = tree
+            .range((
+                Bound::Excluded(NonZeroU64::new(10).unwrap()),
+                Bound::Excluded(NonZeroU64::new(3).unwrap()),
+            ))
+            .count();
+    }
+
+    /// With debug_assertions disabled the assert is compiled out and the
+    /// iterator silently yields nothing — passing reversed bounds is a
+    /// programmer error, but the documented release behaviour is "empty".
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn range_reversed_bounds_yields_empty_in_release() {
+        let mut tree: RangeTree<NonZeroU64, u32> = RangeTree::try_new().unwrap();
+        tree.insert(
+            RangeInclusive {
+                start: NonZeroU64::new(1).unwrap(),
+                end: NonZeroU64::new(20).unwrap(),
+            },
+            42,
+        )
+        .unwrap();
+        let entries: Vec<_> = tree
+            .range((
+                Bound::Excluded(NonZeroU64::new(10).unwrap()),
+                Bound::Excluded(NonZeroU64::new(3).unwrap()),
+            ))
+            .map(|(k, &v)| (k, v))
+            .collect();
+        assert!(entries.is_empty());
     }
 }
