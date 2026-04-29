@@ -1,5 +1,3 @@
-load("@prelude//test:inject_test_run_info.bzl", "inject_test_run_info")
-
 _DEFAULT_MODIFIERS = [
     "constraints//:opt-level[3]",
     "constraints//:debuginfo[line-tables-only]",
@@ -7,30 +5,34 @@ _DEFAULT_MODIFIERS = [
 ]
 
 def _rust_benchmark_runner_impl(ctx: AnalysisContext) -> list[Provider]:
-    run_info = ctx.attrs.binary[RunInfo]
-    cmd = cmd_args(run_info.args, "--bench")
+    bin_run = ctx.attrs.binary[RunInfo]
 
-    return inject_test_run_info(
-            ctx,
-            ExternalRunnerTestInfo(
-                type = "rust",
-                command = [cmd],
-                # env = ctx.attrs.env | ctx.attrs.run_env,
-                labels = ctx.attrs.labels,
-                # contacts = ctx.attrs.contacts,
-                # default_executor = re_executor,
-                # executor_overrides = executor_overrides,
-                run_from_project_root = True,
-                use_project_relative_paths = True,
-            ),
-        ) + [ctx.attrs.binary[DefaultInfo]]
+    script = cmd_args(
+        "#!/bin/sh",
+        "set -e",
+        'export CRITERION_HOME="$(pwd)/bench-artifacts"',
+        'mkdir -p "$CRITERION_HOME"',
+        cmd_args(bin_run.args, format = 'exec {} --bench "$@"'),
+        delimiter = "\n",
+    )
+
+    wrapper, hidden = ctx.actions.write(
+        "run_bench.sh",
+        script,
+        is_executable = True,
+        allow_args = True,
+        with_inputs = True
+    )
+
+    return [
+        DefaultInfo(default_output = wrapper, other_outputs = hidden),
+        RunInfo(args = cmd_args(wrapper, hidden = hidden)),
+    ]
 
 _rust_benchmark_runner = rule(
     impl = _rust_benchmark_runner_impl,
     attrs = {
         "binary": attrs.dep(providers = [RunInfo]),
-        "labels": attrs.list(attrs.string(), default = []),
-        "_inject_test_env": attrs.default_only(attrs.dep(default = "prelude//test/tools:inject_test_env")),
     },
 )
 
@@ -45,6 +47,5 @@ def rust_benchmark(name, modifiers = [], visibility = None, **kwargs):
     _rust_benchmark_runner(
         name = name,
         binary = ":" + bin_name,
-        labels = ["micro_benchmark"],
         visibility = visibility,
     )
