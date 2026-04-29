@@ -30,8 +30,12 @@ mkdir -p "$ARTIFACT_DIR"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 
-"$BIN" "-artifact_prefix=$ARTIFACT_DIR/" "$@" 2> >(tee -a "$LOG" >&2)
-rc=$?
+# Capture stderr through a real pipe (not process substitution) so tee
+# is guaranteed to flush $LOG before we read it below. fd 3 carries the
+# binary's stdout past tee; ${PIPESTATUS[0]} recovers the binary's exit
+# code instead of tee's.
+{ "$BIN" "-artifact_prefix=$ARTIFACT_DIR/" "$@" 2>&1 1>&3 3>&- | tee -a "$LOG" >&2; } 3>&1
+rc=${PIPESTATUS[0]}
 
 if [ "$rc" -ne 0 ]; then
     CRASH=$(sed -n 's/.*Test unit written to //p' "$LOG" | tail -1)
