@@ -7,7 +7,7 @@ The API is similar to the standard library's [BTreeMap] with some significant di
 - Instead of associating a *keys* with a values, `RangeTree` associates *ranges* of *integers* with value.
 - Queries return the *containing* range-value pair.
 - Range indices must be integer types or convertible to integers via the `RangeTreeIndex` trait.
-- The maximum integer value is reserved for internal use and cannot be used by ranges.
+- ZERO is reserved for internal use and cannot be used by ranges.
 - Ranges must be **non-overlapping**
 - Ranges in the tree are ordered by their integer values instead of their (possible) `Ord` implementation.
 - Iterators only support forward iteration.

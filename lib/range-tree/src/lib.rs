@@ -82,7 +82,7 @@ pub trait RangeTreeIndex: Copy {
 /// - `BTree` can optionally be used as a multi-map and hold duplicate pivots.
 /// - pivots must be `Copy` and convertible to and from integers via the
 ///   [`RangeTreeIndex`] trait.
-/// - The maximum integer value is reserved for internal use and cannot be used
+/// - ZERO is reserved for internal use and cannot be used
 ///   by pivots.
 /// - Elements in the tree are ordered by the integer value of the pivot instead
 ///   of the [`Ord`] implementation of the pivots.

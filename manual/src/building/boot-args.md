@@ -12,10 +12,12 @@ Allows configuring the verbosity and filtering of debug messages.
 
 ```sh
 # Enable the most verbose logging messages
-cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace"
+just run //sys:k23-qemu-riscv64 -- --append "log=trace"
 # A more reasonable configuration that keeps trace messages enabled, but silences the very spammy ones
-cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace,cranelift_codegen=off,sharded_slab=off"
+just run //sys:k23-qemu-riscv64 -- --append "log=trace,cranelift_codegen=off,sharded_slab=off"
 ```
+
+The underlying `buck2` invocation is `buck2 run //sys:k23-qemu-riscv64 -- --append "..."`; everything after `--` is forwarded to QEMU.
 
 ## `backtrace`
 
@@ -24,7 +26,7 @@ Allows configuring the verbosity of kernel panic backtraces. There are two possi
 
 ```sh
 # To print shorter panic backtraces (the default)
-cargo xtask qemu profile/riscv64/qemu.toml -- --append "backtrace=short"
+just run //sys:k23-qemu-riscv64 -- --append "backtrace=short"
 # To print more verbose panic backtraces
-cargo xtask qemu profile/riscv64/qemu.toml -- --append "backtrace=full"
+just run //sys:k23-qemu-riscv64 -- --append "backtrace=full"
 ```

@@ -11,9 +11,11 @@ The following tools are required to build and run k23:
 
 ## Running
 
-Type `just` to see the available actions to run. The one you are probably looking for is `just run profile/riscv64/qemu.toml` which will
+Type `just` to see the available actions to run. The one you are probably looking for is `just run //sys:k23-qemu-riscv64` which will
 build k23 for `riscv64` and run it inside QEMU. Note that this is currently just running a few basic tests and exits.
 Other actions include:
 
 - `just preflight` which will run all lints and checks
-- `just run profile/riscv64/qemu.toml` which will run k23 in QEMU
+- `just run //sys:k23-qemu-riscv64` which will run k23 in QEMU
+
+Under the hood `just run` is a thin wrapper around `buck2 run`; the equivalent invocation is `buck2 run //sys:k23-qemu-riscv64`.

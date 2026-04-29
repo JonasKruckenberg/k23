@@ -1,19 +1,20 @@
 load("//build:bench.bzl", "rust_benchmark")
+load("//build:fuzz.bzl", "rust_fuzz")
 
 rust_library(
     name = "range-tree",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//third-party:cfg-if",
         "//third-party:tracing",
     ],
     visibility = ["PUBLIC"],
-    tests = [":range-tree_unittests", ":range-tree_benchmarks"],
+    tests = [":range-tree_unittests", ":range-tree_benchmarks", ":range-tree_fuzz"],
 )
 
 rust_test(
     name = "range-tree_unittests",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//third-party:cfg-if",
         "//third-party:tracing",
@@ -42,6 +43,18 @@ rust_benchmark(
         "//third-party:brie-tree",
         "//third-party:pin-project",
         "//lib/wavltree:wavltree",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+rust_fuzz(
+    name = "range-tree_fuzz",
+    srcs = ["./fuzz/range_tree.rs"],
+    crate_root = "./fuzz/range_tree.rs",
+    deps = [
+        ":range-tree",
+        "//third-party:libfuzzer-sys",
+        "//third-party:arbitrary",
     ],
     visibility = ["PUBLIC"],
 )

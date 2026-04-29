@@ -7,7 +7,7 @@ on:
       - main
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -112,3 +112,13 @@ jobs:
         with:
           name: impacted-targets
       - run: ./.github/workflows/run-filtered.sh loom '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
+
+  cargo-deny:
+    name: Cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check Rust Code
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: third-party/Cargo.toml

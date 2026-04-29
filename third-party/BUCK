@@ -275,6 +275,34 @@ cargo.rust_library(
     visibility = [],
 )
 
+alias(
+    name = "arbitrary",
+    actual = ":arbitrary-1.4.2",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "arbitrary-1.4.2.crate",
+    sha256 = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1",
+    strip_prefix = "arbitrary-1.4.2",
+    urls = ["https://static.crates.io/crates/arbitrary/1.4.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "arbitrary-1.4.2",
+    srcs = [":arbitrary-1.4.2.crate"],
+    crate = "arbitrary",
+    crate_root = "arbitrary-1.4.2.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "derive",
+        "derive_arbitrary",
+    ],
+    visibility = [],
+    deps = [":derive_arbitrary-1.4.2"],
+)
+
 http_archive(
     name = "autocfg-1.5.0.crate",
     sha256 = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8",
@@ -459,9 +487,25 @@ cargo.rust_library(
     crate = "cc",
     crate_root = "cc-1.2.60.crate/src/lib.rs",
     edition = "2018",
+    features = ["parallel"],
+    platform = {
+        "linux-arm64": dict(
+            deps = [":libc-0.2.185"],
+        ),
+        "linux-x86_64": dict(
+            deps = [":libc-0.2.185"],
+        ),
+        "macos-arm64": dict(
+            deps = [":libc-0.2.185"],
+        ),
+        "macos-x86_64": dict(
+            deps = [":libc-0.2.185"],
+        ),
+    },
     visibility = [],
     deps = [
         ":find-msvc-tools-0.1.9",
+        ":jobserver-0.1.34",
         ":shlex-1.3.0",
     ],
 )
@@ -1058,6 +1102,29 @@ cargo.rust_library(
         "std",
     ],
     visibility = [],
+)
+
+http_archive(
+    name = "derive_arbitrary-1.4.2.crate",
+    sha256 = "1e567bd82dcff979e4b03460c307b3cdc9e96fde3d73bed1496d2bc75d9dd62a",
+    strip_prefix = "derive_arbitrary-1.4.2",
+    urls = ["https://static.crates.io/crates/derive_arbitrary/1.4.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "derive_arbitrary-1.4.2",
+    srcs = [":derive_arbitrary-1.4.2.crate"],
+    crate = "derive_arbitrary",
+    crate_root = "derive_arbitrary-1.4.2.crate/src/lib.rs",
+    edition = "2021",
+    proc_macro = True,
+    visibility = [],
+    deps = [
+        ":proc-macro2-1.0.106",
+        ":quote-1.0.45",
+        ":syn-2.0.117",
+    ],
 )
 
 http_archive(
@@ -1755,6 +1822,43 @@ cargo.rust_library(
     visibility = [],
 )
 
+http_archive(
+    name = "jobserver-0.1.34.crate",
+    sha256 = "9afb3de4395d6b3e67a780b6de64b51c978ecf11cb9a462c66be7d4ca9039d33",
+    strip_prefix = "jobserver-0.1.34",
+    urls = ["https://static.crates.io/crates/jobserver/0.1.34/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "jobserver-0.1.34",
+    srcs = [":jobserver-0.1.34.crate"],
+    crate = "jobserver",
+    crate_root = "jobserver-0.1.34.crate/src/lib.rs",
+    edition = "2021",
+    platform = {
+        "linux-arm64": dict(
+            deps = [":libc-0.2.185"],
+        ),
+        "linux-x86_64": dict(
+            deps = [":libc-0.2.185"],
+        ),
+        "macos-arm64": dict(
+            deps = [":libc-0.2.185"],
+        ),
+        "macos-x86_64": dict(
+            deps = [":libc-0.2.185"],
+        ),
+        "windows-arm64": dict(
+            deps = [":getrandom-0.3.4"],
+        ),
+        "windows-x86_64": dict(
+            deps = [":getrandom-0.3.4"],
+        ),
+    },
+    visibility = [],
+)
+
 alias(
     name = "lazy_static",
     actual = ":lazy_static-1.5.0",
@@ -1854,6 +1958,156 @@ buildscript_run(
         "std",
     ],
     version = "0.2.185",
+)
+
+alias(
+    name = "libfuzzer-sys",
+    actual = ":libfuzzer-sys-0.4.12",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "libfuzzer-sys-0.4.12.crate",
+    sha256 = "f12a681b7dd8ce12bff52488013ba614b869148d54dd79836ab85aafdd53f08d",
+    strip_prefix = "libfuzzer-sys-0.4.12",
+    sub_targets = [
+        "libfuzzer/FuzzerBuiltins.h",
+        "libfuzzer/FuzzerBuiltinsMsvc.h",
+        "libfuzzer/FuzzerCommand.h",
+        "libfuzzer/FuzzerCorpus.h",
+        "libfuzzer/FuzzerCrossOver.cpp",
+        "libfuzzer/FuzzerDataFlowTrace.cpp",
+        "libfuzzer/FuzzerDataFlowTrace.h",
+        "libfuzzer/FuzzerDefs.h",
+        "libfuzzer/FuzzerDictionary.h",
+        "libfuzzer/FuzzerDriver.cpp",
+        "libfuzzer/FuzzerExtFunctions.def",
+        "libfuzzer/FuzzerExtFunctions.h",
+        "libfuzzer/FuzzerExtFunctionsDlsym.cpp",
+        "libfuzzer/FuzzerExtFunctionsWeak.cpp",
+        "libfuzzer/FuzzerExtFunctionsWindows.cpp",
+        "libfuzzer/FuzzerExtraCounters.cpp",
+        "libfuzzer/FuzzerExtraCountersDarwin.cpp",
+        "libfuzzer/FuzzerExtraCountersWindows.cpp",
+        "libfuzzer/FuzzerFlags.def",
+        "libfuzzer/FuzzerFork.cpp",
+        "libfuzzer/FuzzerFork.h",
+        "libfuzzer/FuzzerIO.cpp",
+        "libfuzzer/FuzzerIO.h",
+        "libfuzzer/FuzzerIOPosix.cpp",
+        "libfuzzer/FuzzerIOWindows.cpp",
+        "libfuzzer/FuzzerInterceptors.cpp",
+        "libfuzzer/FuzzerInterface.h",
+        "libfuzzer/FuzzerInternal.h",
+        "libfuzzer/FuzzerLoop.cpp",
+        "libfuzzer/FuzzerMain.cpp",
+        "libfuzzer/FuzzerMerge.cpp",
+        "libfuzzer/FuzzerMerge.h",
+        "libfuzzer/FuzzerMutate.cpp",
+        "libfuzzer/FuzzerMutate.h",
+        "libfuzzer/FuzzerOptions.h",
+        "libfuzzer/FuzzerPlatform.h",
+        "libfuzzer/FuzzerRandom.h",
+        "libfuzzer/FuzzerSHA1.cpp",
+        "libfuzzer/FuzzerSHA1.h",
+        "libfuzzer/FuzzerTracePC.cpp",
+        "libfuzzer/FuzzerTracePC.h",
+        "libfuzzer/FuzzerUtil.cpp",
+        "libfuzzer/FuzzerUtil.h",
+        "libfuzzer/FuzzerUtilDarwin.cpp",
+        "libfuzzer/FuzzerUtilFuchsia.cpp",
+        "libfuzzer/FuzzerUtilLinux.cpp",
+        "libfuzzer/FuzzerUtilPosix.cpp",
+        "libfuzzer/FuzzerUtilWindows.cpp",
+        "libfuzzer/FuzzerValueBitMap.h",
+    ],
+    urls = ["https://static.crates.io/crates/libfuzzer-sys/0.4.12/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "libfuzzer-sys-0.4.12",
+    srcs = [":libfuzzer-sys-0.4.12.crate"],
+    crate = "libfuzzer_sys",
+    crate_root = "libfuzzer-sys-0.4.12.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "default",
+        "link_libfuzzer",
+    ],
+    visibility = [],
+    deps = [
+        ":arbitrary-1.4.2",
+        ":libfuzzer-sys-0.4.12-libfuzzer",
+    ],
+)
+
+cxx_library(
+    name = "libfuzzer-sys-0.4.12-libfuzzer",
+    srcs = [
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerCrossOver.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDataFlowTrace.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDriver.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctionsDlsym.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctionsWeak.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctionsWindows.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtraCounters.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtraCountersDarwin.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtraCountersWindows.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerFork.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerIO.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerIOPosix.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerIOWindows.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerInterceptors.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerLoop.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMain.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMerge.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMutate.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerSHA1.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerTracePC.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtil.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilDarwin.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilFuchsia.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilLinux.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilPosix.cpp]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilWindows.cpp]",
+    ],
+    headers = [
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerBuiltins.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerBuiltinsMsvc.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerCommand.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerCorpus.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDataFlowTrace.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDefs.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDictionary.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctions.def]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctions.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerFlags.def]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerFork.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerIO.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerInterface.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerInternal.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMerge.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMutate.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerOptions.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerPlatform.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerRandom.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerSHA1.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerTracePC.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtil.h]",
+        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerValueBitMap.h]",
+    ],
+    compatible_with = [
+        "prelude//os/constraints:linux",
+        "prelude//os/constraints:macos",
+        "prelude//os/constraints:windows",
+    ],
+    compiler_flags = [
+        "-std=c++17",
+        "-fno-omit-frame-pointer",
+        "-w",
+    ],
+    visibility = [],
 )
 
 alias(

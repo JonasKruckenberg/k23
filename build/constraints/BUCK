@@ -57,3 +57,13 @@ constraint(
     default = "host",
     visibility = ["PUBLIC"],
 )
+
+constraint(
+    name = "sanitizer",
+    values = [
+        "none",
+        "address",
+    ],
+    default = "none",
+    visibility = ["PUBLIC"],
+)

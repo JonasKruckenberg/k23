@@ -84,3 +84,15 @@ configuration_transition(
     ],
     visibility = ["PUBLIC"],
 )
+
+configuration_transition(
+    name = "fuzz",
+    constraint_values = [
+        "constraints//:env[host]",
+        "constraints//:rust-std[prebuilt]",
+        "constraints//:sanitizer[address]",
+        "constraints//:opt-level[3]",
+        "constraints//:debuginfo[full]",
+    ],
+    visibility = ["PUBLIC"],
+)
