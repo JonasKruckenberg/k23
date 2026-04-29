@@ -13,6 +13,7 @@ mod wast;
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::any::Any;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -24,6 +25,7 @@ use ktest::Test;
 
 use crate::tests::args::Arguments;
 use crate::tests::printer::Printer;
+use crate::util::either::Either;
 use crate::{arch, state};
 
 /// The outcome of performing a single test.
@@ -90,7 +92,16 @@ pub async fn run_tests(global: &'static state::Global) -> Conclusion {
         Arguments::default()
     };
 
-    let tests = all_tests();
+    let tests = if let Some(test_name) = args.test_name {
+        let tests: Vec<_> = all_tests()
+            .iter()
+            .filter(|test| test.info.ident.contains(test_name))
+            .collect();
+
+        Either::Left(tests.into_iter())
+    } else {
+        Either::Right(all_tests().into_iter())
+    };
 
     // Create printer which is used for all output.
     let printer = Printer::new(args.format);
@@ -107,7 +118,7 @@ pub async fn run_tests(global: &'static state::Global) -> Conclusion {
     let printer = Arc::new(printer);
     let conclusion = Arc::new(Conclusion::empty());
 
-    let tests = tests.iter().map(|test| {
+    let tests = tests.map(|test| {
         if args.is_ignored(test) {
             printer.print_test(&test.info);
             conclusion.num_ignored.fetch_add(1, Ordering::Release);

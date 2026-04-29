@@ -26,3 +26,16 @@ where
         }
     }
 }
+
+impl<L, R, T> ExactSizeIterator for Either<L, R>
+where
+    L: ExactSizeIterator<Item = T>,
+    R: ExactSizeIterator<Item = T>,
+{
+    fn len(&self) -> usize {
+        match self {
+            Either::Left(l) => l.len(),
+            Either::Right(r) => r.len(),
+        }
+    }
+}

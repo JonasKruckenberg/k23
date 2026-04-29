@@ -36,25 +36,23 @@ impl Printer {
     }
 
     pub(crate) fn print_test(&self, info: &TestInfo) {
-        let TestInfo { module, name, .. } = info;
+        let TestInfo { ident, .. } = info;
         match self.format {
             FormatSetting::Pretty => {
-                tracing::info!("test {module}::{name} ... ",);
+                tracing::info!("test {ident} ... ",);
             }
             FormatSetting::Terse => {
                 // In terse mode, nothing is printed before the job. Only
                 // `print_single_outcome` prints one character.
             }
             FormatSetting::Json => {
-                tracing::info!(
-                    r#"{{ "type": "test", "event": "started", "name": "{module}::{name}" }}"#,
-                )
+                tracing::info!(r#"{{ "type": "test", "event": "started", "name": "{ident}" }}"#,)
             }
         }
     }
 
     pub(crate) fn print_single_outcome(&self, info: &TestInfo, outcome: &Outcome) {
-        let TestInfo { module, name, .. } = info;
+        let TestInfo { ident, .. } = info;
         match self.format {
             FormatSetting::Pretty => {
                 self.print_outcome_pretty(outcome);
@@ -70,7 +68,7 @@ impl Printer {
             }
             FormatSetting::Json => {
                 tracing::info!(
-                    r#"{{ "type": "test", "name": "{module}::{name}", "event": "{}" }}"#,
+                    r#"{{ "type": "test", "name": "{ident}", "event": "{}" }}"#,
                     match outcome {
                         Outcome::Passed => "ok",
                         Outcome::Failed(_) => "failed",
@@ -91,7 +89,7 @@ impl Printer {
         }
     }
 
-    pub(crate) fn print_list(&self, tests: &[Test], ignored: bool) {
+    pub(crate) fn print_list<'a>(&self, tests: impl Iterator<Item = &'a Test>, ignored: bool) {
         for test in tests {
             // libtest prints out:
             // * all tests without `--ignored`
@@ -100,7 +98,7 @@ impl Printer {
                 continue;
             }
 
-            tracing::info!("{}::{}: test", test.info.module, test.info.name,);
+            tracing::info!("{}: test", test.info.ident);
         }
     }
 

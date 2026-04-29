@@ -26,8 +26,7 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
             #crate_path::Test {
                 run: || ::alloc::boxed::Box::pin(#ident()),
                 info: #crate_path::TestInfo {
-                    module: module_path!(),
-                    name: stringify!(#ident),
+                    ident: concat!(module_path!(), "::", stringify!(#ident)),
                     ignored: false
                 }
             }
