@@ -1,6 +1,6 @@
 use core::cmp;
 use core::num::NonZeroIsize;
-use core::ops::Range;
+use core::range::Range;
 
 use crate::{PhysicalAddress, VirtualAddress};
 
@@ -56,7 +56,7 @@ impl PhysMap {
             let start = physmap_start.get() as u128;
             let end = start + max_addr.offset_from_unsigned(min_addr) as u128;
 
-            start..end
+            Range { start, end }
         };
 
         Self {
@@ -90,7 +90,7 @@ impl PhysMap {
         let start = self.phys_to_virt(phys.start);
         let end = self.phys_to_virt(phys.end);
 
-        start..end
+        Range { start, end }
     }
 }
 
