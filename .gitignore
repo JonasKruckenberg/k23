@@ -12,5 +12,5 @@ target
 /config.json
 /impacted-targets.txt
 
-# rust_fuzz outputs
-/fuzz/artifacts/
+# rust_fuzz running corpus (committed crash repros live in fuzz/artifacts/)
+/fuzz/corpus/

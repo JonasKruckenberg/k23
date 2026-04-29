@@ -2,15 +2,25 @@ load("@prelude//test:inject_test_run_info.bzl", "inject_test_run_info")
 
 # Wrapper invoked by `buck2 run` / `buck2 test` for any rust_fuzz target.
 #
-# Two responsibilities:
+# Three responsibilities:
 #
-# 1. Route libfuzzer's crash artifacts (`crash-*`, `leak-*`, `oom-*`, `slow-unit-*`)
-#    into a per-target subdirectory under `fuzz/artifacts/` instead of the
-#    project root, so they're easy to gitignore and to upload as a CI artifact
-#    bundle. We inject `-artifact_prefix=...` *before* user args so explicit
-#    user overrides still win.
+# 1. Pass two per-target directories to libfuzzer as positional corpus args:
+#      - `fuzz/corpus/$NAME/` — gitignored running corpus, persisted between
+#        CI runs via actions/cache. First positional, so libfuzzer writes
+#        newly-discovered coverage-increasing inputs back into it.
+#      - `fuzz/artifacts/$NAME/` — committed crash repros (`crash-*`,
+#        `leak-*`, `oom-*`, `slow-unit-*`). Also set as `-artifact_prefix=`
+#        so libfuzzer writes new failures here. Passing it as a positional
+#        means past crashes are replayed at startup — once a crash is
+#        committed, every future run re-executes it (proptest-regressions
+#        semantics, but unified with the live crash dump).
 #
-# 2. On a non-zero exit, scan libfuzzer's stderr for the
+# 2. We inject `-artifact_prefix=` *before* user args so explicit user
+#    overrides still win, and put the corpus dir before the artifacts dir
+#    so libfuzzer's "first positional is the writable corpus" rule keeps
+#    artifact entries read-only at fuzz time.
+#
+# 3. On a non-zero exit, scan libfuzzer's stderr for the
 #       "Test unit written to <path>"
 #    line, then re-run the binary with that single input under
 #    RUST_LIBFUZZER_DEBUG_PATH so libfuzzer-sys's `fuzz_target!` macro emits
@@ -25,7 +35,8 @@ BIN="$1"
 shift
 
 ARTIFACT_DIR="fuzz/artifacts/$NAME"
-mkdir -p "$ARTIFACT_DIR"
+CORPUS_DIR="fuzz/corpus/$NAME"
+mkdir -p "$ARTIFACT_DIR" "$CORPUS_DIR"
 
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
@@ -34,7 +45,7 @@ trap 'rm -f "$LOG"' EXIT
 # is guaranteed to flush $LOG before we read it below. fd 3 carries the
 # binary's stdout past tee; ${PIPESTATUS[0]} recovers the binary's exit
 # code instead of tee's.
-{ "$BIN" "-artifact_prefix=$ARTIFACT_DIR/" "$@" 2>&1 1>&3 3>&- | tee -a "$LOG" >&2; } 3>&1
+{ "$BIN" "-artifact_prefix=$ARTIFACT_DIR/" "$CORPUS_DIR" "$ARTIFACT_DIR" "$@" 2>&1 1>&3 3>&- | tee -a "$LOG" >&2; } 3>&1
 rc=${PIPESTATUS[0]}
 
 if [ "$rc" -ne 0 ]; then

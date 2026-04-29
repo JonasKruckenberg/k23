@@ -31,6 +31,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: impacted-targets
+      - name: restore fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-
       - run: ./.github/workflows/run-filtered.sh fuzz '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}' fuzz_args=--test-arg=-max_total_time=60
       - name: upload crash artifacts
         if: failure()
