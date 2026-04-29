@@ -14,6 +14,7 @@ use core::ptr::NonNull;
 use static_assertions::assert_impl_all;
 
 use crate::wasm::func::do_call;
+use crate::wasm::func::host::Caller;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::types::{FuncType, HeapType, RefType, ValType};
 use crate::wasm::vm::VMVal;
@@ -100,7 +101,7 @@ pub unsafe trait WasmTy: Send {
 /// # Safety
 ///
 /// This trait should not be implemented manually.
-pub unsafe trait WasmParams: Send {
+pub unsafe trait WasmParams {
     /// The storage for holding the [`VMVal`] parameters and results
     ///
     /// The storage for holding the array-call parameters and results.
@@ -467,6 +468,65 @@ macro_rules! impl_wasm_params {
                 use ::util::MaybeUninitExt;
 
                 let ($($t,)*) = self;
+                let mut _i: usize = 0;
+
+                $(
+                    if !$t.compatible_with_store(_store) {
+                        ::anyhow::bail!("attempt to pass cross-`Store` value to Wasm as function argument");
+                    }
+
+                    if $t::valtype().is_ref() {
+                        let param_ty = _func_ty.param(_i).unwrap();
+                        let ref_ty = param_ty.unwrap_ref();
+                        if ref_ty.heap_type().is_concrete() {
+                            $t.dynamic_concrete_type_check(_store, ref_ty.is_nullable(), ref_ty.heap_type())?;
+                        }
+                    }
+
+                    // Safety: the macro guarantees that `Self::VMValStorage` has enough space
+                    let dst = unsafe { _dst.map(|p| &raw mut (*p)[_i]) };
+                    $t.store(_store, dst)?;
+
+                    _i += 1;
+                )*
+                Ok(())
+            }
+        }
+
+        #[allow(non_snake_case, reason = "argument names above are uppercase")]
+        // Safety: see `WasmTy` for details
+        unsafe impl<T, $($t: WasmTy,)*> WasmParams for (Caller<'_, T>, $($t,)*) {
+            type VMValStorage = [VMVal; $n];
+
+            fn typecheck(_engine: &Engine, mut params: impl ExactSizeIterator<Item = ValType>) -> crate::Result<()> {
+                let mut _n = 0;
+
+                $(
+                    match params.next() {
+                        Some(t) => {
+                            _n += 1;
+                            $t::typecheck(_engine, t, TypeCheckPosition::Param)?
+                        },
+                        None => {
+                            ::anyhow::bail!("expected {} types, found {}", $n as usize, params.len() + _n);
+                        },
+                    }
+                )*
+
+                match params.next() {
+                    None => Ok(()),
+                    Some(_) => {
+                        _n += 1;
+                        ::anyhow::bail!("expected {} types, found {}", $n, params.len() + _n);
+                    },
+                }
+            }
+
+            fn store(self, _store: &mut StoreOpaque, _func_ty: &FuncType, _dst: &mut MaybeUninit<Self::VMValStorage>) -> crate::Result<()> {
+                #[allow(unused_imports, reason = "macro quirk")]
+                use ::kutil::MaybeUninitExt;
+
+                let (_, $($t,)*) = self;
                 let mut _i: usize = 0;
 
                 $(

@@ -105,6 +105,14 @@ impl WastContext {
             arg
         })?;
 
+        // used in hostfunc smoke test to ensure we're checking the stack
+        // pointer on host function entry.
+        linker.func_wrap::<(crate::wasm::func::host::Caller<_>, u64), ()>(
+            "k23",
+            "corrupt_stack_limit",
+            |caller: crate::wasm::func::host::Caller<_>, arg: u64| {},
+        )?;
+
         // let ty = GlobalType {
         //     content_type: ValType::I32,
         //     mutable: false,
