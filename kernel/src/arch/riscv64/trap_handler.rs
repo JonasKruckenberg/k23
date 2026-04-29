@@ -6,9 +6,11 @@
 // copied, modified, or distributed except according to those terms.
 
 use alloc::boxed::Box;
-use core::arch::{asm, naked_asm};
+use core::arch::naked_asm;
 use core::cell::Cell;
+use core::ops::ControlFlow;
 
+use gimli::RiscV;
 use kcpu_local::cpu_local;
 use kmem_core::VirtualAddress;
 use riscv::scause::{Exception, Interrupt};
@@ -27,35 +29,44 @@ cpu_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
 }
 
-pub fn init() {
-    // Safety: this is fine
-    let trap_stack_top = unsafe {
-        TRAP_STACK
-            .as_ptr()
-            .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE)
-            .cast_mut()
-    };
-
-    tracing::trace!("setting sscratch to {:p}", trap_stack_top);
-    // Safety: inline assembly
-    unsafe {
-        asm!(
-            "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
-            trap_frame = in(reg) trap_stack_top
-        );
+// `default_trap_entry` writes 64 contiguous 8-byte slots — gp regs at
+// `sp[0..32]`, fp regs at `sp[32..64]` — and unconditionally bumps sp by
+// 0x210. Pin the struct's size and field offsets so the asm offsets and
+// the Rust layout cannot drift apart.
+const _: () = {
+    assert!(core::mem::offset_of!(kunwind::Registers, gp) == 0x000);
+    #[cfg(target_feature = "d")]
+    {
+        assert!(core::mem::offset_of!(kunwind::Registers, fp) == 0x100);
+        assert!(core::mem::size_of::<kunwind::Registers>() == 0x200);
     }
+    #[cfg(not(target_feature = "d"))]
+    assert!(core::mem::size_of::<kunwind::Registers>() == 0x100);
+    assert!(
+        core::mem::size_of::<kunwind::Registers>() == core::mem::size_of::<kunwind::Registers>()
+    );
+};
+
+pub fn init() {
+    let trap_stack_top = trap_stack_top();
+    tracing::trace!("setting sscratch to {:#x}", trap_stack_top);
+    sscratch::set(trap_stack_top);
 
     tracing::trace!("setting trap vec to {:#x}", default_trap_entry as usize);
     // Safety: register access
     unsafe { stvec::write(default_trap_entry as usize, stvec::Mode::Direct) };
 }
 
-#[repr(C)]
-#[derive(Clone, Default)]
-pub struct TrapFrame {
-    pub gp: [usize; 32],
-    #[cfg(target_feature = "d")]
-    pub fp: [usize; 32],
+/// Top of this CPU's trap stack. `sscratch` must hold this value whenever
+/// the CPU is outside the trap handler so the next trap's `csrrw sp, sscratch, sp`
+/// lands the new trap frame on the trap stack.
+fn trap_stack_top() -> usize {
+    // Safety: TRAP_STACK is a valid CPU-local static of the queried size.
+    unsafe {
+        TRAP_STACK
+            .as_ptr()
+            .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE) as usize
+    }
 }
 
 // #[naked]
@@ -101,7 +112,7 @@ unsafe extern "C" fn default_trap_entry() {
         // This is always the first frame on stack, there is nowhere to return to
         ".cfi_register ra, zero",
 
-        "csrrw sp, sscratch, sp", // sp points to the TrapFrame
+        "csrrw sp, sscratch, sp", // sp points to the kunwind::Registers
 
         "add sp, sp, -0x210",
         ".cfi_def_cfa_offset 0x210",
@@ -261,7 +272,7 @@ unsafe extern "C" fn default_trap_entry() {
 // assembly, but we also want to be able to unwind past it into the trampoline above (so stack traces
 // are fully accurate)
 extern "C-unwind" fn default_trap_handler(
-    frame: &mut TrapFrame,
+    frame: &mut kunwind::Registers,
     _a1: usize,
     _a2: usize,
     _a3: usize,
@@ -286,65 +297,83 @@ extern "C-unwind" fn default_trap_handler(
         handle_recursive_fault(frame, epc);
     }
 
-    'handler: {
-        match cause {
-            Trap::Interrupt(Interrupt::SupervisorSoft) => {
-                // Just a nop, software interrupts are only used as wakeup calls
-                // TODO this should be an specialized routine in the trap vector
-
-                // Safety: register access
-                unsafe {
-                    sip::clear_ssoft();
-                }
-            }
-            Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                let (expired, maybe_next_deadline) = global().timer.try_turn().unwrap_or((0, None));
-
-                if expired > 0 {
-                    global().executor.wake_one();
-                }
-
-                global().timer.schedule_wakeup(maybe_next_deadline);
-            }
-            Trap::Interrupt(Interrupt::SupervisorExternal) => {
-                irq::trigger_irq(&mut *cpu_local().arch.cpu.interrupt_controller());
+    // Each arm clears `IN_TRAP` itself before returning. Arms that tail-call
+    // into `handle_kernel_exception` do not, since that function never
+    // returns — it restores the invariants itself before unwinding.
+    match cause {
+        Trap::Interrupt(Interrupt::SupervisorSoft) => {
+            // Just a nop, software interrupts are only used as wakeup calls
+            // TODO this should be an specialized routine in the trap vector
+            //
+            // Safety: register access
+            unsafe { sip::clear_ssoft() };
+            IN_TRAP.set(false);
+        }
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            let (expired, maybe_next_deadline) = global().timer.try_turn().unwrap_or((0, None));
+            if expired > 0 {
                 global().executor.wake_one();
             }
-            Trap::Exception(
-                Exception::LoadPageFault
-                | Exception::StorePageFault
-                | Exception::InstructionPageFault,
-            ) => {
-                // first attempt the page fault handler, can it recover us from this by fixing up mappings?
-                if crate::mem::handle_page_fault(cause, tval).is_break() {
-                    break 'handler;
-                }
-
-                // if not attempt the wasm fault handler, is the current trap caused by a user program?
-                // if so can it kill the program?
-                if crate::wasm::trap_handler::handle_wasm_exception(epc, fp, tval).is_break() {
-                    break 'handler;
-                }
-
-                handle_kernel_exception(cause, frame, epc, tval)
-            }
-            Trap::Exception(Exception::IllegalInstruction) => {
-                if crate::wasm::trap_handler::handle_wasm_exception(epc, fp, tval).is_break() {
-                    break 'handler;
-                }
-
-                handle_kernel_exception(cause, frame, epc, tval)
-            }
-            _ => handle_kernel_exception(cause, frame, epc, tval),
+            global().timer.schedule_wakeup(maybe_next_deadline);
+            IN_TRAP.set(false);
         }
-    }
+        Trap::Interrupt(Interrupt::SupervisorExternal) => {
+            irq::trigger_irq(&mut *cpu_local().arch.cpu.interrupt_controller());
+            global().executor.wake_one();
+            IN_TRAP.set(false);
+        }
+        Trap::Exception(
+            Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
+        ) => {
+            // first attempt the page fault handler, can it recover us from this by fixing up mappings?
+            if crate::mem::handle_page_fault(cause, tval).is_break() {
+                IN_TRAP.set(false);
+                return;
+            }
 
-    IN_TRAP.set(false);
+            // if not attempt the wasm fault handler, is the current trap caused by a user program?
+            // if so can it kill the program?
+            if let ControlFlow::Break(saved) =
+                crate::wasm::trap_handler::handle_wasm_exception(epc, fp, tval)
+            {
+                redirect_sret_to(frame, saved);
+                IN_TRAP.set(false);
+                return;
+            }
+
+            handle_kernel_exception(cause, frame, epc, tval)
+        }
+        Trap::Exception(Exception::IllegalInstruction) => {
+            if let ControlFlow::Break(saved) =
+                crate::wasm::trap_handler::handle_wasm_exception(epc, fp, tval)
+            {
+                redirect_sret_to(frame, saved);
+                IN_TRAP.set(false);
+                return;
+            }
+
+            handle_kernel_exception(cause, frame, epc, tval)
+        }
+        _ => handle_kernel_exception(cause, frame, epc, tval),
+    }
+}
+
+/// Redirect the upcoming `sret` to the register context in `saved`.
+///
+/// The trap epilogue restores GPRs and FPRs from `frame`, swaps `sp` with
+/// `sscratch`, and `sret`s using `sepc`. Stamping `saved` into `frame` and
+/// pointing `sscratch`/`sepc` at the saved `SP`/`RA` therefore makes the
+/// return land in `saved`'s execution context instead of the one that
+/// originally trapped.
+fn redirect_sret_to(frame: &mut kunwind::Registers, saved: kunwind::Registers) {
+    *frame = saved;
+    sscratch::set(frame[RiscV::SP]);
+    sepc::set(frame[RiscV::RA]);
 }
 
 fn handle_kernel_exception(
     cause: Trap,
-    frame: &TrapFrame,
+    frame: &kunwind::Registers,
     epc: VirtualAddress,
     tval: VirtualAddress,
 ) -> ! {
@@ -369,29 +398,171 @@ fn handle_kernel_exception(
     // FIXME it would be great to get rid of the allocation here :/
     let payload = Box::new(cause);
 
+    // Unwinding runs on the kernel stack and never returns through the trap
+    // epilogue, so restore the per-CPU trap invariants by hand before
+    // leaving: `sscratch` must hold the trap-stack-top (next trap's
+    // `csrrw sp, sscratch, sp` depends on it), and `IN_TRAP` must be clear
+    // (next trap must not be classified as recursive).
+    sscratch::set(trap_stack_top());
     IN_TRAP.set(false);
 
-    // begin a panic on the original stack
-    // Safety: we saved the register state at the beginning of the trap handler
+    // Safety: `regs` was captured on trap entry.
     unsafe { kpanic_unwind::begin_unwind(payload, regs, epc.add(1).get()) };
 }
 
-fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
+fn handle_recursive_fault(frame: &kunwind::Registers, epc: VirtualAddress) -> ! {
     let mut regs = kunwind::Registers {
         gp: frame.gp,
         fp: frame.fp,
     };
     regs.gp[2] = sscratch::read();
 
-    let backtrace = Backtrace::<32>::from_registers(regs.clone(), epc.add(1)).unwrap();
-    tracing::error!("{backtrace}");
+    tracing::error!("RECURSIVE TRAP epc={epc}");
+
+    // `epc` may land in code without DWARF unwind info (asm trampolines,
+    // SBI shims, etc.). Log the error and continue instead of unwrapping;
+    // panicking here would only feed back through this same path.
+    match Backtrace::<32>::from_registers(regs.clone(), epc) {
+        Ok(bt) => tracing::error!("{bt}"),
+        Err(e) => tracing::error!("backtrace unavailable: {e}; epc={epc}"),
+    }
 
     // FIXME it would be great to get rid of the allocation here :/
     let payload = Box::new("recursive fault in trap handler");
 
-    // begin a panic on the original stack
-    // Safety: we saved the register state at the beginning of the trap handler
+    // Safety: `regs` was captured on trap entry.
     unsafe {
-        kpanic_unwind::begin_unwind(payload, regs, epc.add(1).get());
+        kpanic_unwind::begin_unwind(payload, regs, epc.get());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gimli::RiscV;
+
+    use super::IN_TRAP;
+    use crate::tests::wast::WastContext;
+
+    /// `gimli::RiscV` aliases must land in the GPR/FPR slot assigned by the
+    /// RISC-V psABI. `s2..s11` live at `x18..x27` (not `x10..x19`) and
+    /// `fs2..fs11` at `f18..f27` — code that patches a [`kunwind::Registers`] via
+    /// `frame[RiscV::S2] = ...` relies on this mapping holding.
+    #[ktest::test]
+    async fn registers_index_matches_riscv_abi() {
+        let mut r = kunwind::Registers::default();
+
+        r[RiscV::ZERO] = 0xA0;
+        assert_eq!(r.gp[0], 0xA0);
+        r[RiscV::RA] = 0xA1;
+        assert_eq!(r.gp[1], 0xA1);
+        r[RiscV::SP] = 0xA2;
+        assert_eq!(r.gp[2], 0xA2);
+        r[RiscV::GP] = 0xA3;
+        assert_eq!(r.gp[3], 0xA3);
+        r[RiscV::TP] = 0xA4;
+        assert_eq!(r.gp[4], 0xA4);
+
+        r[RiscV::A0] = 0xB0;
+        assert_eq!(r.gp[10], 0xB0);
+        r[RiscV::A7] = 0xB7;
+        assert_eq!(r.gp[17], 0xB7);
+
+        r[RiscV::S0] = 0xC0;
+        assert_eq!(r.gp[8], 0xC0);
+        r[RiscV::S1] = 0xC1;
+        assert_eq!(r.gp[9], 0xC1);
+        r[RiscV::S2] = 0xD2;
+        assert_eq!(r.gp[18], 0xD2);
+        r[RiscV::S11] = 0xDB;
+        assert_eq!(r.gp[27], 0xDB);
+
+        #[cfg(target_feature = "d")]
+        {
+            r[RiscV::FS0] = 0xE0;
+            assert_eq!(r.fp[8], 0xE0);
+            r[RiscV::FS1] = 0xE1;
+            assert_eq!(r.fp[9], 0xE1);
+            r[RiscV::FS2] = 0xE2;
+            assert_eq!(r.fp[18], 0xE2);
+            r[RiscV::FS11] = 0xEB;
+            assert_eq!(r.fp[27], 0xEB);
+        }
+    }
+
+    /// A wasm trap must leave `IN_TRAP` cleared on the CPU that handled it,
+    /// so the next trap on that CPU is not misclassified as recursive.
+    ///
+    /// `WastContext::run` and the underlying `catch_traps` are synchronous,
+    /// so the trap fires on the same CPU executing this future and the
+    /// cpu-local `IN_TRAP` we read here corresponds to that CPU.
+    #[ktest::test]
+    async fn in_trap_cleared_after_wasm_trap() {
+        let mut ctx = WastContext::new_default().unwrap();
+        ctx.run(
+            "in_trap_cleared_after_wasm_trap",
+            include_str!("../../../../tests/trap.wast"),
+        )
+        .await
+        .unwrap();
+
+        assert!(!IN_TRAP.get(), "IN_TRAP not cleared after wasm trap");
+    }
+
+    /// Several back-to-back wasm traps on the same CPU must each leave the
+    /// trap-handler invariants intact.
+    #[ktest::test]
+    async fn repeated_wasm_traps() {
+        let mut ctx = WastContext::new_default().unwrap();
+        for i in 0..5 {
+            ctx.run(
+                "repeated_wasm_traps",
+                include_str!("../../../../tests/trap.wast"),
+            )
+            .await
+            .unwrap_or_else(|e| panic!("iteration {i} failed: {e}"));
+            assert!(!IN_TRAP.get(), "iteration {i}: IN_TRAP stuck");
+        }
+    }
+
+    /// A synchronous in-kernel trap that the page-fault recovery path can't
+    /// fix up must reach the kernel-exception path, propagate up the kernel
+    /// stack as a Rust panic, and land in `catch_unwind` cleanly. After the
+    /// catch, the per-CPU trap invariants must be restored.
+    #[ktest::test]
+    async fn in_kernel_trap_unwinds_via_panic() {
+        let result = kpanic_unwind::catch_unwind(|| {
+            // Safety: deliberate null deref to provoke a LoadPageFault.
+            let _ = unsafe { core::ptr::null::<usize>().read_volatile() };
+            unreachable!("expected kernel trap to unwind past this");
+        });
+        let _payload = result.expect_err("expected kernel trap to unwind via panic");
+
+        assert!(!IN_TRAP.get(), "IN_TRAP not cleared after kernel trap");
+    }
+
+    /// After a wasm trap, the next trap on the same CPU must be handled
+    /// normally — not misclassified as recursive (`IN_TRAP` must be clear)
+    /// and not landed on the wrong stack (`sscratch` must point at the trap
+    /// stack). Provokes a self-IPI immediately after a wasm trap to verify
+    /// both invariants in a single end-to-end check.
+    #[ktest::test]
+    async fn trap_after_wasm_trap_is_handled_normally() {
+        let mut ctx = WastContext::new_default().unwrap();
+        ctx.run(
+            "trap_after_wasm_trap_is_handled_normally",
+            include_str!("../../../../tests/trap.wast"),
+        )
+        .await
+        .unwrap();
+        assert!(!IN_TRAP.get(), "IN_TRAP stuck after wasm trap");
+
+        // `sie.SSIE` and `sstatus.SIE` are both set at boot, so writing
+        // `sip.SSIP` delivers a SupervisorSoft trap at the next instruction
+        // boundary; the handler clears `sip.SSIP` and returns here.
+        //
+        // Safety: register access; we want the side effect.
+        unsafe { riscv::sip::set_ssoft() };
+
+        assert!(!IN_TRAP.get(), "IN_TRAP not cleared after SupervisorSoft");
     }
 }

@@ -9,6 +9,7 @@ use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::Cell;
+use core::mem::ManuallyDrop;
 use core::num::NonZeroU32;
 use core::ops::ControlFlow;
 use core::panic::AssertUnwindSafe;
@@ -23,6 +24,38 @@ use crate::wasm::TrapKind;
 use crate::wasm::code_registry::lookup_code;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::vm::{VMContext, VMStoreContext};
+
+/// Run `f` with access to a saved register context that the trap handler
+/// or [`raise_preexisting_trap`] can later use to non-locally jump back to
+/// the call site (a setjmp-equivalent built around [`kunwind::Registers`]).
+///
+/// The non-local jump is performed by either:
+/// * the trap handler stamping the saved registers into the active
+///   [`TrapFrame`] and letting the trap epilogue `sret`, or
+/// * [`kunwind::restore_context`], for callers outside trap context.
+///
+/// Whether a non-local jump occurred is observed via the active
+/// [`Activation`]'s `unwind` cell, so this helper returns nothing.
+///
+/// [`TrapFrame`]: crate::arch::TrapFrame
+fn call_with_saved_registers<F>(f: F)
+where
+    F: for<'a> FnOnce(&'a kunwind::Registers),
+{
+    extern "C" fn trampoline<F>(saved: &mut kunwind::Registers, env: *mut ())
+    where
+        F: for<'a> FnOnce(&'a kunwind::Registers),
+    {
+        // Safety: `env` points at the `ManuallyDrop<F>` on the caller's
+        // stack frame; `take` consumes the FnOnce exactly once.
+        let f = unsafe { ManuallyDrop::take(env.cast::<ManuallyDrop<F>>().as_mut().unwrap()) };
+        f(saved);
+    }
+
+    let mut closure = ManuallyDrop::new(f);
+    let env = ptr::from_mut(&mut closure).cast::<()>();
+    kunwind::save_context(trampoline::<F>, env);
+}
 
 /// Description about a fault that occurred in WebAssembly.
 #[derive(Debug)]
@@ -116,32 +149,31 @@ where
 {
     let caller = store.default_caller();
     let mut prev_state = ptr::null_mut();
-    let ret_code = arch::call_with_setjmp(|jmp_buf| {
-        let mut activation = Activation::new(store, jmp_buf);
+
+    // Wasm executes inside the closure. If it traps or panics, control
+    // returns here via either a trap-handler frame patch or
+    // `raise_preexisting_trap`; the recorded `UnwindReason` lives on the
+    // cpu-local `Activation` either way.
+    call_with_saved_registers(|saved| {
+        let mut activation = Activation::new(store, saved);
 
         prev_state = ACTIVATION.replace(ptr::from_mut(&mut activation).cast());
         f(caller);
-
-        0_i32
     });
 
-    if ret_code == 0 {
-        ACTIVATION.set(prev_state);
+    // After a non-local jump the closure's stack frame is logically dead,
+    // but its bytes are still intact until something else pushes onto this
+    // stack. Read the activation through `ACTIVATION` immediately, before
+    // any further pushes can clobber it.
+    //
+    // Safety: see above.
+    let unwind_state = unsafe { ACTIVATION.get().as_ref() }.unwrap().unwind.take();
+    ACTIVATION.set(prev_state);
 
-        Ok(())
-    } else {
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        let (unwind_reason, backtrace) = unsafe { ACTIVATION.get().as_ref() }
-            .unwrap()
-            .unwind
-            .take()
-            .unwrap();
-        ACTIVATION.set(prev_state);
-
-        match unwind_reason {
-            UnwindReason::Trap(reason) => Err(Trap { reason, backtrace }),
-            UnwindReason::Panic(payload) => kpanic_unwind::resume_unwind(payload),
-        }
+    match unwind_state {
+        None => Ok(()),
+        Some((UnwindReason::Trap(reason), backtrace)) => Err(Trap { reason, backtrace }),
+        Some((UnwindReason::Panic(payload), _)) => kpanic_unwind::resume_unwind(payload),
     }
 }
 
@@ -175,7 +207,13 @@ cpu_local! {
 /// ```
 pub struct Activation {
     unwind: Cell<Option<(UnwindReason, Option<RawBacktrace>)>>,
-    jmp_buf: arch::JmpBuf,
+    /// Register context to non-locally jump back to. Captured by the
+    /// surrounding [`call_with_saved_registers`] and consumed either by
+    /// the trap handler (copied into the active [`TrapFrame`]) or by
+    /// [`raise_preexisting_trap`] (handed to [`kunwind::restore_context`]).
+    ///
+    /// [`TrapFrame`]: crate::arch::TrapFrame
+    pub(crate) regs: NonNull<kunwind::Registers>,
     prev: Cell<*mut Activation>,
     vm_store_context: NonNull<VMStoreContext>,
 
@@ -198,10 +236,10 @@ pub struct Activation {
 }
 
 impl Activation {
-    pub fn new(store: &mut StoreOpaque, jmp_buf: &arch::JmpBufStruct) -> Self {
+    pub fn new(store: &mut StoreOpaque, regs: &kunwind::Registers) -> Self {
         Self {
             unwind: Cell::new(None),
-            jmp_buf: ptr::from_ref(jmp_buf),
+            regs: NonNull::from(regs),
             prev: Cell::new(ACTIVATION.get()),
 
             vm_store_context: store.vm_store_context_ptr(),
@@ -276,12 +314,19 @@ impl Activation {
         self.unwind.set(Some((reason, backtrace)));
     }
 
+    /// Non-locally jump to the saved register context, landing at the
+    /// matching [`call_with_saved_registers`] site. The caller must have
+    /// populated `self.unwind` first; [`catch_traps`] reads it back to
+    /// materialise the trap.
+    ///
+    /// # Safety
+    ///
+    /// `self.regs` must still point to a live [`kunwind::Registers`]
+    /// (i.e. the surrounding [`call_with_saved_registers`] frame is still
+    /// alive on this CPU's stack).
     unsafe fn unwind(&self) -> ! {
-        // Safety: ensured by caller
-        unsafe {
-            debug_assert!(!self.jmp_buf.is_null());
-            arch::longjmp(self.jmp_buf, 1);
-        }
+        // Safety: caller upholds the contract above.
+        unsafe { kunwind::restore_context(self.regs.as_ref()) }
     }
 
     fn capture_backtrace(
@@ -667,49 +712,59 @@ impl RawBacktrace {
     }
 }
 
+/// Inspect a synchronous trap; if it originates from JIT'd wasm code,
+/// record the unwind details on the active [`Activation`] and return the
+/// register context the trap handler should redirect execution to.
+///
+/// `Break(saved)` — wasm trap. The caller stamps `saved` into the active
+/// trap frame and drives the trap epilogue's `sret` to its `RA`/`SP`,
+/// landing back at the matching [`call_with_saved_registers`] site in
+/// [`catch_traps`].
+///
+/// `Continue(())` — not a wasm trap. The caller falls through to whatever
+/// non-wasm handling applies.
 pub fn handle_wasm_exception(
     pc: VirtualAddress,
     fp: VirtualAddress,
     faulting_addr: VirtualAddress,
-) -> ControlFlow<()> {
-    if let Some(activation) = NonNull::new(ACTIVATION.get()) {
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        let activation = unsafe { activation.as_ref() };
+) -> ControlFlow<kunwind::Registers> {
+    let Some(activation) = NonNull::new(ACTIVATION.get()) else {
+        // No activation on this CPU — the exception cannot be a wasm trap.
+        return ControlFlow::Continue(());
+    };
 
-        let Some((code, text_offset)) = lookup_code(pc.get()) else {
-            tracing::debug!("no JIT code registered for pc {pc}");
-            return ControlFlow::Continue(());
-        };
+    // Safety: a non-null `ACTIVATION` is set by `catch_traps` and remains
+    // valid until `catch_traps` returns; wasm code can only execute inside
+    // that window.
+    let activation = unsafe { activation.as_ref() };
 
-        let Some(trap) = code.lookup_trap_code(text_offset) else {
-            tracing::debug!("no JIT trap registered for pc {pc}");
-            return ControlFlow::Continue(());
-        };
+    let Some((code, text_offset)) = lookup_code(pc.get()) else {
+        tracing::debug!("no JIT code registered for pc {pc}");
+        return ControlFlow::Continue(());
+    };
 
-        // record the unwind details
-        let backtrace = RawBacktrace::new(
-            activation.vm_store_context.as_ptr(),
-            activation,
-            Some((pc, fp)),
-        );
-        activation.unwind.set(Some((
-            UnwindReason::Trap(TrapReason::Jit {
-                pc,
-                faulting_addr: Some(faulting_addr),
-                trap,
-            }),
-            Some(backtrace),
-        )));
+    let Some(trap) = code.lookup_trap_code(text_offset) else {
+        tracing::debug!("no JIT trap registered for pc {pc}");
+        return ControlFlow::Continue(());
+    };
 
-        // longjmp back to Rust
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        unsafe {
-            arch::longjmp(activation.jmp_buf, 1);
-        }
-    } else {
-        // ACTIVATION is a nullptr
-        //  => means no activations on stack
-        //  => means exception cannot be a WASM trap
-        ControlFlow::Continue(())
-    }
+    let backtrace = RawBacktrace::new(
+        activation.vm_store_context.as_ptr(),
+        activation,
+        Some((pc, fp)),
+    );
+    activation.unwind.set(Some((
+        UnwindReason::Trap(TrapReason::Jit {
+            pc,
+            faulting_addr: Some(faulting_addr),
+            trap,
+        }),
+        Some(backtrace),
+    )));
+
+    // Clone so the activation's copy stays intact if multiple traps fire
+    // from the same activation.
+    //
+    // Safety: `activation.regs` is valid for the lifetime of the activation.
+    ControlFlow::Break(unsafe { activation.regs.as_ref().clone() })
 }

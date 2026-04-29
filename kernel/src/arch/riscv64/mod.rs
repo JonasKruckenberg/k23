@@ -9,7 +9,6 @@ mod asid_allocator;
 mod block_on;
 pub mod device;
 mod mem;
-mod setjmp_longjmp;
 pub mod state;
 mod trap_handler;
 
@@ -25,7 +24,6 @@ pub use mem::{
 };
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
-pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
 
 use crate::arch::device::cpu::Cpu;
 use crate::device_tree::DeviceTree;
