@@ -22,7 +22,6 @@ pub struct Test {
 
 /// Metadata associated with a test case
 pub struct TestInfo<'a> {
-    pub module: &'a str,
-    pub name: &'a str,
+    pub ident: &'a str,
     pub ignored: bool,
 }
