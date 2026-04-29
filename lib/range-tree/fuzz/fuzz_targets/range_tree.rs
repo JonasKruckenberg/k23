@@ -71,7 +71,7 @@ enum Action<Index, Value> {
     Get(Index),
     Remove(Index),
     Range(Bound<Index>, Bound<Index>),
-    Iter(Option<Bound<Index>>),
+    Iter(Bound<Index>),
     Gaps,
     Cursor(Option<Bound<Index>>, Vec<CursorAction>),
     CursorMut(Option<Bound<Index>>, Vec<CursorMutAction<Index, Value>>),
@@ -182,20 +182,12 @@ fn run<
                 assert_eq!(vec[start.min(end)..end], entries);
             }
             Action::Iter(from) => {
-                let (iter, index) = if let Some(from) = from {
-                    (
-                        tree.iter_from(from),
-                        match from {
-                            Bound::Unbounded => 0,
-                            Bound::Included(from) => vec.partition_point(|(r, _v)| r.end < from),
-                            Bound::Excluded(from) => vec.partition_point(|(r, _v)| r.end <= from),
-                        },
-                    )
-                } else {
-                    (tree.iter(), 0)
+                let index = match from {
+                    Bound::Unbounded => 0,
+                    Bound::Included(from) => vec.partition_point(|(r, _v)| r.end < from),
+                    Bound::Excluded(from) => vec.partition_point(|(r, _v)| r.end <= from),
                 };
-
-                let entries: Vec<_> = iter.map(|(k, &v)| (k, v)).collect();
+                let entries: Vec<_> = tree.iter_from(from).map(|(k, &v)| (k, v)).collect();
                 assert_eq!(entries, vec[index..]);
             }
             Action::Gaps => {
