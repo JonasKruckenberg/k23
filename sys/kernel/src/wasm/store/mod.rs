@@ -33,8 +33,8 @@ pub struct Store<T>(Pin<Box<StoreInner<T>>>);
 
 #[repr(C)]
 #[pin_project]
-pub(super) struct StoreInner<T> {
-    pub(super) opaque: StoreOpaque,
+pub(crate) struct StoreInner<T> {
+    pub(crate) opaque: StoreOpaque,
     pub(super) data: T,
 }
 
@@ -142,7 +142,7 @@ impl StoreOpaque {
         self.alloc
     }
     #[inline]
-    pub(super) fn vm_store_context(&self) -> &VMStoreContext {
+    pub(crate) fn vm_store_context(&self) -> &VMStoreContext {
         &self.vm_store_context
     }
     #[inline]

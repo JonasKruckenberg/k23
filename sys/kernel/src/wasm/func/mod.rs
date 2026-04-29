@@ -219,6 +219,8 @@ impl Func {
 
                     let sig = self.type_index(store);
 
+                    // TODO: Provide a better error when host func signature
+                    // doesn't match import signature.
                     let ptr = module.wasm_to_array_trampoline(sig).expect(
                         "if the wasm is importing a function of a given type, it must have the \
                          type's trampoline",

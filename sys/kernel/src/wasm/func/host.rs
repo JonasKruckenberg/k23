@@ -58,7 +58,7 @@ impl HostFunc {
 }
 
 pub struct Caller<'a, T> {
-    store: &'a mut StoreInner<T>,
+    pub(crate) store: &'a mut StoreInner<T>,
     caller: &'a crate::wasm::vm::Instance,
 }
 
@@ -151,6 +151,7 @@ impl HostContext {
                 );
                 // Expect wasm_entry_fp >= stack_pointer >= stack_limit
                 if stack_pointer < *stack_limit || stack_pointer > *wasm_entry_fp {
+                    tracing::error!("Found invalid stack pointer");
                     bail!("Wasm attempted to call host function with invalid stack pointer.")
                 }
                 let mut params_results = NonNull::slice_from_raw_parts(
