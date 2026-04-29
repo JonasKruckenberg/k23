@@ -310,14 +310,23 @@ fn run<
                             }
                         }
                         CursorMutAction::Insert { start, end, value } => {
-                            let range = if vec.is_empty() {
+                            // The new entry lands at vec[index]; for vec to stay sorted by `.end`
+                            // (every other action's partition_point depends on this) we need
+                            //   vec[index-1].end <= end <= vec[index].end
+                            // when those neighbors exist. If the fuzzer's input satisfies that,
+                            // exercise the novel-range path; otherwise fall back to duplicating a
+                            // neighbor's range, which trivially preserves sortedness and keeps
+                            // the multimap-style insert path covered.
+                            let lo_ok = index == 0 || vec[index - 1].0.end <= end;
+                            let hi_ok = index == vec.len() || end <= vec[index].0.end;
+                            let range = if lo_ok && hi_ok {
                                 RangeInclusive { start, end }
                             } else if index == vec.len() {
                                 vec[index - 1].0.clone()
                             } else {
                                 vec[index].0.clone()
                             };
-                            cursor.insert(range.clone(), value);
+                            cursor.insert(range, value);
                             vec.insert(index, (range, value));
                         }
                         CursorMutAction::Replace(value) => {
