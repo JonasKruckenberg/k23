@@ -28,7 +28,7 @@ use core::mem::ManuallyDrop;
 use core::panic::UnwindSafe;
 use core::ptr::addr_of_mut;
 
-pub use arch::Registers;
+pub use arch::{Registers, restore_context, save_context};
 use eh_action::{EHAction, find_eh_action};
 pub use eh_info::EhInfo;
 pub use error::Error;

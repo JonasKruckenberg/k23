@@ -9,7 +9,7 @@ mod args;
 mod printer;
 mod smoke;
 mod spectest;
-mod wast;
+pub(crate) mod wast;
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
