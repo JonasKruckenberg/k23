@@ -6,6 +6,7 @@ _platform_args := if platform != "" { f"--target-platforms {{platform}}" } else 
 _buck2 := require("buck2")
 _typos := require("typos")
 _supertd := require("supertd")
+_reindeer := require("reindeer")
 
 _docstring := "
 justfile for k23
@@ -39,6 +40,10 @@ lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck
 # check the workspace for typos
 @typos:
     {{ _typos }}
+
+# regenerate third-party/BUCK from third-party/Cargo.toml via reindeer
+@buckify:
+    {{ _reindeer }} buckify
 
 # ===== testing =====
 

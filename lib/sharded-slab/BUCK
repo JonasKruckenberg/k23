@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 rust_library(
     name = "sharded-slab",
     srcs = glob(["**/*.rs"]),
@@ -19,4 +21,5 @@ rust_test(
         "//third-party:log",
     ],
     visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
 )

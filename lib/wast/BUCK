@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 rust_library(
     name = "wast",
     srcs = glob(["src/**/*.rs"]),
@@ -33,4 +35,5 @@ rust_test(
         "//third-party:wasmparser",
     ],
     visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
 )

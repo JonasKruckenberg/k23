@@ -1,3 +1,4 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//build:bench.bzl", "rust_benchmark")
 load("//build:fuzz.bzl", "rust_fuzz")
 
@@ -24,6 +25,7 @@ rust_test(
         "//third-party:nonmax",
     ],
     visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
 )
 
 rust_benchmark(
@@ -45,6 +47,7 @@ rust_benchmark(
         "//lib/wavltree:wavltree",
     ],
     visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
 )
 
 rust_fuzz(

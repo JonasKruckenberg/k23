@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 rust_library(
     name = "mem-core",
     srcs = glob(["**/*.rs"]),
@@ -31,4 +33,5 @@ rust_test(
     ],
     features = ["test_utils"],
     visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
 )

@@ -3,7 +3,6 @@
   prelude = prelude
   toolchains = build/toolchains
   constraints = build/constraints
-  nix = none
   none = none
   nix = nix
 
