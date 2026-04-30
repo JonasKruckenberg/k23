@@ -5,6 +5,7 @@
 # Building and Debugging k23
 
 - [Quickstart](building/quickstart.md)
+- [IDE Setup with rust-analyzer](building/rust-analyzer.md)
 - [Debugging k23](building/debugging.md)
 - [Boot Arguments](building/boot-args.md)
 
