@@ -86,19 +86,13 @@ fn waker_ref(wake: &Arc<ThreadNotify>) -> WakerRef<'_> {
 pub fn block_on<F: Future>(f: F) -> F::Output {
     pin_mut!(f);
 
-    crate::loom::thread_local! {
-        static CURRENT_THREAD_NOTIFY: Arc<ThreadNotify> = Arc::new(ThreadNotify::new());
-    }
-
-    CURRENT_THREAD_NOTIFY.with(|thread_notify| {
-        let waker = waker_ref(&thread_notify);
-        let mut cx = Context::from_waker(&waker);
-        loop {
-            if let Poll::Ready(t) = f.as_mut().poll(&mut cx) {
-                return t;
-            }
-
-            thread_notify.wait();
+    let thread_notify = Arc::new(ThreadNotify::new());
+    let waker = waker_ref(&thread_notify);
+    let mut cx = Context::from_waker(&waker);
+    loop {
+        if let Poll::Ready(t) = f.as_mut().poll(&mut cx) {
+            return t;
         }
-    })
+        thread_notify.wait();
+    }
 }

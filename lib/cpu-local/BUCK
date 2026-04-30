@@ -1,6 +1,6 @@
 rust_library(
     name = "cpu-local",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/util:util",
     ],
@@ -10,7 +10,7 @@ rust_library(
 
 rust_test(
     name = "cpu-local_unittests",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/util:util",
     ],

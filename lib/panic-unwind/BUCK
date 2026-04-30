@@ -1,6 +1,6 @@
 rust_library(
     name = "panic-unwind",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/unwind:unwind",
         "//lib/spin:spin",

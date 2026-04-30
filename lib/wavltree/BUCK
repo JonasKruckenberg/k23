@@ -1,6 +1,6 @@
 rust_library(
     name = "wavltree",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     features = select({
         "constraints//:env[kernel]": ["dot"],
         "DEFAULT": [],
@@ -11,7 +11,7 @@ rust_library(
 
 rust_test(
     name = "wavltree_unittests",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//third-party:rand",
     ],

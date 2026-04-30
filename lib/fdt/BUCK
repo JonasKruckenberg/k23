@@ -1,6 +1,6 @@
 rust_library(
     name = "fdt",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//third-party:fallible-iterator",
     ],
@@ -10,7 +10,7 @@ rust_library(
 
 rust_test(
     name = "fdt_unittests",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//third-party:fallible-iterator",
     ],

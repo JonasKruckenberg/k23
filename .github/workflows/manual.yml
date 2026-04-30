@@ -25,14 +25,19 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build Book
-        run: nix develop --command mdbook build manual
+        # //manual:manual is the source of truth — the genrule includes the
+        # auto-generated kcfg reference (//build:config_docs) that a plain
+        # `mdbook build` would miss.
+        id: book
+        run: |
+          OUT=$(nix develop --command buck2 build --show-output //manual:manual | awk '{print $2}')
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
       - name: Setup Pages
         uses: actions/configure-pages@v6
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          # Upload entire repository
-          path: "manual/book"
+          path: ${{ steps.book.outputs.path }}
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

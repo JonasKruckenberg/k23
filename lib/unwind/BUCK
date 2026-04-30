@@ -1,6 +1,6 @@
 rust_library(
     name = "unwind",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/spin:spin",
         "//lib/abort:abort",

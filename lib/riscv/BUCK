@@ -1,6 +1,6 @@
 rust_library(
     name = "riscv",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/spin:spin",
         "//lib/trap:trap",
@@ -13,7 +13,7 @@ rust_library(
 
 rust_test(
     name = "riscv_unittests",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/spin:spin",
         "//lib/trap:trap",

@@ -1,6 +1,6 @@
 rust_library(
     name = "backtrace",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/addr2line:addr2line",
         "//lib/arrayvec:arrayvec",

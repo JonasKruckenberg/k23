@@ -6,6 +6,8 @@ _platform_args := if platform != "" { f"--target-platforms {{platform}}" } else 
 _buck2 := require("buck2")
 _typos := require("typos")
 _supertd := require("supertd")
+_reindeer := require("reindeer")
+_rust_project := require("rust-project")
 
 _docstring := "
 justfile for k23
@@ -40,6 +42,16 @@ lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck
 @typos:
     {{ _typos }}
 
+# regenerate third-party/BUCK from third-party/Cargo.toml via reindeer
+@buckify:
+    {{ _reindeer }} buckify
+
+# Generate rust-project.json so rust-analyzer can index the workspace.
+# rust-analyzer auto-loads rust-project.json from the repo root.
+# Re-run after adding/removing crates or changing BUCK deps.
+@rust-project:
+    {{ _rust_project }} develop --pretty --prefer-rustup-managed-toolchain 'root//sys/...' 'root//lib/...'
+
 # ===== testing =====
 
 # run unit tests for a crate or the entire workspace.
@@ -70,7 +82,7 @@ fuzz targets="" *buck2_args:
     {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 --check {{ _uquery(_q_inputs(_q_buildables(_targets_query(targets)))) }} {{buck2_args}}
 
 # format a crate or the entire workspace.
-@format targets="" *buck2_args:
+@fmt targets="" *buck2_args:
     {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 {{ _uquery(_q_inputs(_q_buildables(_targets_query(targets)))) }} {{buck2_args}}
 
 # ===== documentation =====
@@ -146,8 +158,8 @@ _q_buildables(q) := f"kind(rust_binary, {{q}}) + kind(rust_library, {{q}})"
 _q_tests(q)      := f"kind(rust_test, {{q}}) + kind(rust_test, testsof({{q}}))"
 _q_unit_tests(q) := f"nattrfilter(labels, loom, ({{_q_tests(q)}}))"
 _q_loom_tests(q) := f"attrfilter(labels, loom, ({{_q_tests(q)}}))"
-_q_fuzz_tests(q) := f"kind(rust_fuzz, ({{q}}))"
-_q_benchmarks(q) := f"kind(_rust_benchmark_runner, {{q}})"
+_q_fuzz_tests(q) := f"kind(rust_fuzz, {{q}}) + kind(rust_fuzz, testsof({{q}}))"
+_q_benchmarks(q) := f"kind(_rust_benchmark_runner, {{q}}) + kind(_rust_benchmark_runner, testsof({{q}}))"
 _q_inputs(q)     := f"inputs({{q}})"
 
 # Resolve a query expression into a space-separated list of targets.

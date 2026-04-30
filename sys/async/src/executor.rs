@@ -130,6 +130,18 @@ impl Executor {
         self.schedulers.get()
     }
 
+    /// Returns the total number of tasks currently queued across the injector
+    /// and all per-CPU schedulers.
+    #[must_use]
+    pub fn pending_tasks(&self) -> usize {
+        self.injector.queue_len()
+            + self
+                .schedulers
+                .iter()
+                .map(Scheduler::queue_len)
+                .sum::<usize>()
+    }
+
     pub fn build_task<'a>(
         &'static self,
     ) -> TaskBuilder<'a, impl Fn(TaskRef) -> Result<(), Closed>> {
@@ -380,6 +392,12 @@ impl Scheduler {
         self.run_queue.enqueue(task);
     }
 
+    /// Returns the number of tasks currently queued on this scheduler.
+    #[must_use]
+    pub fn queue_len(&self) -> usize {
+        self.queued.load(Ordering::SeqCst)
+    }
+
     fn tick_n(&'static self, n: usize) -> Tick {
         tracing::trace!("tick_n({self:p}, {n})");
 
@@ -577,6 +595,13 @@ mod tests {
         });
     }
 
+    // Disabled under loom: polling a `JoinHandle` from a thread other than the
+    // one running the task reaches `State::wait_for_join_waker` (task/state.rs),
+    // which is a `compare_exchange_weak` + `Backoff::spin()` busy-wait. Loom's
+    // interleaving exploration can't bound the branching there, so the model
+    // hits `LOOM_MAX_BRANCHES` regardless of how high it's set. Revisit once
+    // the join handshake uses a real wait primitive.
+    #[cfg(not(loom))]
     #[test]
     fn join_handle_cross_thread() {
         let _trace = tracing_subscriber::fmt()

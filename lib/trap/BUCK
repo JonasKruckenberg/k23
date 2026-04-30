@@ -1,12 +1,12 @@
 rust_library(
     name = "trap",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     visibility = ["PUBLIC"],
     tests = [":trap_unittests"],
 )
 
 rust_test(
     name = "trap_unittests",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     visibility = ["PUBLIC"],
 )

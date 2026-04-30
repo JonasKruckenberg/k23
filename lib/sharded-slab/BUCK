@@ -1,6 +1,6 @@
 rust_library(
     name = "sharded-slab",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/spin:spin",
         "//lib/cpu-local:cpu-local",
@@ -12,7 +12,7 @@ rust_library(
 
 rust_test(
     name = "sharded-slab_unittests",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/spin:spin",
         "//lib/cpu-local:cpu-local",

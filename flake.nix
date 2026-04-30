@@ -108,6 +108,53 @@
               '';
             };
 
+          rust-project =
+            let
+              targets = {
+                "aarch64-darwin" = {
+                  target = "aarch64-apple-darwin";
+                  hash = "sha256:9d5a8edb6d21a953e04da323548dc37292d1d43ca7aa35b6db2a20b417b8f5e4";
+                };
+                "x86_64-darwin" = {
+                  target = "x86_64-apple-darwin";
+                  hash = "sha256:3eaa7a204eb2a4d6b43dc1e8473ba3777bbab0040b9ee4dfaa88f59f4891e5fb";
+                };
+                "aarch64-linux" = {
+                  target = "aarch64-unknown-linux-gnu";
+                  hash = "sha256:5faf8f1cddd16510b5473a6ecd666894905050cfeb7dec013cf70cf06d24dd06";
+                };
+                "x86_64-linux" = {
+                  target = "x86_64-unknown-linux-gnu";
+                  hash = "sha256:69a801375a159454d737a0a24accb62bdb5f0c668b4b4220a4364eaba809daaf";
+                };
+              };
+              info = targets.${pkgs.system};
+            in
+            pkgs.stdenvNoCC.mkDerivation {
+              pname = "rust-project";
+              version = "latest";
+
+              src = pkgs.fetchurl {
+                url = "https://github.com/JonasKruckenberg/buck2/releases/download/latest/rust-project-${info.target}.zst";
+                hash = info.hash;
+              };
+
+              nativeBuildInputs = [
+                pkgs.zstd
+              ]
+              ++ lib.optionals pkgs.stdenvNoCC.hostPlatform.isLinux [ pkgs.autoPatchelfHook ];
+              buildInputs = lib.optionals pkgs.stdenvNoCC.hostPlatform.isLinux [
+                pkgs.stdenv.cc.cc.lib
+              ];
+
+              dontUnpack = true;
+
+              installPhase = ''
+                zstd -d "$src" -o rust-project
+                install -Dm755 rust-project "$out/bin/rust-project"
+              '';
+            };
+
           supertd =
             let
               targets = {
@@ -168,6 +215,7 @@
                 buck2
                 reindeer
                 supertd
+                rust-project
 
                 # version control
                 jujutsu

@@ -56,6 +56,12 @@ impl Injector {
         self.queued.fetch_add(1, Ordering::SeqCst);
         self.run_queue.enqueue(task);
     }
+
+    /// Returns the number of tasks currently queued on the injector.
+    #[must_use]
+    pub fn queue_len(&self) -> usize {
+        self.queued.load(Ordering::SeqCst)
+    }
 }
 
 pub struct Stealer<'queue> {

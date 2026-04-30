@@ -1,5 +1,25 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//build:bench.bzl", "rust_benchmark")
+load("//build:loom.bzl", "rust_loom_test")
+
+_TEST_DEPS = [
+    "//lib/util:util",
+    "//lib/cpu-local:cpu-local",
+    "//lib/spin:spin",
+    "//lib/fastrand:fastrand",
+    "//lib/arrayvec:arrayvec",
+    "//third-party:cordyceps",
+    "//third-party:static_assertions",
+    "//third-party:cfg-if",
+    "//third-party:mycelium-bitfield",
+    "//third-party:tracing",
+    "//third-party:bitflags",
+    "//third-party:pin-project",
+    "//third-party:futures",
+    "//third-party:tracing-subscriber",
+    "//third-party:lazy_static",
+    "//third-party:criterion",
+]
 
 rust_library(
     name = "kasync",
@@ -26,7 +46,7 @@ rust_library(
         "constraints//:env[kernel]": ["//lib/panic-unwind:panic-unwind"],
         "DEFAULT": [],
     }),
-    tests = [":kasync_tests", ":kasync_benchmarks"],
+    tests = [":kasync_tests", ":kasync_loom_tests", ":kasync_benchmarks"],
     visibility = ["PUBLIC"],
 )
 
@@ -34,27 +54,17 @@ rust_test(
     name = "kasync_tests",
     srcs = glob(["src/**/*.rs"]),
     crate = "kasync",
-    deps = [
-        "//lib/util:util",
-        "//lib/cpu-local:cpu-local",
-        "//lib/spin:spin",
-        "//lib/fastrand:fastrand",
-        "//lib/arrayvec:arrayvec",
-        "//third-party:cordyceps",
-        "//third-party:static_assertions",
-        "//third-party:cfg-if",
-        "//third-party:mycelium-bitfield",
-        "//third-party:tracing",
-        "//third-party:bitflags",
-        "//third-party:pin-project",
-        "//third-party:futures",
-        "//third-party:tracing-subscriber",
-        "//third-party:lazy_static",
-        "//third-party:criterion",
-    ],
+    deps = _TEST_DEPS,
     features = ["counters"],
     visibility = ["PUBLIC"],
-    target_compatible_with = [host_configuration.cpu, host_configuration.os],
+)
+
+rust_loom_test(
+    name = "kasync_loom_tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "kasync",
+    features = ["counters"],
+    deps = _TEST_DEPS + ["//third-party:loom"],
 )
 
 # Host-only rebuild of kasync with the `__bench` feature enabled, which
@@ -80,12 +90,11 @@ rust_library(
         "//third-party:futures",
     ],
     visibility = ["PUBLIC"],
-    target_compatible_with = [host_configuration.cpu, host_configuration.os],
 )
 
 rust_benchmark(
     name = "kasync_benchmarks",
-    srcs = ["./benches/spawn.rs"],
+    srcs = glob(["benches/*.rs"]),
     crate_root = "./benches/spawn.rs",
     deps = [
         ":kasync_bench",
@@ -94,5 +103,4 @@ rust_benchmark(
         "//third-party:lazy_static",
     ],
     visibility = ["PUBLIC"],
-    target_compatible_with = [host_configuration.cpu, host_configuration.os],
 )

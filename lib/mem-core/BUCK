@@ -1,6 +1,6 @@
 rust_library(
     name = "mem-core",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/arrayvec:arrayvec",
         "//lib/riscv:riscv",

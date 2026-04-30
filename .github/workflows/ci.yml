@@ -122,3 +122,22 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           manifest-path: third-party/Cargo.toml
+
+  # Re-run reindeer and fail if third-party/BUCK (or any other reindeer-managed
+  # file) is out of sync with third-party/Cargo.toml. Forces contributors to
+  # commit the regenerated BUCK alongside any dep change.
+  reindeer-clean:
+    name: reindeer-clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix develop . --command just buckify
+      - name: verify clean
+        run: |
+          if ! git diff --quiet; then
+            echo "::error::reindeer output is stale — run 'just buckify' and commit the result"
+            git diff --stat
+            exit 1
+          fi

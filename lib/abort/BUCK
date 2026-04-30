@@ -1,6 +1,6 @@
 rust_library(
     name = "abort",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//third-party:cfg-if",
     ] + select({
@@ -13,7 +13,7 @@ rust_library(
 
 rust_test(
     name = "abort_unittests",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//third-party:cfg-if",
     ] + select({

@@ -1,6 +1,6 @@
 rust_library(
     name = "addr2line",
-    srcs = glob(["**/*.rs"]),
+    srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/spin:spin",
         "//third-party:gimli",
