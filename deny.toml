@@ -1,6 +1,6 @@
 [graph]
 targets = [
-    "riscv64-unknown-none-elf",
+    "riscv64gc-unknown-none-elf",
     # You can also specify which target_features you promise are enabled for a
     # particular target. target_features are currently not validated against
     # the actual valid features supported by the target architecture.
