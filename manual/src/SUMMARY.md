@@ -4,11 +4,17 @@
 
 # Building and Debugging k23
 
-- [How to Build and Run K23](building/how-to-build-and-run.md)
+- [Quickstart](building/quickstart.md)
+- [IDE Setup with rust-analyzer](building/rust-analyzer.md)
 - [Debugging k23](building/debugging.md)
 - [Boot Arguments](building/boot-args.md)
-
-[//]: # (# Contributing to k23)
+- [The buck2 build system](building/buck2.md)
+ 
+ # Contributing to k23
+ 
+- [Adding a Crate](contributing/adding-a-crate.md)
+- [Adding Tests](contributing/adding-tests.md)
+- [Adding a Third-Party Dependency](contributing/adding-a-dependency.md)
 
 # High-Level Architecture
 
