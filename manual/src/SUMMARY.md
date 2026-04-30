@@ -9,6 +9,10 @@
 - [Debugging k23](building/debugging.md)
 - [Boot Arguments](building/boot-args.md)
 - [The buck2 build system](building/buck2.md)
+ 
+ # Contributing to k23
+ 
+- [Adding a Crate](contributing/adding-a-crate.md)
 
 # High-Level Architecture
 
