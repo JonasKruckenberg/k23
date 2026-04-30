@@ -10,7 +10,7 @@ def _rust_benchmark_runner_impl(ctx: AnalysisContext) -> list[Provider]:
     script = cmd_args(
         "#!/bin/sh",
         "set -e",
-        'export CRITERION_HOME="$(pwd)/bench-artifacts"',
+        'export CRITERION_HOME="$(pwd)/bench"',
         'mkdir -p "$CRITERION_HOME"',
         cmd_args(bin_run.args, format = 'exec {} --bench "$@"'),
         delimiter = "\n",

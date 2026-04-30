@@ -1,6 +1,6 @@
 target
 /buck-out
-/bench-artifacts
+/bench
 target
 .DS_Store
 .local
