@@ -4,7 +4,7 @@
 
 # Building and Debugging k23
 
-- [How to Build and Run K23](building/how-to-build-and-run.md)
+- [Quickstart](building/quickstart.md)
 - [Debugging k23](building/debugging.md)
 - [Boot Arguments](building/boot-args.md)
 
