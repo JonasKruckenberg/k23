@@ -14,6 +14,7 @@
  
 - [Adding a Crate](contributing/adding-a-crate.md)
 - [Adding Tests](contributing/adding-tests.md)
+- [Adding a Third-Party Dependency](contributing/adding-a-dependency.md)
 
 # High-Level Architecture
 
