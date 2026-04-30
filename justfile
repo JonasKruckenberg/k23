@@ -7,6 +7,7 @@ _buck2 := require("buck2")
 _typos := require("typos")
 _supertd := require("supertd")
 _reindeer := require("reindeer")
+_rust_project := require("rust-project")
 
 _docstring := "
 justfile for k23
@@ -44,6 +45,12 @@ lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck
 # regenerate third-party/BUCK from third-party/Cargo.toml via reindeer
 @buckify:
     {{ _reindeer }} buckify
+
+# Generate rust-project.json so rust-analyzer can index the workspace.
+# rust-analyzer auto-loads rust-project.json from the repo root.
+# Re-run after adding/removing crates or changing BUCK deps.
+@rust-project:
+    {{ _rust_project }} develop --pretty --prefer-rustup-managed-toolchain 'root//sys/...' 'root//lib/...'
 
 # ===== testing =====
 
