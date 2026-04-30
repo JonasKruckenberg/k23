@@ -13,6 +13,7 @@
  # Contributing to k23
  
 - [Adding a Crate](contributing/adding-a-crate.md)
+- [Adding Tests](contributing/adding-tests.md)
 
 # High-Level Architecture
 
