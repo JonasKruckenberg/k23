@@ -82,7 +82,7 @@ fuzz targets="" *buck2_args:
     {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 --check {{ _uquery(_q_inputs(_q_buildables(_targets_query(targets)))) }} {{buck2_args}}
 
 # format a crate or the entire workspace.
-@format targets="" *buck2_args:
+@fmt targets="" *buck2_args:
     {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 {{ _uquery(_q_inputs(_q_buildables(_targets_query(targets)))) }} {{buck2_args}}
 
 # ===== documentation =====

@@ -8,8 +8,7 @@
 - [IDE Setup with rust-analyzer](building/rust-analyzer.md)
 - [Debugging k23](building/debugging.md)
 - [Boot Arguments](building/boot-args.md)
-
-[//]: # (# Contributing to k23)
+- [The buck2 build system](building/buck2.md)
 
 # High-Level Architecture
 
