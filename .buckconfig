@@ -1,0 +1,47 @@
+[cells]
+  root = .
+  prelude = prelude
+  toolchains = build/toolchains
+  constraints = build/constraints
+  none = none
+  nix = nix
+
+[cell_aliases]
+  config = prelude
+  ovr_config = prelude
+  fbcode = none
+  fbsource = none
+  fbcode_macros = none
+  buck = none
+
+# Uses a copy of the prelude bundled with the buck2 binary. You can alternatively delete this
+# section and vendor a copy of the prelude to the `prelude` directory of your project.
+[external_cells]
+  prelude = bundled
+  nix = git
+
+[external_cell_nix]
+  git_origin = https://github.com/tweag/buck2.nix.git
+  commit_hash = 038b031b84846101030b9d081445003e82e3be5c
+
+[parser]
+  target_platform_detector_spec = target:root//...->prelude//platforms:default \
+    target:prelude//...->prelude//platforms:default \
+    target:toolchains//...->prelude//platforms:default
+
+[build]
+  execution_platforms = prelude//platforms:default
+
+[buck2_re_client]
+engine_address = $BUILDBUDDY_ENDPOINT
+action_cache_address = $BUILDBUDDY_ENDPOINT
+cas_address = $BUILDBUDDY_ENDPOINT
+http_headers = x-buildbuddy-api-key:$BUILDBUDDY_API_KEY
+
+[project]
+ignore = \
+    target\
+    .git
+
+[buck2]
+  materializations = deferred

@@ -1,0 +1,9 @@
+load(":defs.bzl", "mdbook")
+
+mdbook(
+    name = "manual",
+    srcs = glob(["src/**/*"]) + ["book.toml"],
+    extra_srcs = {
+        "src/configuration/config.md": "//build:config_docs",
+    },
+)

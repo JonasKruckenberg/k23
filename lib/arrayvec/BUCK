@@ -1,0 +1,15 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+rust_library(
+    name = "arrayvec",
+    srcs = glob(["**/*.rs"]),
+    visibility = ["PUBLIC"],
+    tests = [":arrayvec_unittests"],
+)
+
+rust_test(
+    name = "arrayvec_unittests",
+    srcs = glob(["**/*.rs"]),
+    visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
+)

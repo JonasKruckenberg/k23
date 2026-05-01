@@ -1,5 +1,9 @@
 # Debugging k23
 
+> **Note:** the debugging story for k23 is very much a work in progress. The flow described below works, but it is
+> rough around the edges and the steps are still mostly manual. Improvements — better launch ergonomics, pretty
+> printers, an LLDB/GDB init script bundled with the repo — are very welcome; if you'd like to help, please reach out.
+
 The rest of this guide assumes you are using LLDB, but the same principles apply to GDB and "command translation guides"
 are available online.
 
@@ -32,22 +36,30 @@ by passing the `log` boot argument.
 For example, to enable all levels you can pass this directive in the `log` boot argument:
 
 ```sh
-cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace"
+just run //sys:k23-qemu-riscv64 -- --append "log=trace"
 ```
 
 A more reasonable configuration that omits the quite verbose output from cranelift but otherwise keeps the trace logging:
 
 ```sh
-cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace,cranelift_codegen=off"
+just run //sys:k23-qemu-riscv64 -- --append "log=trace,cranelift_codegen=off"
 ```
 
 ### Attaching to the Kernel
 
-You can run the kernel with the `--debug` or `--dbg` (or `--gdb` for typos) flag to start the kernel in a paused state.
-You can then launch and attach to the kernel with LLDB using the following commands:
+There is no convenience flag for this yet — you wire it up by hand using QEMU's gdbstub. Forward `-s -S` to QEMU to
+have it expose a gdb server on `localhost:1234` and halt the CPU at startup:
 
 ```sh
-rust-lldb target/riscv64gc-unknown-k23-kernel/debug/kernel
+just run //sys:k23-qemu-riscv64 -- -s -S
+```
+
+The equivalent `buck2` invocation is `buck2 run //sys:k23-qemu-riscv64 -- -s -S`.
+
+In a second terminal, ask Buck2 for the path to the freshly built kernel ELF and launch LLDB against it:
+
+```sh
+rust-lldb "$(buck2 build --show-output //sys/kernel:kernel | awk '{print $2}')"
 
 # In LLDB
 gdb-remote localhost:1234
@@ -57,8 +69,8 @@ gdb-remote localhost:1234
 
 Quite often, you will need to stop the kernel when a panic occurs, to inspect the state of the system. For this you can
 set a breakpoint on the `rust_panic` symbol which is a special unmangled function for exactly this purpose (this
-technique mirrors Rusts `std` library and is implemented in the `kstd`
-crate [here](https://github.com/JonasKruckenberg/k23/blob/07322361bd99c04d8a6866fd8a5c565584393222/libs/kstd/src/panicking.rs#L89)).
+technique mirrors Rusts `std` library and is implemented in the `panic-unwind`
+crate [here](../../../lib/panic-unwind/src/lib.rs)).
 
 Using LLDB you can set a breakpoint with the following command:
 
@@ -70,10 +82,10 @@ and then use e.g. the `bt` command to print a backtrace.
 
 ### Pretty Printing
 
-To make debugging easier, you can add pretty printers for the `vmm::PhysicalAddress` and `vmm::VirtualAddress` types.
-This can be done by through the following commands in LLDB:
+To make debugging easier, you can add pretty printers for the `mem_core::PhysicalAddress` and `mem_core::VirtualAddress`
+types. This can be done by through the following commands in LLDB:
 
 ```
-type summary add --summary-string "vmm::PhysicalAddress(${var.0%x})" vmm::PhysicalAddress
-type summary add --summary-string "vmm::VirtualAddress(${var.0%x})" vmm::VirtualAddress
+type summary add --summary-string "mem_core::PhysicalAddress(${var.0%x})" mem_core::PhysicalAddress
+type summary add --summary-string "mem_core::VirtualAddress(${var.0%x})" mem_core::VirtualAddress
 ```

@@ -1,0 +1,27 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+rust_library(
+    name = "abort",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//third-party:cfg-if",
+    ] + select({
+        "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+        "DEFAULT": [],
+    }),
+    visibility = ["PUBLIC"],
+    tests = [":abort_unittests"],
+)
+
+rust_test(
+    name = "abort_unittests",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//third-party:cfg-if",
+    ] + select({
+        "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+        "DEFAULT": [],
+    }),
+    visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
+)

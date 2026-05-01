@@ -1,0 +1,25 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+rust_library(
+    name = "sharded-slab",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/spin:spin",
+        "//lib/cpu-local:cpu-local",
+        "//third-party:log",
+    ],
+    visibility = ["PUBLIC"],
+    tests = [":sharded-slab_unittests"],
+)
+
+rust_test(
+    name = "sharded-slab_unittests",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/spin:spin",
+        "//lib/cpu-local:cpu-local",
+        "//third-party:log",
+    ],
+    visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
+)

@@ -1,0 +1,15 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+rust_library(
+    name = "trap",
+    srcs = glob(["**/*.rs"]),
+    visibility = ["PUBLIC"],
+    tests = [":trap_unittests"],
+)
+
+rust_test(
+    name = "trap_unittests",
+    srcs = glob(["**/*.rs"]),
+    visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
+)

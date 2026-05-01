@@ -1,0 +1,39 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+rust_library(
+    name = "wast",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = [
+        "//lib/cpu-local:cpu-local",
+        "//third-party:leb128fmt",
+        "//third-party:wasm-encoder",
+        "//third-party:hashbrown",
+        "//third-party:unicode-width",
+        "//third-party:memchr",
+        "//third-party:bumpalo",
+    ],
+    visibility = ["PUBLIC"],
+    tests = [":wast_unittests"],
+)
+
+rust_test(
+    name = "wast_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = [
+        "//lib/cpu-local:cpu-local",
+        "//third-party:leb128fmt",
+        "//third-party:wasm-encoder",
+        "//third-party:hashbrown",
+        "//third-party:unicode-width",
+        "//third-party:memchr",
+        "//third-party:bumpalo",
+        "//third-party:wat",
+        "//third-party:anyhow",
+        "//third-party:libtest-mimic",
+        "//third-party:wasmparser",
+    ],
+    visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
+)

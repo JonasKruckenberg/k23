@@ -1,0 +1,12 @@
+[package]
+name = "fdt"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+fallible-iterator.workspace = true
+
+[lints]
+workspace = true

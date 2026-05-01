@@ -1,0 +1,9 @@
+[package]
+name = "loader-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mem-core.workspace = true
