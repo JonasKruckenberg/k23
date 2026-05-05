@@ -2,83 +2,47 @@ name: Fuzzing
 
 on:
   push:
-    paths:
-      - 'fuzz/**'
-      - 'libs/range-tree/**'
+    branches: [main]
   pull_request:
-    paths:
-      - 'fuzz/**'
-      - 'libs/range-tree/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-  CLICOLOR: 1
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  pre_ci:
-    uses: dtolnay/.github/.github/workflows/pre_ci.yml@master
+  changed-targets:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/_changed-targets.yml
 
   fuzz:
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        fuzz-target: [ "range-tree" ]
-        target:
-          - tuple: riscv64gc-unknown-linux-gnu
-          - tuple: riscv64gc-unknown-linux-gnu
-            rustflags: -Ctarget-feature=+v
-          - tuple: aarch64-unknown-linux-gnu
-          - tuple: aarch64-unknown-linux-gnu
-            rustflags: -Ctarget-feature=+sve
-          - tuple: x86_64-unknown-linux-gnu
-          - tuple: x86_64-unknown-linux-gnu
-            rustflags: -Ctarget-feature=+sse4.2
-          - tuple: x86_64-unknown-linux-gnu
-            rustflags: -Ctarget-feature=+sse4.2,+popcnt
-          - tuple: x86_64-unknown-linux-gnu
-            rustflags: -Ctarget-feature=+avx2,+popcnt
-          - tuple: x86_64-unknown-linux-gnu
-            rustflags: -Ctarget-feature=+avx512bw,+popcnt
+    needs: [changed-targets]
+    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: fetch impacted targets
+        if: needs.changed-targets.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          targets: ${{ matrix.target.tuple }}
-      - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz
-      - name: Install Intel SDE
-        if: ${{ matrix.target.tuple == 'x86_64-unknown-linux-gnu' }}
-        uses: petarpetrovt/setup-sde@v3.0
-      - name: Set up Intel SDE as runner
-        if: ${{ matrix.target.tuple == 'x86_64-unknown-linux-gnu' }}
-        run: echo CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="${SDE_PATH}/sde64 -spr --" >> $GITHUB_ENV
-      - name: Setup toolchains for cross compilation and cross testing for Rust
-        if: ${{ matrix.target.tuple != 'x86_64-unknown-linux-gnu' }}
-        uses: taiki-e/setup-cross-toolchain-action@v1
+          name: impacted-targets
+      - name: restore fuzz corpus
+        uses: actions/cache@v4
         with:
-          target: ${{ matrix.target.tuple }}
-      - name: Test
-        run: cargo test -p ${{ matrix.fuzz-target }}
-        env:
-          RUSTFLAGS: -D warnings ${{ matrix.target.rustflags }}
-      - name: Run fuzz target for 60s
-        run: cargo fuzz run ${{ matrix.fuzz-target }} -s none --target ${{ matrix.target.tuple }} -- -max_total_time=60
-        env:
-          RUSTFLAGS: -D warnings ${{ matrix.target.rustflags }}
-      # Upload fuzzing artifacts on failure for post-mortem debugging.
-      - uses: actions/upload-artifact@v7
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-
+      - run: ./.github/workflows/run-filtered.sh fuzz '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}' fuzz_args=--test-arg=-max_total_time=60
+      - name: upload crash artifacts
         if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          name: fuzzing-artifacts-${{ matrix.fuzz_target }}-${{ github.sha }}
-          path: fuzz/artifacts
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore

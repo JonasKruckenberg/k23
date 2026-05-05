@@ -1,0 +1,19 @@
+rust_library(
+    name = "wavltree",
+    srcs = glob(["src/**/*.rs"]),
+    features = select({
+        "constraints//:env[kernel]": ["dot"],
+        "DEFAULT": [],
+    }),
+    visibility = ["PUBLIC"],
+    tests = [":wavltree_unittests"],
+)
+
+rust_test(
+    name = "wavltree_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//third-party:rand",
+    ],
+    visibility = ["PUBLIC"],
+)

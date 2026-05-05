@@ -1,0 +1,40 @@
+export_file(
+    name = "loader-linker-script",
+    src = "riscv64-qemu.ld",
+)
+
+rust_binary(
+    name = "loader",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    default_target_platform = "//platforms:riscv64",
+    env = {
+        "KERNEL": "$(location //sys/kernel:kernel)",
+    },
+    rustc_flags = [
+        "-Clink-arg=-T",
+        "-Clink-arg=$(location :loader-linker-script)",
+    ],
+    deps = [
+        # internal libraries
+        "//sys/loader/api:loader-api",
+        "//lib/spin:spin",
+        "//lib/fdt:fdt",
+        "//lib/abort:abort",
+        "//lib/mem-core:mem-core",
+        "//lib/arrayvec:arrayvec",
+        # third-party dependencies
+        "//third-party:log",
+        "//third-party:cfg-if",
+        "//third-party:rand_chacha",
+        "//third-party:rand",
+        "//third-party:xmas-elf",
+        "//third-party:fallible-iterator",
+        "//third-party:bitflags",
+    ] + select({
+        "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+        "DEFAULT": [],
+    }),
+    incoming_transition = "//build:loader",
+    visibility = ["PUBLIC"],
+)

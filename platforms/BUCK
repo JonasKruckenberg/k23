@@ -1,0 +1,37 @@
+# Target platforms
+#
+# Each platform bundles the constraint values for one architecture.
+# Used via default_target_platform on top-level targets (k23_image, qemu_binary).
+#
+# Override kcfg values on the CLI as needed:
+#   buck2 build //sys:k23-riscv64 -c k23.log_level=trace
+
+platform(
+    name = "riscv64",
+    constraint_values = [
+        "prelude//os/constraints:none",
+        "prelude//cpu/constraints:riscv64",
+        "constraints//:rust-std[source]",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+platform(
+    name = "aarch64",
+    constraint_values = [
+        "prelude//os/constraints:none",
+        "prelude//cpu/constraints:arm64",
+        "constraints//:rust-std[source]",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+platform(
+    name = "x86_64",
+    constraint_values = [
+        "prelude//os/constraints:none",
+        "prelude//cpu/constraints:x86_64",
+        "constraints//:rust-std[source]",
+    ],
+    visibility = ["PUBLIC"],
+)

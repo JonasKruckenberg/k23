@@ -5,7 +5,7 @@ Currently supported memory modes are `Riscv64Sv39`, `Riscv64Sv48` and `Riscv64Sv
 Note that addresses marked as `<dynamic>` are not fixed and depend on the number of harts (hardware threads) in the
 system.
 
-The code implementing this memory layout can be found in [`loader/src/mapping.rs`](../../loader/src/mapping.rs).
+The code implementing this memory layout can be found in [`sys/loader/src/mapping.rs`](../../../../sys/loader/src/mapping.rs).
 
 ### Sv39
 

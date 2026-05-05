@@ -1,0 +1,12 @@
+rust_library(
+    name = "trap",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["PUBLIC"],
+    tests = [":trap_unittests"],
+)
+
+rust_test(
+    name = "trap_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["PUBLIC"],
+)

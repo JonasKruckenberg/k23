@@ -1,11 +1,11 @@
 # Overview of k23's Architecture
 
 k23 has 3 main components:
-The [bootloader](https://github.com/JonasKruckenberg/k23/blob/07322361bd99c04d8a6866fd8a5c565584393222/loader) that is
+The [bootloader](../../sys/loader) that is
 responsible for loading the kernel,
-the [kernel itself](https://github.com/JonasKruckenberg/k23/tree/07322361bd99c04d8a6866fd8a5c565584393222/kernel), which
+the [kernel itself](../../sys/kernel), which
 is the main operating system, and
-the [WASM runtime](https://github.com/JonasKruckenberg/k23/tree/07322361bd99c04d8a6866fd8a5c565584393222/kernel/src/runtime),
+the [WASM runtime](../../sys/kernel/src/wasm),
 which is responsible for running WebAssembly programs. The last two components are highly intertwined by design.
 
 ### Bootloader

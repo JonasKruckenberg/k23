@@ -1,0 +1,98 @@
+load(":transitions.bzl", "configuration_transition")
+load("//build:kcfg.bzl", "kcfg", "kcfg_docs")
+
+LogLevel = enum("error", "warn", "info", "debug", "trace")
+
+LOG_LEVEL = kcfg.declare(
+    section = "k23",
+    key = "log_level",
+    type = kcfg.enum(LogLevel, default = LogLevel("warn")),
+    doc = "Verbosity of the kernel log output.",
+)
+
+STACK_SIZE = kcfg.declare(
+    section = "k23",
+    key = "stack_size_kb",
+    type = kcfg.int(default = 512),
+    doc = "Default thread stack size in kilobytes.",
+)
+
+FEATURES = kcfg.declare(
+    section = "k23",
+    key = "features",
+    type = kcfg.set(kcfg.string(), default = set()),
+    doc = "Whitespace-separated set of optional feature flags to enable.",
+)
+
+PORTS = kcfg.declare(
+    section = "k23",
+    key = "ports",
+    type = kcfg.list(kcfg.int(), default = [8080]),
+    doc = "Whitespace-separated list of ports the server listens on.",
+)
+
+# config_setting targets — use these in select() anywhere in the build graph
+
+LOG_LEVEL.config_setting(name = "log_level-error", value = "error")
+LOG_LEVEL.config_setting(name = "log_level-warn",  value = "warn")
+LOG_LEVEL.config_setting(name = "log_level-info",  value = "info")
+LOG_LEVEL.config_setting(name = "log_level-debug", value = "debug")
+LOG_LEVEL.config_setting(name = "log_level-trace", value = "trace")
+
+# collect the options docstrings into a markdown document.
+# Consumed by the manual later.
+
+kcfg_docs(
+    name = "config_docs",
+    entries = [LOG_LEVEL, STACK_SIZE, FEATURES, PORTS],
+    out = "config.md",
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "targets",
+    srcs = {
+        "riscv64gc-k23-none-kernel.json": "./targets/riscv64gc-k23-none-kernel.json",
+    },
+    visibility = ["PUBLIC"],
+)
+
+# transitions
+
+configuration_transition(
+    name = "loader",
+    constraint_values = [
+        "constraints//:env[loader]",
+        "constraints//:rust-std[source]",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+configuration_transition(
+    name = "kernel",
+    constraint_values = [
+        "constraints//:env[kernel]",
+        "constraints//:rust-std[source]",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+configuration_transition(
+    name = "rust_bootstrap",
+    constraint_values = [
+        "constraints//:rust-std[bootstrap]",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+configuration_transition(
+    name = "fuzz",
+    constraint_values = [
+        "constraints//:env[host]",
+        "constraints//:rust-std[prebuilt]",
+        "constraints//:sanitizer[address]",
+        "constraints//:opt-level[3]",
+        "constraints//:debuginfo[full]",
+    ],
+    visibility = ["PUBLIC"],
+)

@@ -1,0 +1,18 @@
+buildscript.run = false
+
+[[cxx_library]]
+name = "libfuzzer"
+srcs = ["libfuzzer/*.cpp"]
+headers = ["libfuzzer/*.h", "libfuzzer/*.def"]
+# Mirrors libfuzzer-sys 0.4.x build.rs: C++17, frame pointers retained for
+# readable crash traces, warnings off (upstream is noisy).
+compiler_flags = [
+    "-std=c++17",
+    "-fno-omit-frame-pointer",
+    "-w",
+]
+compatible_with = [
+    "prelude//os/constraints:linux",
+    "prelude//os/constraints:macos",
+    "prelude//os/constraints:windows"
+]

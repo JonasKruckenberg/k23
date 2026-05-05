@@ -1,0 +1,105 @@
+name: changed-targets
+
+# Reusable workflow that computes the set of Buck2 targets impacted by a PR.
+# Outputs a `mode` sentinel and uploads an `impacted-targets` artifact for
+# consumption by downstream jobs in the calling workflow:
+#   - "filter": run only the targets listed in impacted-targets.txt
+#   - "all":    pessimistic fallback (a high-level file changed); run full suite
+#   - "noop":   no impacted targets; downstream jobs short-circuit to success
+#
+# Intended to be invoked on `pull_request` events only — there is no useful
+# base ref on push to main.
+
+on:
+  workflow_call:
+    outputs:
+      mode:
+        description: "filter | all | noop"
+        value: ${{ jobs.changed-targets.outputs.mode }}
+
+permissions:
+  contents: read
+
+jobs:
+  changed-targets:
+    name: Determine changed targets
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.compute.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Colocate jj on git
+        run: nix develop . --command jj git init --colocate
+
+      - name: Determine base SHA
+        id: base
+        run: |
+          BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "sha=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Base: $BASE"
+
+      - name: Restore base.jsonl
+        id: cache-base
+        uses: actions/cache@v4
+        with:
+          path: base.jsonl
+          key: changed-targets-base-${{ runner.os }}-${{ steps.base.outputs.sha }}
+
+      - name: Build base.jsonl (cache miss)
+        if: steps.cache-base.outputs.cache-hit != 'true'
+        run: |
+          REPO=$PWD
+          git worktree add --detach /tmp/base-tree "${{ steps.base.outputs.sha }}"
+          if [ ! -f /tmp/base-tree/.buckconfig ]; then
+            echo "Base ${{ steps.base.outputs.sha }} predates buck2 setup — no base.jsonl will be produced"
+          else
+            (cd /tmp/base-tree && nix develop "$REPO" --command supertd targets root//... --output "$REPO/base.jsonl") \
+              || { echo "::warning::supertd targets failed at base — base.jsonl skipped"; rm -f base.jsonl; }
+          fi
+          git worktree remove --force /tmp/base-tree
+
+      - name: Compute impacted targets
+        id: compute
+        run: |
+          if [ ! -s base.jsonl ]; then
+            echo "No base.jsonl available — falling back to full suite"
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+            : > impacted-targets.txt
+            exit 0
+          fi
+          nix develop . --command just changed-targets-diff "${{ steps.base.outputs.sha }}" > changes.txt
+          set +e
+          IMPACTED=$(nix develop . --command just changed-targets changes.txt base.jsonl)
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::changed-targets failed (exit $rc) — falling back to full suite"
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+            : > impacted-targets.txt
+            exit 0
+          fi
+          IMPACTED=$(printf '%s' "$IMPACTED" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
+          if [ "$IMPACTED" = "__ALL__" ]; then
+            echo "Pessimistic fallback: a high-level file changed — full suite"
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+            : > impacted-targets.txt
+          elif [ -z "$IMPACTED" ]; then
+            echo "No impacted targets"
+            echo "mode=noop" >> "$GITHUB_OUTPUT"
+            : > impacted-targets.txt
+          else
+            echo "Impacted: $IMPACTED"
+            echo "mode=filter" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$IMPACTED" > impacted-targets.txt
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: impacted-targets
+          path: impacted-targets.txt
+          if-no-files-found: error

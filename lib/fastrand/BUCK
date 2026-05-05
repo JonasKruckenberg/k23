@@ -1,0 +1,25 @@
+load("//build:bench.bzl", "rust_benchmark")
+
+rust_library(
+    name = "fastrand",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["PUBLIC"],
+    tests = [":fastrand_unittests", ":fastrand_benchmarks"],
+)
+
+rust_test(
+    name = "fastrand_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["PUBLIC"],
+)
+
+rust_benchmark(
+    name = "fastrand_benchmarks",
+    srcs = ["./benches/bench.rs"],
+    crate_root = "./benches/bench.rs",
+    deps = [
+        ":fastrand",
+        "//third-party:criterion",
+    ],
+    visibility = ["PUBLIC"],
+)

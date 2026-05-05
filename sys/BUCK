@@ -1,0 +1,11 @@
+load("//build:qemu.bzl", "qemu_binary")
+load(":defs.bzl", "k23_image")
+
+k23_image(
+    name = "k23-riscv64",
+    loader = "//sys/loader:loader",
+    kernel = "//sys/kernel:kernel",
+    platform = "//platforms:riscv64"
+)
+
+qemu_binary(name = "k23-qemu-riscv64", binary = ":k23-riscv64", default_target_platform = "//platforms:riscv64")
