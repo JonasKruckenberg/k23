@@ -13,7 +13,8 @@ rust_library(
         "DEFAULT": ["build"]
     }),
     deps = _DEPS,
-    tests = [":ecma-119_unittests", ":ecma-119_roundtrip"]
+    tests = [":ecma-119_unittests", ":ecma-119_roundtrip"],
+    visibility = ["PUBLIC"]
 )
 
 rust_test(
