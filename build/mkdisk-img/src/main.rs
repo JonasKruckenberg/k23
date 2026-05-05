@@ -47,6 +47,10 @@ struct Args {
     #[arg(long)]
     kernel: PathBuf,
 
+    /// Path to the kernel ELF to embed at `EFI/k23/kernel.debug`.
+    #[arg(long)]
+    kernel_debuginfo: PathBuf,
+
     /// Target architecture — determines the `EFI/BOOT/BOOT{ARCH}.EFI` filename.
     #[arg(long)]
     arch: Arch,
@@ -68,8 +72,14 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    build_esp(&args.loader, &args.kernel, args.arch, &args.esp_out)
-        .context("building ESP FAT image")?;
+    build_esp(
+        &args.loader,
+        &args.kernel,
+        &args.kernel_debuginfo,
+        args.arch,
+        &args.esp_out,
+    )
+    .context("building ESP FAT image")?;
 
     let mut boot = build::Directory::new();
     boot.add_file("EFI.IMG", build::File::from_path(&args.esp_out)?)?;
@@ -96,23 +106,35 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Build a minimally-sized FAT ESP containing `EFI/BOOT/{boot_file}` and
-/// `EFI/k23/kernel.elf`. The ESP is materialized directly at `esp_path`,
-/// streaming the loader and kernel from disk so we never hold them in memory.
-fn build_esp(loader: &Path, kernel: &Path, arch: Arch, esp_path: &Path) -> io::Result<()> {
+/// Build a minimally-sized FAT ESP containing `EFI/BOOT/{boot_file}`, `EFI/k23/kernel.elf`,
+/// and  `EFI/k23/kernel.debug`. The ESP is materialized directly at `esp_path`, streaming
+/// the loader and kernel (and debug file) from disk so we never hold them in memory.
+fn build_esp(
+    loader: &Path,
+    kernel: &Path,
+    kernel_debuginfo: &Path,
+    arch: Arch,
+    esp_path: &Path,
+) -> io::Result<()> {
     // Floor the volume at 2 MiB so FAT12/16 always have room for cluster
     // tables + directories, then add headroom for FS overhead. fatfs picks
     // the smallest FAT variant that fits (FAT32 needs ~33 MiB minimum).
-    const SECTOR: u64 = 512;
-    const HEADROOM: u64 = 2 * 1024 * 1024;
-    const MIN_SIZE: u64 = 2 * 1024 * 1024;
+    let size = {
+        const SECTOR: u64 = 512;
+        const HEADROOM: u64 = 2 * 1024 * 1024;
+        const MIN_SIZE: u64 = 2 * 1024 * 1024;
 
-    let loader_len = fs::metadata(loader)?.len();
-    let kernel_len = fs::metadata(kernel)?.len();
+        let loader_len = fs::metadata(loader)?.len();
+        let kernel_len = fs::metadata(kernel)?.len();
+        let kernel_debuginfo_len = fs::metadata(kernel_debuginfo)?.len();
 
-    let payload = loader_len.saturating_add(kernel_len);
-    let raw = cmp::max(payload, MIN_SIZE).saturating_add(HEADROOM);
-    let size = raw.div_ceil(SECTOR) * SECTOR;
+        let payload = loader_len
+            .saturating_add(kernel_len)
+            .saturating_add(kernel_debuginfo_len);
+
+        let raw = cmp::max(payload, MIN_SIZE).saturating_add(HEADROOM);
+        raw.div_ceil(SECTOR) * SECTOR
+    };
 
     let mut img = OpenOptions::new()
         .read(true)
@@ -138,6 +160,10 @@ fn build_esp(loader: &Path, kernel: &Path, arch: Arch, esp_path: &Path) -> io::R
         let mut f = boot.create_file(arch.boot_file_name())?;
         f.truncate()?;
         io::copy(&mut File::open(loader)?, &mut f)?;
+
+        let mut d = k23.create_file("kernel.debug")?;
+        d.truncate()?;
+        io::copy(&mut File::open(kernel_debuginfo)?, &mut d)?;
 
         let mut k = k23.create_file("kernel.elf")?;
         k.truncate()?;
