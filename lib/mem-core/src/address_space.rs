@@ -272,17 +272,32 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
             let entry = unsafe { table.get(entry_index, physmap, &self.arch) };
 
             if entry.is_table() {
+                debug_assert!((table.depth() as usize + 1) < A::LEVELS.len());
+
                 // Safety: We checked the entry is a table above (1.) know the depth is correct (2.).
                 table = unsafe { Table::from_raw_parts(entry.address(), table.depth() + 1) };
             } else if entry.is_leaf() {
-                return Some((entry.address(), entry.attributes(), level));
+                let lower_bits = virt.get() & (level.page_size() - 1);
+
+                // `entry.address()` is aligned to `level.page_size()` on all supported architectures
+                // meaning the lower bits must already be zero
+                return Some((
+                    PhysicalAddress::new(entry.address().get() | lower_bits),
+                    entry.attributes(),
+                    level,
+                ));
             } else {
                 debug_assert!(entry.is_vacant());
                 return None;
             }
         }
 
-        unreachable!()
+        log::warn!(
+            "Reached the page table depth limit without finding a vacant or leaf entry. This indicates a malformed page table!"
+        );
+        // turn this soft warning into a hard panic in debug mode
+        debug_assert!(false);
+        None
     }
 
     /// Maps the virtual address range `virt` to *possibly discontiguous* block(s) of physical memory
@@ -737,9 +752,10 @@ mod tests {
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
+            // TODO should use proptest instead of hardcoded offsets
+            let (phys, attrs, lvl) = address_space.lookup(page.start.add(42), &physmap).unwrap();
 
-            assert_eq!(phys, frame);
+            assert_eq!(phys, frame.add(42));
             assert_eq!(attrs.allows_read(), true);
             assert_eq!(attrs.allows_write(), false);
             assert_eq!(attrs.allows_execution(), false);
@@ -775,9 +791,10 @@ mod tests {
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
+            // TODO should use proptest instead of hardcoded offsets
+            let (phys, attrs, lvl) = address_space.lookup(page.start.add(42), &physmap).unwrap();
 
-            assert_eq!(phys, frame);
+            assert_eq!(phys, frame.add(42));
             assert_eq!(attrs.allows_read(), true);
             assert_eq!(attrs.allows_write(), false);
             assert_eq!(attrs.allows_execution(), false);
@@ -795,9 +812,10 @@ mod tests {
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
+            // TODO should use proptest instead of hardcoded offsets
+            let (phys, attrs, lvl) = address_space.lookup(page.start.add(42), &physmap).unwrap();
 
-            assert_eq!(phys, new_frame);
+            assert_eq!(phys, new_frame.add(42));
             assert_eq!(attrs.allows_read(), true);
             assert_eq!(attrs.allows_write(), false);
             assert_eq!(attrs.allows_execution(), false);
@@ -833,9 +851,10 @@ mod tests {
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
+            // TODO should use proptest instead of hardcoded offsets
+            let (phys, attrs, lvl) = address_space.lookup(page.start.add(42), &physmap).unwrap();
 
-            assert_eq!(phys, frame);
+            assert_eq!(phys, frame.add(42));
             assert_eq!(attrs.allows_read(), true);
             assert_eq!(attrs.allows_write(), false);
             assert_eq!(attrs.allows_execution(), false);
@@ -855,9 +874,10 @@ mod tests {
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
+            // TODO should use proptest instead of hardcoded offsets
+            let (phys, attrs, lvl) = address_space.lookup(page.start.add(42), &physmap).unwrap();
 
-            assert_eq!(phys, frame);
+            assert_eq!(phys, frame.add(42));
             assert_eq!(attrs.allows_read(), false);
             assert_eq!(attrs.allows_write(), false);
             assert_eq!(attrs.allows_execution(), true);
