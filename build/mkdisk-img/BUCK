@@ -1,0 +1,15 @@
+# Builds a UEFI-bootable ISO-9660 disk image with an embedded FAT ESP.
+rust_binary(
+    name = "mkdisk-img",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    deps = [
+        # internal libraries
+        "//lib/ecma-119:ecma-119",
+        # third-party dependencies
+        "//third-party:anyhow",
+        "//third-party:clap",
+        "//third-party:fatfs",
+    ],
+    visibility = ["PUBLIC"],
+)

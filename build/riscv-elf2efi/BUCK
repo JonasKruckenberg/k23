@@ -1,0 +1,14 @@
+# Converts a RISC-V ELF shared object into a PE/COFF `.efi` executable.
+rust_binary(
+    name = "riscv-elf2efi",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    deps = [
+        # third-party dependencies
+        "//third-party:anyhow",
+        "//third-party:object",
+        "//third-party:clap",
+        "//third-party:memmap2",
+    ],
+    visibility = ["PUBLIC"],
+)

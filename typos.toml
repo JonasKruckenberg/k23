@@ -18,6 +18,9 @@ alo = "alo" # for address-low
 canonicalizations = "canonicalizations"
 aranges = "aranges" # for address-ranges, used in kaddrline2
 
+[default.extend-identifiers]
+flate2 = "flate2"
+
 [default]
 extend-ignore-identifiers-re = [
     "(?i:WAKE_ALLS)"
