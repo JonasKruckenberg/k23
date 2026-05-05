@@ -19,6 +19,27 @@ mycelium_bitfield::bitfield! {
         pub const READ: bool;
         /// Whether executing, or writing this memory region is allowed (or neither).
         pub const WRITE_OR_EXECUTE: WriteOrExecute;
+        /// Cacheability / ordering class of the region. See [`MemoryKind`].
+        pub const KIND: MemoryKind;
+    }
+}
+
+mycelium_bitfield::enum_from_bits! {
+    /// Cacheability and ordering class of a mapped region.
+    ///
+    /// This distinguishes ordinary RAM from memory-mapped device registers so
+    /// that architectures which encode it in the page table (aarch64 `MAIR` /
+    /// `Device-nGnRnE`, x86_64 `PAT`, RISC-V `Svpbmt` `PBMT`) can do so.
+    ///
+    /// On the base RISC-V ISA cacheability is fixed per physical region by the
+    /// platform's PMAs, so [`Device`](Self::Device) is honored regardless of the
+    /// page table — wiring `PBMT` is future work and requires `Svpbmt`.
+    #[derive(Debug, Eq, PartialEq)]
+    pub enum MemoryKind<u8> {
+        /// Ordinary cacheable, idempotent main memory. The default (all-zero) kind.
+        Normal = 0b0,
+        /// Non-cacheable, strongly-ordered memory-mapped I/O (device registers).
+        Device = 0b1,
     }
 }
 
@@ -61,6 +82,16 @@ impl MemoryAttributes {
     /// Returns whether these `MemoryAttributes` allow executing instructions from memory.
     pub fn allows_execution(&self) -> bool {
         matches!(self.get(Self::WRITE_OR_EXECUTE), WriteOrExecute::Execute)
+    }
+
+    /// Returns the [`MemoryKind`] (cacheability / ordering class) of the region.
+    pub fn kind(&self) -> MemoryKind {
+        self.get(Self::KIND)
+    }
+
+    /// Returns whether the region is [device memory](MemoryKind::Device).
+    pub fn is_device(&self) -> bool {
+        matches!(self.kind(), MemoryKind::Device)
     }
 }
 

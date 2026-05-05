@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::error::Error;
-use crate::{Header, Node};
+use crate::{CellSizes, Header, Node};
 
 #[derive(Clone)]
 pub struct Parser<'dt> {
@@ -159,12 +159,41 @@ impl<'dt> Parser<'dt> {
 
         let starting_data = self.data();
 
+        // The root has no parent, so its `cell_sizes` are the counts it provides
+        // to its children: its own declarations, or the spec defaults.
+        let cell_sizes = self.child_cell_sizes(CellSizes::default())?;
+
         Ok(Node {
             name,
             raw: &starting_data[..starting_data.len() - 1],
             strings: self.strings,
             structs: self.structs,
+            cell_sizes,
         })
+    }
+
+    /// Consume the current node's property tokens, returning the cell counts for
+    /// its children: `inherited`, with any `#address-cells` / `#size-cells` it
+    /// declares overriding the matching field.
+    pub(crate) fn child_cell_sizes(&mut self, inherited: CellSizes) -> Result<CellSizes, Error> {
+        let mut cells = inherited;
+        while self.peek_token()? == BigEndianToken::PROP {
+            let (name_offset, data) = self.parse_raw_property()?;
+            match self.strings.offset_at(name_offset)? {
+                "#address-cells" => {
+                    if let Some(n) = parse_cell_count(data) {
+                        cells.address_cells = n;
+                    }
+                }
+                "#size-cells" => {
+                    if let Some(n) = parse_cell_count(data) {
+                        cells.size_cells = n;
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(cells)
     }
 
     pub fn parse_raw_property(&mut self) -> Result<(usize, &'dt [u8]), Error> {
@@ -182,6 +211,11 @@ impl<'dt> Parser<'dt> {
             t => Err(Error::UnexpectedToken(t)),
         }
     }
+}
+
+/// Decode a `#address-cells` / `#size-cells` value: a single big-endian `u32`.
+fn parse_cell_count(data: &[u8]) -> Option<usize> {
+    Some(u32::from_be_bytes(<[u8; 4]>::try_from(data).ok()?) as usize)
 }
 
 impl BigEndianU32 {
