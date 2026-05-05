@@ -48,6 +48,8 @@ impl Flush {
         }
     }
 
+    /// Ignores the contents of the `Flush` and will NOT issue TLB invalidations.
+    ///
     /// # Safety
     ///
     /// Not flushing after mutating the page translation tables will likely lead to unintended
@@ -58,10 +60,14 @@ impl Flush {
         mem::forget(self);
     }
 
+    /// Records `range` as needing TLB invalidation.
     pub fn invalidate(&mut self, range: Range<VirtualAddress>) {
         match self {
             Flush::Ranges(ranges) => {
-                ranges.push(range);
+                // Coarsen to a full flush once the range buffer is full.
+                if ranges.try_push(range).is_err() {
+                    *self = Flush::All;
+                }
             }
             Flush::All => {}
         }
@@ -69,5 +75,41 @@ impl Flush {
 
     pub fn invalidate_all(&mut self) {
         *self = Flush::All;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    proptest! {
+        /// `invalidate` must never panic, regardless of how many ranges are pushed, and
+        /// every pushed range must remain covered by the resulting `Flush`.
+        #[test]
+        fn invalidate_records_every_range_without_panicking(
+            ranges in proptest::collection::vec(
+                (any::<VirtualAddress>(), any::<VirtualAddress>())
+                    .prop_map(|(a, b)| Range::from(a.min(b)..a.max(b))),
+                0..256,
+            ),
+        ) {
+            let mut flush = Flush::new();
+            for range in &ranges {
+                flush.invalidate(*range);
+            }
+
+            match flush {
+                // Coarsening to `All` covers every range trivially.
+                Flush::All => {}
+                // Otherwise every pushed range must have been recorded.
+                Flush::Ranges(recorded) => {
+                    for range in &ranges {
+                        prop_assert!(recorded.contains(range));
+                    }
+                }
+            }
+        }
     }
 }
