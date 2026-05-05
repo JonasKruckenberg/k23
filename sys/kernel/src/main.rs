@@ -127,18 +127,20 @@ fn kmain(boot_info: &'static BootInfo) {
     arch::per_cpu_init_early();
     tracing::per_cpu_init_early(cpuid);
 
-    assert_eq!(
-        boot_info.version,
-        loader_api::BOOT_INFO_VERSION,
-        "loader/kernel BootInfo version mismatch"
-    );
-
     let fdt_phys = boot_info.fdt.expect("loader did not provide FDT");
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
     let global = state::try_init_global(|| {
         // set up the basic functionality of the tracing subsystem as early as possible
         tracing::init_early();
+
+        log::info!("{boot_info}");
+
+        assert_eq!(
+            boot_info.version,
+            loader_api::BOOT_INFO_VERSION,
+            "loader/kernel BootInfo version mismatch"
+        );
 
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
@@ -176,7 +178,7 @@ fn kmain(boot_info: &'static BootInfo) {
                 kind: loader_api::MemoryRegionKind::Usable,
             })
             .collect();
-        let frame_alloc = frame_alloc::init(boot_alloc, free_regions);
+        let frame_alloc = frame_alloc::init(boot_alloc, free_regions, &boot_info.physmap);
 
         // wire the frame allocator into the kernel heap's OOM handler so the heap can grow
         // automatically. Must come after `frame_alloc::init`; safe to come before `mem::init`

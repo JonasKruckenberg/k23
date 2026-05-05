@@ -116,6 +116,7 @@ impl Plic {
         let mmio_region = with_kernel_aspace(|aspace| {
             let layout =
                 Layout::from_size_align(AddressRangeExt::len(&mmio_range), PAGE_SIZE).unwrap();
+
             aspace
                 .lock()
                 .map(

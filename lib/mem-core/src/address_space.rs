@@ -62,6 +62,14 @@ impl<A: Arch> HardwareAddressSpace<A> {
         (self.arch, self.root_page_table)
     }
 
+    /// Decomposes an `AddressSpace` into its raw components: architecture-specific data and the
+    /// physical address of the root page table.
+    pub fn into_raw_parts(self) -> (A, PhysicalAddress) {
+        let (root_page_table, depth) = self.root_page_table.into_raw_parts();
+        debug_assert_eq!(depth, 0);
+        (self.arch, root_page_table)
+    }
+
     pub fn arch(&self) -> &A {
         &self.arch
     }
@@ -592,18 +600,12 @@ impl<A: Arch> HardwareAddressSpace<A> {
         attributes: MemoryAttributes,
         frame_allocator: impl FrameAllocator,
         physmap: &PhysMap,
+        flush: &mut Flush,
     ) -> Result<(), AllocError> {
-        debug_assert!(
-            self.arch.active_table().is_none(),
-            "During bootstrapping the machine must have no active page table."
-        );
-
         let virt = Range {
             start: VirtualAddress::new(phys.start.get()),
             end: VirtualAddress::new(phys.end.get()),
         };
-
-        let mut flush = Flush::new();
 
         // Safety: ensured by caller.
         unsafe {
@@ -613,13 +615,9 @@ impl<A: Arch> HardwareAddressSpace<A> {
                 attributes,
                 frame_allocator,
                 physmap,
-                &mut flush,
+                flush,
             )?;
         }
-
-        // Safety: we're going to invalidate the entire address space after bootstrapping. No need
-        // to flush in between.
-        unsafe { flush.ignore() };
 
         Ok(())
     }

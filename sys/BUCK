@@ -1,35 +1,38 @@
 load("//build:qemu.bzl", "qemu_binary", "qemu_test")
 load(":defs.bzl", "k23_image")
 
+# All targets here require a bare-metal target platform (os=none). Without
+# `--target-platforms //platforms:riscv64` (or aarch64/x86_64), buck reports
+# the target as incompatible rather than silently building for the host.
+_BARE_METAL = ["prelude//os/constraints:none"]
+
 k23_image(
-    name = "k23-riscv64",
+    name = "k23",
     loader = "//sys/loader:loader",
     kernel = "//sys/kernel:kernel",
     kernel_debuginfo = "//sys/kernel:kernel[debuginfo]",
-    platform = "//platforms:riscv64",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    target_compatible_with = _BARE_METAL,
 )
 
-# Test variant: same image shape, but the loader embeds the test kernel.
+# Test variant: same image shape, but the kernel is built with selftests
+# enabled. Reuses the regular loader for now.
 k23_image(
-    name = "k23-tests-riscv64",
-    loader = "//sys/loader:loader-tests",
+    name = "k23-tests",
+    loader = "//sys/loader:loader",
     kernel = "//sys/kernel:kernel-tests",
     kernel_debuginfo = "//sys/kernel:kernel-tests[debuginfo]",
-    platform = "//platforms:riscv64",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    target_compatible_with = _BARE_METAL,
 )
 
+# Boot the k23 image under QEMU via UEFI firmware
 qemu_binary(
-    name = "k23-qemu-riscv64",
-    binary = ":k23-riscv64",
-    default_target_platform = "//platforms:riscv64",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    name = "k23-qemu",
+    image = ":k23",
+    # target_compatible_with = _BARE_METAL,
 )
 
 qemu_test(
-    name = "k23-qemu-riscv64-tests",
-    binary = ":k23-tests-riscv64",
-    default_target_platform = "//platforms:riscv64",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    name = "k23-qemu-tests",
+    image = ":k23-tests",
+    # target_compatible_with = _BARE_METAL,
 )

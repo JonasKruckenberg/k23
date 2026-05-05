@@ -6,265 +6,58 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
+use core::iter;
+use core::num::NonZero;
+use core::ptr::NonNull;
 use core::range::Range;
-use core::{cmp, iter, ptr, slice};
 
-use fallible_iterator::FallibleIterator;
-use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use mem_core::{AddressRangeExt, AllocError, FrameAllocator, PhysicalAddress};
+use uefi::boot::{AllocateType, MemoryType};
 
-use crate::arch;
-use crate::error::Error;
+/// A [`FrameAllocator`] backed by UEFI boot services `AllocatePages`.
+///
+/// Frames are allocated as `MemoryType::RESERVED` so the kernel does not later
+/// classify them as reclaimable on handoff.
+pub struct UefiFrameAlloc;
 
-pub struct FrameAllocator<'a> {
-    regions: &'a [Range<PhysicalAddress>],
-    // offset from the top of memory regions
-    offset: usize,
-}
-
-impl<'a> FrameAllocator<'a> {
-    /// Create a new frame allocator over a given set of physical memory regions.
-    #[must_use]
-    pub fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
-        Self { regions, offset: 0 }
-    }
-
-    #[must_use]
-    pub fn free_regions(&self) -> FreeRegions<'_> {
-        FreeRegions {
-            offset: self.offset,
-            inner: self.regions.iter().rev().copied(),
-        }
-    }
-
-    #[must_use]
-    pub fn used_regions(&self) -> UsedRegions<'_> {
-        UsedRegions {
-            offset: self.offset,
-            inner: self.regions.iter().rev().copied(),
-        }
-    }
-
-    pub fn frame_usage(&self) -> usize {
-        self.offset >> arch::PAGE_SHIFT
-    }
-
-    pub fn allocate_one_zeroed(
-        &mut self,
-        phys_offset: VirtualAddress,
-    ) -> Result<PhysicalAddress, Error> {
-        self.allocate_contiguous_zeroed(
-            // Safety: the layout is always valid
-            unsafe { Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE) },
-            phys_offset,
-        )
-    }
-
-    pub fn allocate(&mut self, layout: Layout) -> FrameIter<'a, '_> {
-        assert_eq!(
-            layout.align(),
-            arch::PAGE_SIZE,
-            "BootstrapAllocator only supports page-aligned allocations"
-        );
-
-        let remaining = layout.pad_to_align().size();
-
-        debug_assert!(remaining.is_multiple_of(arch::PAGE_SIZE));
-        FrameIter {
-            alloc: self,
-            remaining,
-        }
-    }
-
-    pub fn allocate_zeroed(
-        &mut self,
+// SAFETY: `allocate_pages` hands out exclusively-owned, page-aligned physical
+// frames; we never report a size we did not allocate and never alias frames.
+unsafe impl FrameAllocator for UefiFrameAlloc {
+    fn allocate(
+        &self,
         layout: Layout,
-        phys_offset: VirtualAddress,
-    ) -> FrameIterZeroed<'a, '_> {
-        FrameIterZeroed {
-            inner: self.allocate(layout),
-            phys_offset,
-        }
+    ) -> core::result::Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError>
+    {
+        let block = self.allocate_contiguous(layout)?;
+        Ok(iter::once(Range::from_start_len(block, layout.size())))
     }
 
-    pub fn allocate_contiguous(&mut self, layout: Layout) -> Result<PhysicalAddress, Error> {
-        let requested_size = layout.pad_to_align().size();
-        assert_eq!(
-            layout.align(),
-            arch::PAGE_SIZE,
-            "BootstrapAllocator only supports page-aligned allocations"
-        );
-        let mut offset = self.offset;
-
-        for region in self.regions.iter().rev() {
-            let region_size = region.len();
-
-            // only consider regions that we haven't already exhausted
-            if offset < region_size {
-                // Allocating a contiguous range has different requirements than "regular" allocation
-                // contiguous are rare and often happen in very critical paths where e.g. virtual
-                // memory is not available yet. So we rather waste some memory than outright crash.
-                if region_size - offset < requested_size {
-                    log::warn!(
-                        "Skipped memory region {region:?} since it was too small to fulfill request for {requested_size} bytes. Wasted {} bytes in the process...",
-                        region_size - offset
-                    );
-
-                    self.offset += region_size - offset;
-                    offset = 0;
-                    continue;
-                }
-
-                let frame = region.end.sub(offset + requested_size);
-                self.offset += requested_size;
-                return Ok(frame);
-            }
-
-            offset -= region_size;
-        }
-
-        Err(Error::NoMemory)
-    }
-
-    pub fn allocate_contiguous_zeroed(
-        &mut self,
+    fn allocate_contiguous(
+        &self,
         layout: Layout,
-        phys_offset: VirtualAddress,
-    ) -> Result<PhysicalAddress, Error> {
-        let requested_size = layout.pad_to_align().size();
-        let addr = self.allocate_contiguous(layout)?;
-        // Safety: we just allocated the frame
+    ) -> core::result::Result<PhysicalAddress, AllocError> {
+        assert!(layout.align() <= uefi::boot::PAGE_SIZE);
+
+        let pages = layout.pad_to_align().size().div_ceil(uefi::boot::PAGE_SIZE);
+        let ptr = uefi::boot::allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, pages)
+            .map_err(|_| AllocError)?;
+
+        // SAFETY: `allocate_pages` returned `pages` fresh, exclusively-owned pages,
+        // which is at least `layout.size()` writable bytes.
         unsafe {
-            ptr::write_bytes::<u8>(addr.add(phys_offset.get()).as_mut_ptr(), 0, requested_size);
+            ptr.write_bytes(0, layout.size());
         }
-        Ok(addr)
+        Ok(PhysicalAddress::new(ptr.addr().get()))
     }
-}
 
-pub struct FrameIter<'a, 'b> {
-    alloc: &'b mut FrameAllocator<'a>,
-    remaining: usize,
-}
+    unsafe fn deallocate(&self, block: PhysicalAddress, layout: Layout) {
+        assert!(layout.align() <= uefi::boot::PAGE_SIZE);
 
-impl<'a> FrameIter<'a, '_> {
-    pub fn alloc(&mut self) -> &mut FrameAllocator<'a> {
-        self.alloc
-    }
-}
+        let pages = layout.pad_to_align().size().div_ceil(uefi::boot::PAGE_SIZE);
+        let ptr = NonNull::dangling().with_addr(NonZero::new(block.get()).unwrap());
 
-impl FallibleIterator for FrameIter<'_, '_> {
-    type Item = Range<PhysicalAddress>;
-    type Error = Error;
-
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        if self.remaining > 0 {
-            let mut offset = self.alloc.offset;
-
-            for region in self.alloc.regions.iter().rev() {
-                // only consider regions that we haven't already exhausted
-                if let Some(allocatable_size) = region.len().checked_sub(offset)
-                    && allocatable_size >= arch::PAGE_SIZE
-                {
-                    let allocation_size = cmp::min(self.remaining, allocatable_size)
-                        & 0usize.wrapping_sub(arch::PAGE_SIZE);
-                    debug_assert!(allocation_size.is_multiple_of(arch::PAGE_SIZE));
-
-                    let frame = region.end.sub(offset + allocation_size);
-                    self.alloc.offset += allocation_size;
-                    self.remaining -= allocation_size;
-
-                    return Ok(Some(Range::from_start_len(frame, allocation_size)));
-                }
-
-                offset -= region.len();
-            }
-
-            Err(Error::NoMemory)
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-pub struct FrameIterZeroed<'a, 'b> {
-    inner: FrameIter<'a, 'b>,
-    phys_offset: VirtualAddress,
-}
-
-impl<'a> FrameIterZeroed<'a, '_> {
-    pub fn alloc(&mut self) -> &mut FrameAllocator<'a> {
-        self.inner.alloc
-    }
-}
-
-impl FallibleIterator for FrameIterZeroed<'_, '_> {
-    type Item = Range<PhysicalAddress>;
-    type Error = Error;
-
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let Some(range) = self.inner.next()? else {
-            return Ok(None);
-        };
-
-        // Safety: we just allocated the frame
-        unsafe {
-            ptr::write_bytes::<u8>(
-                self.phys_offset.add(range.start.get()).as_mut_ptr(),
-                0,
-                range.len(),
-            );
-        }
-
-        Ok(Some(range))
-    }
-}
-
-pub struct FreeRegions<'a> {
-    offset: usize,
-    inner: iter::Copied<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
-}
-
-impl Iterator for FreeRegions<'_> {
-    type Item = Range<PhysicalAddress>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let mut region = self.inner.next()?;
-            // keep advancing past already fully used memory regions
-            let region_size = region.len();
-
-            if self.offset >= region_size {
-                self.offset -= region_size;
-                continue;
-            } else if self.offset > 0 {
-                region.end = region.end.sub(self.offset);
-                self.offset = 0;
-            }
-
-            return Some(region);
-        }
-    }
-}
-
-pub struct UsedRegions<'a> {
-    offset: usize,
-    inner: iter::Copied<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
-}
-
-impl Iterator for UsedRegions<'_> {
-    type Item = Range<PhysicalAddress>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut region = self.inner.next()?;
-
-        if self.offset >= region.len() {
-            Some(region)
-        } else if self.offset > 0 {
-            region.start = region.end.sub(self.offset);
-            self.offset = 0;
-
-            Some(region)
-        } else {
-            None
-        }
+        // SAFETY: the caller guarantees `block`/`layout` denote a live allocation
+        // previously handed out by this allocator.
+        unsafe { uefi::boot::free_pages(ptr, pages).unwrap() }
     }
 }

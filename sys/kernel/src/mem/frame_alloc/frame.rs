@@ -15,7 +15,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 
 use cordyceps::{Linked, list};
-use mem_core::PhysicalAddress;
+use mem_core::{PhysMap, PhysicalAddress};
 use static_assertions::assert_impl_all;
 
 use crate::arch;
@@ -266,16 +266,16 @@ impl FrameInfo {
 
     /// Returns a slice of the corresponding physical memory
     #[inline]
-    pub fn as_slice(&self) -> &[u8] {
-        let base = arch::phys_to_virt(self.addr).as_ptr();
+    pub fn as_slice(&self, physmap: &PhysMap) -> &[u8] {
+        let base = physmap.phys_to_virt(self.addr).as_ptr();
         // Safety: construction ensures the base ptr is valid
         unsafe { slice::from_raw_parts(base, arch::PAGE_SIZE) }
     }
 
     /// Returns a mutable slice of the corresponding physical memory
     #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        let base = arch::phys_to_virt(self.addr).as_mut_ptr();
+    pub fn as_mut_slice(&mut self, physmap: &PhysMap) -> &mut [u8] {
+        let base = physmap.phys_to_virt(self.addr).as_mut_ptr();
         // Safety: construction ensures the base ptr is valid
         unsafe { slice::from_raw_parts_mut(base, arch::PAGE_SIZE) }
     }
