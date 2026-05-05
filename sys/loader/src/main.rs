@@ -47,29 +47,50 @@ pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// # Safety
-///
-/// The passed `opaque` ptr must point to a valid memory region.
-unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-    static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
-    let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
-
-    // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
-    // but there is no harm in that.
-    // Safety: there is no safety
-    unsafe {
-        log::trace!("activating MMU...");
-        arch::activate_aspace(res.root_pgtable);
-        log::trace!("activated.");
-    }
-
-    if let Some(alloc) = &res.maybe_tls_alloc {
-        alloc.initialize_for_hart(hartid);
-    }
-
-    // Safety: this will jump to the kernel entry
-    unsafe { arch::handoff_to_kernel(hartid, boot_ticks, res) }
+#[unsafe(no_mangle)]
+extern "C" fn __extendhfsf2(_: u16) -> f32 {
+    loop {}
 }
+#[unsafe(no_mangle)]
+extern "C" fn __truncsfhf2(_: f32) -> u16 {
+    loop {}
+}
+
+#[uefi::entry]
+fn main() -> uefi::Status {
+    use core::time::Duration;
+
+    use uefi::prelude::*;
+
+    uefi::helpers::init().unwrap();
+    log::info!("Hello world!");
+    boot::stall(Duration::from_secs(10));
+    Status::SUCCESS
+}
+
+// /// # Safety
+// ///
+// /// The passed `opaque` ptr must point to a valid memory region.
+// unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
+//     static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
+//     let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
+
+//     // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
+//     // but there is no harm in that.
+//     // Safety: there is no safety
+//     unsafe {
+//         log::trace!("activating MMU...");
+//         arch::activate_aspace(res.root_pgtable);
+//         log::trace!("activated.");
+//     }
+
+//     if let Some(alloc) = &res.maybe_tls_alloc {
+//         alloc.initialize_for_hart(hartid);
+//     }
+
+//     // Safety: this will jump to the kernel entry
+//     unsafe { arch::handoff_to_kernel(hartid, boot_ticks, res) }
+// }
 
 pub struct GlobalInitResult {
     boot_info: *mut loader_api::BootInfo,
