@@ -28,7 +28,7 @@ run target buck2_args="" *qemu_args="":
     {{ _buck2 }} build {{append("[check]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
 
 # run all lints and tests on a crate or the entire workspace.
-preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) buck2-audit cargo-deny reindeer-clean # (loom targets buck2_args)
+preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args) buck2-audit cargo-deny reindeer-clean
 
 # run linters on a crate or the entire workspace.
 lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
@@ -74,7 +74,7 @@ fuzz_args := ""
 
 # run fuzz tests for a crate or the entire workspace.
 fuzz targets="" *buck2_args:
-    {{ _buck2 }} test {{_uquery(_q_fuzz_tests(_targets_query(targets)))}} {{_platform_args}} {{if fuzz_args == "" { "" } else { "-- " + fuzz_args }}}
+    {{ _buck2 }} test {{_uquery(_q_fuzz_tests(_targets_query(targets)))}} {{_platform_args}} {{buck2_args}} {{if fuzz_args == "" { "" } else { "-- " + fuzz_args }}}
 
 # ===== formatting =====
 
@@ -116,17 +116,9 @@ benchmark targets="" *buck2_args:
 @cargo-deny:
     {{ _cargo_deny }} --manifest-path third-party/Cargo.toml check
 
-# Re-run reindeer and fail if third-party/BUCK (or any other reindeer-managed
-# file) is out of sync with third-party/Cargo.toml. Forces contributors to
-# commit the regenerated BUCK alongside any dep change.
-@reindeer-clean: buckify
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! git diff --quiet; then
-        echo "::error::reindeer output is stale — run 'just buckify' and commit the result" >&2
-        git diff --stat >&2
-        exit 1
-    fi
+# Fail if third-party/BUCK is out of sync with third-party/Cargo.toml.
+@reindeer-clean:
+    {{ _reindeer }} buckify --stdout | diff -u third-party/BUCK -
 
 # fail if any third-party rust_library has no first-party (transitive) consumer.
 @unused-third-party *buck2_args:
