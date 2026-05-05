@@ -54,6 +54,7 @@ pub fn init_early() {
         lateinit: OnceLock::new(),
     });
     ::log::set_logger(subscriber).unwrap();
+    ::log::set_max_level(::log::LevelFilter::Trace);
 }
 
 /// Fully initialize the subsystem, after this point tracing [`Span`]s will be processed as well.
