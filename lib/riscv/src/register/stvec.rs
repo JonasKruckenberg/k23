@@ -10,18 +10,19 @@
 use core::fmt;
 use core::fmt::Formatter;
 
-use super::{read_csr_as, set_csr};
+use super::{read_csr_as, write_csr};
 
 #[derive(Clone, Copy)]
 pub struct Stvec {
     bits: usize,
 }
 read_csr_as!(Stvec, 0x105);
-set_csr!(0x105);
+write_csr!(0x105);
 
 pub unsafe fn write(base: usize, mode: Mode) {
+    debug_assert_eq!(base & 0b11, 0, "stvec base must be 4-byte aligned");
     unsafe {
-        _set(base + mode as usize);
+        _write(base | mode as usize); // csrw: replaces the whole register
     }
 }
 
