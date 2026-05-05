@@ -16,10 +16,12 @@ use xmas_elf::program::{ProgramHeader, Type};
 use crate::error::Error;
 
 /// The inlined kernel
-static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
+// static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
+static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes([]);
+
 /// Wrapper type for the inlined bytes to ensure proper alignment
 #[repr(C, align(4096))]
-struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
+struct KernelBytes(pub [u8; 0]);
 
 /// The inlined kernel debuginfo.
 ///
