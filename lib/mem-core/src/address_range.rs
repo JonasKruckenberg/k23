@@ -50,7 +50,13 @@ macro_rules! impl_address_range {
             }
 
             fn len(&self) -> usize {
-                self.end.offset_from_unsigned(self.start)
+                // `offset_from_unsigned` panics when `end < start`; an empty or
+                // inverted range has length zero.
+                if self.start >= self.end {
+                    0
+                } else {
+                    self.end.offset_from_unsigned(self.start)
+                }
             }
 
             fn contains(&self, address: &Self::Address) -> bool {
@@ -106,6 +112,19 @@ mod test {
             let r: Range<VirtualAddress> = Range::from_start_len(VirtualAddress::new(0), len);
 
             proptest::prop_assert_eq!(len, AddressRangeExt::len(&r))
+        }
+
+        /// `len` must be total: an empty or inverted range (`start >= end`) has
+        /// length zero and must never panic via `offset_from_unsigned`.
+        #[test]
+        fn len_is_total(start: VirtualAddress, end: VirtualAddress) {
+            let r = Range::from(start..end);
+
+            if start >= end {
+                proptest::prop_assert_eq!(AddressRangeExt::len(&r), 0);
+            } else {
+                proptest::prop_assert_eq!(AddressRangeExt::len(&r), end.get() - start.get());
+            }
         }
     }
 }

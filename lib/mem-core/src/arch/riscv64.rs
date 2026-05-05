@@ -28,6 +28,10 @@ impl Riscv64Sv39 {
     pub const fn new(asid: u16) -> Riscv64Sv39 {
         Riscv64Sv39 { asid }
     }
+
+    pub const fn asid(&self) -> u16 {
+        self.asid
+    }
 }
 
 impl super::Arch for Riscv64Sv39 {

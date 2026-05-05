@@ -45,6 +45,11 @@ macro_rules! impl_address {
                 self.0
             }
 
+            #[inline]
+            pub const fn is_null(&self) -> bool {
+                self.0 == 0
+            }
+
             #[must_use]
             #[inline]
             pub fn from_ptr<T: ?Sized>(ptr: *const T) -> Self {
@@ -79,14 +84,20 @@ macro_rules! impl_address {
                     .map(::core::ptr::NonNull::with_exposed_provenance)
             }
 
-            /// Adds an unsigned offset to this address, panicking if overflow occurred.
+            /// Adds an unsigned offset to this address.
+            ///
+            /// Panics on overflow when overflow checks are enabled (the default in debug
+            /// builds); otherwise the result wraps around the address space.
             #[must_use]
             #[inline]
             pub const fn add(self, offset: usize) -> Self {
                 Self(self.0 + offset)
             }
 
-            /// Subtracts an unsigned offset from this address, panicking if overflow occurred.
+            /// Subtracts an unsigned offset from this address.
+            ///
+            /// Panics on overflow when overflow checks are enabled (the default in debug
+            /// builds); otherwise the result wraps around the address space.
             #[must_use]
             #[inline]
             pub const fn sub(self, offset: usize) -> Self {
@@ -126,14 +137,15 @@ macro_rules! impl_address {
                 Self(self.0.wrapping_add_signed(offset))
             }
 
-            /// Adds an unsigned offset to this address, wrapping around at the boundary of the type.
+            /// Adds an unsigned offset to this address, saturating at the numeric bounds
+            /// instead of overflowing.
             #[must_use]
             #[inline]
             pub const fn saturating_add(self, offset: usize) -> Self {
                 Self(self.0.saturating_add(offset))
             }
 
-            /// Adds an unsigned offset to this address, wrapping around at the boundary of the type.
+            /// Adds an unsigned offset to this address, returning `None` if overflow occurred.
             #[must_use]
             #[inline]
             pub const fn checked_add(self, offset: usize) -> Option<Self> {
@@ -184,7 +196,7 @@ macro_rules! impl_address {
             #[inline]
             pub const fn align_up(self, align: usize) -> Self {
                 if !align.is_power_of_two() {
-                    panic!("checked_align_up: align is not a power-of-two");
+                    panic!("align_up: align is not a power-of-two");
                 }
 
                 // SAFETY: `align` has been checked to be a power of 2 above
@@ -201,7 +213,7 @@ macro_rules! impl_address {
             #[inline]
             pub const fn align_down(self, align: usize) -> Self {
                 if !align.is_power_of_two() {
-                    panic!("checked_align_up: align is not a power-of-two");
+                    panic!("align_down: align is not a power-of-two");
                 }
 
                 let aligned = Self(self.0 & 0usize.wrapping_sub(align));
