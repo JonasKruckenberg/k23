@@ -14,10 +14,8 @@ use mem_core::{PhysicalAddress, VirtualAddress};
 use riscv::satp;
 
 use crate::GlobalInitResult;
-use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
-use crate::machine_info::MachineInfo;
-use crate::mapping::Flags;
+use crate::mapping::{Flags, TlsAllocation};
 
 pub const DEFAULT_ASID: u16 = 0;
 pub const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
@@ -69,10 +67,8 @@ unsafe extern "C" fn _start() -> ! {
         // Setup the stack pointer
         "la     t0, __stack_start", // set the stack pointer to the bottom of the stack
         "li     t1, {stack_size}",  // load the stack size
-        "mul    sp, a0, t1",        // multiply the stack size by the hart id to get the relative stack bottom offset
-        "add    t0, t0, sp",        // add the relative stack bottom offset to the absolute stack region offset to get
-                                    // the absolute stack bottom
-        "add    sp, t0, t1",        // add one stack size again to get to the top of the stack. This is our final stack pointer.
+        "add    sp, t0, t1",        // add the stack size to the stack start to get
+                                    // the stack top
 
         // fill stack with canary pattern
         // $sp is set to stack top above, $t0 as well
@@ -86,61 +82,6 @@ unsafe extern "C" fn _start() -> ! {
         "   sd      zero, 8(a3)",
         "   add     a3, a3, 16",
         "   blt     a3, a4, 0b",
-
-        // Call the rust entry point
-        "call {start_rust}",
-
-        // Loop forever.
-        // `start_rust` should never return, but in case it does prevent the hart from executing
-        // random code
-        "2:",
-        "   wfi",
-        "   j 2b",
-
-        stack_size = const crate::STACK_SIZE,
-        start_rust = sym crate::main,
-        fill_stack = sym fill_stack
-    }
-}
-
-/// Entry point for all secondary harts, this is essentially the same as [`_start`] but it doesn't
-/// attempt to zero out the BSS.
-///
-/// It will however transfer control to the common [`crate::main`] routine.
-#[unsafe(naked)]
-unsafe extern "C" fn _start_secondary() -> ! {
-    naked_asm! {
-        // read boot time stamp as early as possible
-        "rdtime a2",
-
-        // Clear return address and frame pointer
-        "mv     ra, zero",
-        "mv     s0, zero",
-
-        // Clear the gp register in case anything tries to use it.
-        "mv     gp, zero",
-
-        // Mask all interrupts in case the previous stage left them on.
-        "csrc   sstatus, 1 << 1",
-        "csrw   sie, zero",
-
-        // Reset the trap vector in case the previous stage left one installed.
-        "csrw   stvec, zero",
-
-        // Disable the MMU in case it was left on.
-        "csrw   satp, zero",
-
-        // Setup the stack pointer
-        "la     t0, __stack_start", // set the stack pointer to the bottom of the stack
-        "li     t1, {stack_size}",  // load the stack size
-        "mul    sp, a0, t1",        // multiply the stack size by the hart id to get the relative stack bottom offset
-        "add    t0, t0, sp",        // add the relative stack bottom offset to the absolute stack region offset to get
-                                    // the absolute stack bottom
-        "add    sp, t0, t1",        // add one stack size again to get to the top of the stack. This is our final stack pointer.
-
-        // fill stack with canary pattern
-        // $sp is set to stack top above, $t0 as well
-        "call   {fill_stack}",
 
         // Call the rust entry point
         "call {start_rust}",
@@ -182,25 +123,20 @@ unsafe extern "C" fn fill_stack() {
 
 /// This will hand off control over this CPU to the kernel. This is the last function executed in
 /// the loader and will never return.
-pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalInitResult) -> ! {
-    let stack = init.stacks_alloc.region_for_cpu(hartid);
+pub unsafe fn handoff_to_kernel(hartid: usize, init: &GlobalInitResult) -> ! {
+    let stack = init.stacks_alloc.region_for_boot_hart();
     let tls = init
         .maybe_tls_alloc
         .as_ref()
-        .map(|tls| tls.region_for_hart(hartid))
+        .map(TlsAllocation::region_for_boot_hart)
         .unwrap_or_default();
 
     log::debug!("Hart {hartid} Jumping to kernel...");
     log::trace!(
-        "Hart {hartid} entry: {}, arguments: a0={hartid} a1={:?} stack={stack:#x?} tls={tls:#x?}",
+        "Hart {hartid} entry: {}, arguments: a0={:?} stack={stack:#x?} tls={tls:#x?}",
         init.kernel_entry,
         init.boot_info
     );
-
-    // Synchronize all harts before jumping to the kernel.
-    // Technically this isn't really necessary, but debugging output gets horribly mangled if we don't
-    // and that's terrible for this critical transition
-    init.barrier.wait();
 
     // Safety: inline assembly
     unsafe {
@@ -224,9 +160,7 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
             "1:",
             "   wfi",
             "   j 1b",
-            in("a0") hartid,
-            in("a1") init.boot_info,
-            in("a2") boot_ticks,
+            in("a0") init.boot_info,
             in("t0") stack.start.get(),
             stack_top = in(reg) stack.end.get(),
             tls_start = in(reg) tls.start.get(),
@@ -235,34 +169,6 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
             options(noreturn)
         }
     }
-}
-
-/// Start all secondary harts on the system as reported by [`MachineInfo`].
-pub fn start_secondary_harts(boot_hart: usize, minfo: &MachineInfo) -> crate::Result<()> {
-    let start = minfo.hart_mask.trailing_zeros() as usize;
-    let end = (usize::BITS - minfo.hart_mask.leading_zeros()) as usize;
-    log::trace!("{start}..{end}");
-
-    for hartid in start..end {
-        // Don't try to start ourselves
-        if hartid == boot_hart {
-            continue;
-        }
-
-        log::trace!("[{boot_hart}] starting hart {hartid}...");
-        #[expect(
-            function_casts_as_integer,
-            reason = "SBI HSM_HART_START takes the secondary hart's entry point as an integer"
-        )]
-        riscv::sbi::hsm::hart_start(
-            hartid,
-            _start_secondary as usize,
-            minfo.fdt.as_ptr() as usize,
-        )
-        .map_err(Error::FailedToStartSecondaryHart)?;
-    }
-
-    Ok(())
 }
 
 pub unsafe fn map_contiguous(

@@ -16,25 +16,23 @@ mod provider;
 mod trap_handler;
 mod vmo;
 
-use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
+use core::fmt;
 use core::num::NonZeroUsize;
 use core::range::Range;
-use core::{fmt, slice};
 
 pub use address_space::{AddressSpace, Batch};
 pub use address_space_region::AddressSpaceRegion;
 pub use flush::Flush;
 use loader_api::BootInfo;
-use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use mem_core::{PhysicalAddress, VirtualAddress};
 pub use mmap::Mmap;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::{Mutex, OnceLock};
 pub use trap_handler::handle_page_fault;
 pub use vmo::Vmo;
-use xmas_elf::program::Type;
 
 use crate::arch;
 use crate::mem::frame_alloc::FrameAllocator;
@@ -57,7 +55,7 @@ pub fn init(
     frame_alloc: &'static FrameAllocator,
 ) -> crate::Result<()> {
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
-        let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
+        let (hw_aspace, _flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         // Safety: `init` is called during startup where the kernel address space is the only address space available
         let mut aspace = unsafe {
@@ -68,8 +66,7 @@ pub fn init(
             )
         };
 
-        reserve_wired_regions(&mut aspace, boot_info, &mut flush);
-        flush.flush().unwrap();
+        reserve_wired_regions(&mut aspace, boot_info);
 
         tracing::trace!("Kernel AddressSpace {aspace:?}");
 
@@ -79,70 +76,27 @@ pub fn init(
     Ok(())
 }
 
-fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush: &mut Flush) {
-    // reserve the physical memory map
+fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
     aspace
         .reserve(
-            boot_info.physical_memory_map,
-            Permissions::READ | Permissions::WRITE,
+            boot_info.physmap.range_virt(),
+            Permissions::empty(), // reserved entries should never fault anyway
             Some("Physical Memory Map".to_string()),
-            flush,
         )
         .unwrap();
 
-    // Safety: we have to trust the loaders BootInfo here
-    let own_elf = unsafe {
-        let base = boot_info
-            .physical_address_offset
-            .add(boot_info.kernel_phys.start.get())
-            .as_ptr();
-
-        slice::from_raw_parts(base, boot_info.kernel_phys.len())
-    };
-    let own_elf = xmas_elf::ElfFile::new(own_elf).unwrap();
-
-    for ph in own_elf.program_iter() {
-        if ph.get_type().unwrap() != Type::Load {
-            continue;
-        }
-
-        let virt = boot_info
-            .kernel_virt
-            .start
-            .add(usize::try_from(ph.virtual_addr()).unwrap());
-
-        let mut permissions = Permissions::empty();
-        if ph.flags().is_read() {
-            permissions |= Permissions::READ;
-        }
-        if ph.flags().is_write() {
-            permissions |= Permissions::WRITE;
-        }
-        if ph.flags().is_execute() {
-            permissions |= Permissions::EXECUTE;
-        }
-
-        assert!(
-            !permissions.contains(Permissions::WRITE | Permissions::EXECUTE),
-            "elf segment (virtual range {:#x}..{:#x}) is marked as write-execute",
-            ph.virtual_addr(),
-            ph.virtual_addr() + ph.mem_size()
-        );
-
-        aspace
-            .reserve(
-                Range {
-                    start: virt.align_down(arch::PAGE_SIZE),
-                    end: virt
-                        .add(usize::try_from(ph.mem_size()).unwrap())
-                        .align_up(arch::PAGE_SIZE),
-                },
-                permissions,
-                Some(format!("Kernel {permissions} Segment")),
-                flush,
-            )
-            .unwrap();
-    }
+    // The kernel image's mem_size as reported by the loader is byte-sized; round up to a page
+    // boundary so the reserve precondition holds.
+    let kernel_virt = Range::from(
+        boot_info.kernel_virt.start..boot_info.kernel_virt.end.align_up(arch::PAGE_SIZE),
+    );
+    aspace
+        .reserve(
+            kernel_virt,
+            Permissions::empty(), // reserved entries should never fault anyway
+            Some("Kernel Image".to_string()),
+        )
+        .unwrap();
 }
 
 bitflags::bitflags! {

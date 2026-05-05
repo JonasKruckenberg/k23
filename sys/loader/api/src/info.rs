@@ -5,16 +5,31 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::ops::{Deref, DerefMut};
+use core::fmt;
 use core::range::Range;
-use core::{fmt, slice};
 
-use mem_core::{PhysicalAddress, VirtualAddress};
+use arrayvec::ArrayVec;
+use human_bytes::HumanBytes;
+use mem_core::{PhysMap, PhysicalAddress, VirtualAddress};
+
+pub const BOOT_INFO_VERSION: u32 = 1;
+pub const MAX_MEMORY_REGIONS: usize = 128;
+
+pub type MemoryRegions = ArrayVec<MemoryRegion, { MAX_MEMORY_REGIONS }>;
 
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct BootInfo {
-    pub cpu_mask: usize,
+    pub version: u32,
+    pub boot_cpu_id: usize,
+    pub boot_ticks: u64,
+
+    pub fdt: Option<PhysicalAddress>,
+    pub acpi_rsdp: Option<PhysicalAddress>,
+    pub smbios3: Option<PhysicalAddress>,
+
+    pub rng_seed: [u8; 32],
+
     /// A map of the physical memory regions of the underlying machine.
     ///
     /// The loader parses this information from the firmware and also reports regions used
@@ -24,100 +39,44 @@ pub struct BootInfo {
     /// Note: Memory regions are *guaranteed* to not overlap and be sorted by their start address.
     /// But they might not be optimally packed, i.e. adjacent regions that could be merged are not.
     pub memory_regions: MemoryRegions,
-    /// Physical addresses can be converted to virtual addresses by adding this offset to them.
-    ///
-    /// The mapping of the physical memory allows to access arbitrary physical frames. Accessing
-    /// frames that are also mapped at other virtual addresses can easily break memory safety and
-    /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
-    /// can be safely accessed.
-    pub physical_address_offset: VirtualAddress,
-    pub physical_memory_map: Range<VirtualAddress>,
-    /// The thread local storage (TLS) template of the kernel executable, if present.
-    pub tls_template: Option<TlsTemplate>,
+
     /// Virtual address of the loaded kernel image.
     pub kernel_virt: Range<VirtualAddress>,
-    /// Physical memory region where the (stripped) kernel ELF file resides.
-    ///
-    /// This field can be used by the kernel to perform introspection of its own ELF file.
-    pub kernel_phys: Range<PhysicalAddress>,
+    /// The thread local storage (TLS) template of the kernel executable.
+    pub tls_template: TlsTemplate,
     /// Physical memory region where the kernel's debuginfo ELF resides.
     ///
     /// Contains the `.symtab` and `.debug_*` sections stripped from the runnable kernel
-    /// image. Reachable via [`Self::physical_address_offset`].
-    pub kernel_debuginfo_phys: Range<PhysicalAddress>,
+    /// image.
+    pub kernel_debuginfo_phys: Option<Range<PhysicalAddress>>,
 
-    pub rng_seed: [u8; 32],
+    /// Trampoline that was identity-mapped into the kernel address space for handoff.
+    /// Can safely be unmapped and reused by the kernel.
+    pub handoff_trampoline_virt: Range<VirtualAddress>,
+
+    pub physmap: PhysMap,
 }
-// Safety: `BootInfo` is handed off from the loader to the kernel, which then has exclusive
-// ownership. Pointers inside `MemoryRegions` are not aliased when the loader is gone.
-unsafe impl Send for BootInfo {}
-// Safety: `BootInfo` is handed off from the loader to the kernel, which then has exclusive
-// ownership. Pointers inside `MemoryRegions` are not aliased when the loader is gone.
-unsafe impl Sync for BootInfo {}
 
 impl BootInfo {
     /// Create a new boot info structure with the given memory map.
     ///
     /// The other fields are initialized with default values.
-    pub fn new(memory_regions: MemoryRegions) -> Self {
+    pub fn new(physmap: PhysMap) -> Self {
         Self {
-            memory_regions,
-            cpu_mask: 0,
-            physical_address_offset: VirtualAddress::default(),
-            physical_memory_map: Range::default(),
-            tls_template: None,
-            kernel_virt: Range::default(),
-            kernel_phys: Range::default(),
-            kernel_debuginfo_phys: Range::default(),
+            version: BOOT_INFO_VERSION,
+            boot_cpu_id: 0,
+            boot_ticks: 0,
+            fdt: None,
+            acpi_rsdp: None,
+            smbios3: None,
             rng_seed: [0; 32],
+            memory_regions: ArrayVec::new(),
+            kernel_virt: Range::default(),
+            tls_template: TlsTemplate::default(),
+            kernel_debuginfo_phys: None,
+            handoff_trampoline_virt: Range::default(),
+            physmap,
         }
-    }
-}
-
-/// FFI-safe slice of [`MemoryRegion`] structs, semantically equivalent to
-/// `&'static mut [MemoryRegion]`.
-///
-/// This type implements the [`Deref`][core::ops::Deref] and [`DerefMut`][core::ops::DerefMut]
-/// traits, so it can be used like a `&mut [MemoryRegion]` slice. It also implements [`From`]
-/// and [`Into`] for easy conversions from and to `&'static mut [MemoryRegion]`. This is the
-/// ONLY way to construct it: `(ptr, len)` must always describe a valid `&'static mut [MemoryRegion]`.
-#[derive(Debug)]
-#[repr(C)]
-pub struct MemoryRegions {
-    pub(crate) ptr: *mut MemoryRegion,
-    pub(crate) len: usize,
-}
-
-impl Deref for MemoryRegions {
-    type Target = [MemoryRegion];
-
-    fn deref(&self) -> &Self::Target {
-        // Safety: see invariant on `MemoryRegions`.
-        unsafe { slice::from_raw_parts(self.ptr, self.len) }
-    }
-}
-
-impl DerefMut for MemoryRegions {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        // Safety: see invariant on `MemoryRegions`.
-        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
-    }
-}
-
-impl From<&'static mut [MemoryRegion]> for MemoryRegions {
-    fn from(regions: &'static mut [MemoryRegion]) -> Self {
-        MemoryRegions {
-            ptr: regions.as_mut_ptr(),
-            len: regions.len(),
-        }
-    }
-}
-
-impl From<MemoryRegions> for &'static mut [MemoryRegion] {
-    fn from(regions: MemoryRegions) -> &'static mut [MemoryRegion] {
-        // Safety: `MemoryRegions` is created from `&'static mut [MemoryRegion]`
-        // we can therefore always reconstitute the original type from its parts.
-        unsafe { slice::from_raw_parts_mut(regions.ptr, regions.len) }
     }
 }
 
@@ -138,14 +97,10 @@ pub struct MemoryRegion {
 #[non_exhaustive]
 #[repr(C)]
 pub enum MemoryRegionKind {
+    /// Memory in which errors have been detected or which is otherwise unusable.
+    Unusable,
     /// Unused conventional memory, can be used by the kernel.
     Usable,
-    /// Memory mappings created by the loader, including the page table and boot info mappings.
-    ///
-    /// This memory should _not_ be used by the kernel.
-    Loader,
-    /// The memory region containing the flattened device tree (FDT).
-    FDT,
 }
 
 impl MemoryRegionKind {
@@ -156,52 +111,67 @@ impl MemoryRegionKind {
 
 impl fmt::Display for BootInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "{:<23} : {}",
-            "PHYSICAL ADDRESS OFFSET", self.physical_address_offset
-        )?;
-        writeln!(
-            f,
-            "{:<23} : {}..{}",
-            "PHYSICAL MEMORY MAP", self.physical_memory_map.start, self.physical_memory_map.end
-        )?;
+        writeln!(f, "{:<23} : {:?}", "PHYSICAL MEMORY MAP", self.physmap)?;
+
+        writeln!(f, "{:<23} : {}", "BOOT CPU ID", self.boot_cpu_id)?;
+        writeln!(f, "{:<23} : {}", "BOOT TICKS", self.boot_ticks)?;
+
+        if let Some(fdt) = &self.fdt {
+            writeln!(f, "{:<23} : {}", "FDT", fdt)?;
+        } else {
+            writeln!(f, "{:<23} : None", "FDT")?;
+        }
+
+        if let Some(acpi_rsdp) = &self.acpi_rsdp {
+            writeln!(f, "{:<23} : {}", "ACPI RDSP", acpi_rsdp)?;
+        } else {
+            writeln!(f, "{:<23} : None", "ACPI RDSP")?;
+        }
+
+        if let Some(smbios3) = &self.smbios3 {
+            writeln!(f, "{:<23} : {}", "SMBIOS", smbios3)?;
+        } else {
+            writeln!(f, "{:<23} : None", "SMBIOS")?;
+        }
+
         writeln!(
             f,
             "{:<23} : {}..{}",
             "KERNEL VIRT", self.kernel_virt.start, self.kernel_virt.end
         )?;
-        writeln!(
-            f,
-            "{:<23} : {}..{}",
-            "KERNEL PHYS", self.kernel_phys.start, self.kernel_phys.end
-        )?;
-        writeln!(
-            f,
-            "{:<23} : {}..{}",
-            "KERNEL DEBUGINFO PHYS",
-            self.kernel_debuginfo_phys.start,
-            self.kernel_debuginfo_phys.end
-        )?;
-        if let Some(tls) = self.tls_template.as_ref() {
+
+        if let Some(kernel_debuginfo_phys) = &self.kernel_debuginfo_phys {
             writeln!(
                 f,
-                "{:<23} : .tdata: {:?}..{:?}, .tbss: {:?}..{:?}",
-                "TLS TEMPLATE",
-                tls.start_addr,
-                tls.start_addr.add(tls.file_size),
-                tls.start_addr.add(tls.file_size),
-                tls.start_addr.add(tls.file_size + tls.mem_size)
+                "{:<23} : {}..{}",
+                "KERNEL DEBUGINFO PHYS", kernel_debuginfo_phys.start, kernel_debuginfo_phys.end
             )?;
         } else {
-            writeln!(f, "{:<23} : None", "TLS TEMPLATE")?;
-            for (idx, region) in self.memory_regions.iter().enumerate() {
-                writeln!(
-                    f,
-                    "MEMORY REGION {:<10}: {}..{} {:?}",
-                    idx, region.range.start, region.range.end, region.kind,
-                )?;
-            }
+            writeln!(f, "{:<23} : None", "KERNEL DEBUGINFO PHYS")?;
+        }
+
+        let tls = &self.tls_template;
+        writeln!(
+            f,
+            "{:<23} : .tdata: {}..{}, .tbss: {}..{}",
+            "TLS TEMPLATE",
+            tls.image_offset,
+            tls.image_offset + tls.file_size,
+            tls.image_offset + tls.file_size,
+            tls.image_offset + tls.file_size + tls.mem_size
+        )?;
+        for (idx, region) in self.memory_regions.iter().enumerate() {
+            let size = region.range.end.offset_from_unsigned(region.range.start);
+
+            writeln!(
+                f,
+                "MEMORY REGION {:<10}: {}..{} ({:<10}) {:?}",
+                idx,
+                region.range.start,
+                region.range.end,
+                HumanBytes::from(size),
+                region.kind,
+            )?;
         }
 
         Ok(())
@@ -209,10 +179,10 @@ impl fmt::Display for BootInfo {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TlsTemplate {
-    /// The address of TLS template
-    pub start_addr: VirtualAddress,
+    /// The offset into the in-memory kernel image where TLS template lives
+    pub image_offset: usize,
     /// The size of the TLS segment in memory
     pub mem_size: usize,
     /// The size of the TLS segment in the elf file.

@@ -16,7 +16,6 @@ use arrayvec::ArrayVec;
 use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use spin::{Barrier, OnceLock};
 
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
@@ -24,7 +23,7 @@ use crate::frame_alloc::FrameAllocator;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::mapping::{
-    StacksAllocation, TlsAllocation, identity_map_self, map_kernel, map_kernel_stacks,
+    StacksAllocation, TlsAllocation, identity_map_self, map_boot_hart_stack, map_kernel,
     map_physical_memory,
 };
 
@@ -49,8 +48,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 ///
 /// The passed `opaque` ptr must point to a valid memory region.
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-    static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
-    let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
+    let res = do_global_init(hartid, opaque, boot_ticks);
 
     // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
     // but there is no harm in that.
@@ -62,11 +60,11 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     }
 
     if let Some(alloc) = &res.maybe_tls_alloc {
-        alloc.initialize_for_hart(hartid);
+        alloc.initialize_for_boot_hart();
     }
 
     // Safety: this will jump to the kernel entry
-    unsafe { arch::handoff_to_kernel(hartid, boot_ticks, res) }
+    unsafe { arch::handoff_to_kernel(hartid, &res) }
 }
 
 pub struct GlobalInitResult {
@@ -75,7 +73,6 @@ pub struct GlobalInitResult {
     root_pgtable: PhysicalAddress,
     stacks_alloc: StacksAllocation,
     maybe_tls_alloc: Option<TlsAllocation>,
-    barrier: Barrier,
 }
 
 // Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
@@ -83,21 +80,27 @@ unsafe impl Send for GlobalInitResult {}
 // Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
 unsafe impl Sync for GlobalInitResult {}
 
-fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
+fn do_global_init(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> GlobalInitResult {
     logger::init(LOG_LEVEL.to_level_filter());
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
 
-    arch::start_secondary_harts(hartid, &minfo).unwrap();
+    // Single-CPU at handoff is the current contract: leave secondary harts parked in firmware
+    // so only the boot hart enters the kernel.
+    let _ = hartid;
 
-    let self_regions = SelfRegions::collect(&minfo);
+    let self_regions = SelfRegions::collect();
     log::debug!("{self_regions:#x?}");
 
     let fdt_phys = Range::from_start_len(
         PhysicalAddress::from_ptr(minfo.fdt.as_ptr()),
         minfo.fdt.len(),
     );
+
+    // Mirror `map_physical_memory`'s coverage: align the machine's memory hull to the L2 page
+    // boundary so the kernel can re-derive the same translation when building its `PhysMap`.
+    let phys_hull = minfo.memory_hull().align_out(arch::page_size_for_level(2));
 
     // Initialize the frame allocator
     let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys);
@@ -131,7 +134,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     //
     // This will be used by the kernel to access the page tables, BootInfo struct and maybe
     // more in the future.
-    let (phys_off, phys_map) =
+    let (phys_off, _phys_map) =
         map_physical_memory(root_pgtable, &mut frame_alloc, &mut page_alloc, &minfo).unwrap();
 
     // Activate the MMU with the address space we have built so far.
@@ -153,18 +156,16 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         &mut frame_alloc,
         &mut page_alloc,
         &kernel,
-        &minfo,
         phys_off,
     )
     .unwrap();
 
     log::trace!("KASLR: Kernel image at {:?}", kernel_virt.start);
 
-    let stacks_alloc = map_kernel_stacks(
+    let stacks_alloc = map_boot_hart_stack(
         root_pgtable,
         &mut frame_alloc,
         &mut page_alloc,
-        &minfo,
         usize::try_from(kernel._loader_config.kernel_stack_size_pages).unwrap(),
         phys_off,
     )
@@ -176,17 +177,20 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         (frame_usage * arch::PAGE_SIZE) / 1024,
     );
 
+    let physmap = mem_core::PhysMap::new(
+        arch::KERNEL_ASPACE_BASE.add(phys_hull.start.get()),
+        [phys_hull],
+    );
+
     let boot_info = prepare_boot_info(
         frame_alloc,
-        phys_off,
-        phys_map,
+        physmap,
         kernel_virt,
         maybe_tls_alloc.as_ref().map(|alloc| alloc.template.clone()),
-        Range::from(self_regions.executable.start..self_regions.read_write.end),
-        kernel.phys_range(),
         kernel.debuginfo_phys_range(),
         fdt_phys,
-        minfo.hart_mask,
+        hartid,
+        boot_ticks,
         rng_seed,
     )
     .unwrap();
@@ -201,7 +205,6 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         root_pgtable,
         maybe_tls_alloc,
         stacks_alloc,
-        barrier: Barrier::new(minfo.hart_mask.count_ones() as usize),
     }
 }
 
@@ -213,7 +216,7 @@ struct SelfRegions {
 }
 
 impl SelfRegions {
-    pub fn collect(minfo: &MachineInfo) -> Self {
+    pub fn collect() -> Self {
         unsafe extern "C" {
             static __text_start: u8;
             static __text_end: u8;
@@ -234,8 +237,7 @@ impl SelfRegions {
             },
             read_write: Range {
                 start: PhysicalAddress::from_ptr(&raw const __bss_start),
-                end: PhysicalAddress::from_ptr(&raw const __stack_start)
-                    .add(minfo.hart_mask.count_ones() as usize * STACK_SIZE),
+                end: PhysicalAddress::from_ptr(&raw const __stack_start).add(STACK_SIZE),
             },
         }
     }

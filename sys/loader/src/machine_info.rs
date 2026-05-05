@@ -9,7 +9,6 @@ use core::cmp::Ordering;
 use core::ffi::{CStr, c_void};
 use core::fmt::Formatter;
 use core::range::Range;
-use core::str::FromStr;
 use core::{fmt, mem};
 
 use arrayvec::ArrayVec;
@@ -29,11 +28,6 @@ pub struct MachineInfo<'dt> {
     pub memories: ArrayVec<Range<PhysicalAddress>, 16>,
     /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
-    /// A bitfield where each bit corresponds to a CPU in the system.
-    /// A `1` bit indicates the CPU is "online" and can be used,
-    ///     while a `0` bit indicates the CPU is "offline" and can't be used by the system.
-    /// This is used across SBI calls to dispatch IPIs to the correct CPUs.
-    pub hart_mask: usize,
 }
 
 impl MachineInfo<'_> {
@@ -48,7 +42,6 @@ impl MachineInfo<'_> {
 
         let mut memories: ArrayVec<Range<PhysicalAddress>, 16> = ArrayVec::new();
         let mut reserved_memory: ArrayVec<Range<PhysicalAddress>, 16> = ArrayVec::new();
-        let mut hart_mask = 0;
         let mut rng_seed = None;
 
         let mut stack: [Option<(&str, CellSizes)>; 16] = [const { None }; 16];
@@ -61,18 +54,7 @@ impl MachineInfo<'_> {
         while let Some((depth, node)) = iter.next()? {
             let name = node.name()?;
 
-            if name.name == "cpu"
-                && let Some(hartid) = name
-                    .unit_address
-                    .and_then(|addr| usize::from_str(addr).ok())
-            {
-                // if the node is a CPU check its availability and populate the hart_mask
-                let available = find_cstr_property(node.properties(), "status")? == Some(c"okay");
-
-                if available {
-                    hart_mask |= 1 << hartid;
-                }
-            } else if name.name == "memory"
+            if name.name == "memory"
                 && find_cstr_property(node.properties(), "device_type")? == Some(c"memory")
             {
                 // if the node is a memory node, add it to the list of available memory regions
@@ -181,7 +163,6 @@ impl MachineInfo<'_> {
             fdt: fdt_slice,
             memories,
             rng_seed,
-            hart_mask,
         })
     }
 
@@ -215,7 +196,6 @@ impl fmt::Display for MachineInfo<'_> {
         } else {
             writeln!(f, "{:<17} : None", "PRNG SEED")?;
         }
-        writeln!(f, "{:<17} : {:b}", "HART MASK", self.hart_mask)?;
 
         for (idx, r) in self.memories.iter().enumerate() {
             writeln!(f, "MEMORY REGION {:<4}: {}..{}", idx, r.start, r.end)?;

@@ -71,12 +71,14 @@ impl BacktraceInfo {
             //
             // Safety: we have to trust the loaders BootInfo here
             debuginfo: unsafe {
+                let kernel_debuginfo_phys = boot_info.kernel_debuginfo_phys.unwrap();
+
                 let base = boot_info
-                    .physical_address_offset
-                    .add(boot_info.kernel_debuginfo_phys.start.get())
+                    .physmap
+                    .phys_to_virt(kernel_debuginfo_phys.start)
                     .as_ptr();
 
-                slice::from_raw_parts(base, boot_info.kernel_debuginfo_phys.len())
+                slice::from_raw_parts(base, kernel_debuginfo_phys.len())
             },
             symbolize_context: OnceLock::new(),
             backtrace_style,

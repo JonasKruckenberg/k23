@@ -14,6 +14,7 @@ use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
 use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Error, Fdt, NodeName, StringList};
+use mem_core::VirtualAddress;
 use smallvec::{SmallVec, smallvec};
 
 /// Handle to a [`Device`] record in a [`DeviceTree`]. `NonZeroU32` so that
@@ -220,11 +221,15 @@ impl fmt::Debug for DeviceTree {
 
 impl DeviceTree {
     /// Parse the given flattened device tree blob.
-    pub fn parse(fdt: &[u8]) -> crate::Result<Self> {
-        // Safety: u32 has no invalid bit patterns
-        let (left, aligned, _) = unsafe { fdt.align_to::<u32>() };
-        assert!(left.is_empty()); // TODO decide what to do with unaligned slices
-        let fdt = Fdt::new(aligned)?;
+    ///
+    /// # Safety
+    ///
+    /// 1. The caller must ensure that `ptr` is a valid address of a flattened device tree.
+    /// 2. The caller must ensure that `ptr` is correctly `u32`-aligned.
+    pub unsafe fn from_fdt(ptr: VirtualAddress) -> crate::Result<Self> {
+        // Safety: ensured by caller
+        #[expect(clippy::cast_ptr_alignment, reason = "ensured by caller")]
+        let fdt = unsafe { Fdt::from_ptr(ptr.as_ptr().cast::<u32>())? };
 
         let bump = Bump::new();
         let mut b = Builder::new(&bump);

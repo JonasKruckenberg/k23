@@ -26,7 +26,7 @@ use rand_chacha::ChaCha20Rng;
 use crate::arch;
 use crate::mem::address_space_region::AddressSpaceRegion;
 use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::{ArchAddressSpace, Flush, PageFaultFlags, Permissions};
+use crate::mem::{ArchAddressSpace, PageFaultFlags, Permissions};
 
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
 const VIRT_ALLOC_ENTROPY: u8 = 27;
@@ -391,7 +391,6 @@ impl AddressSpace {
         range: Range<VirtualAddress>,
         permissions: Permissions,
         name: Option<String>,
-        flush: &mut Flush,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
@@ -411,27 +410,6 @@ impl AddressSpace {
 
         let region = AddressSpaceRegion::new_wired(range, permissions, name);
         let region = self.regions.insert(Box::pin(region));
-
-        // eagerly materialize any possible changes, we do this eagerly for the entire range here
-        // since `reserve` will only be called for kernel memory setup by the loader. For which it is
-        // critical that the MMUs and our "logical" view are in sync.
-        if permissions.is_empty() {
-            // Safety: we checked all invariants above
-            unsafe {
-                self.arch
-                    .unmap(range.start, NonZeroUsize::new(range.len()).unwrap(), flush)?;
-            }
-        } else {
-            // Safety: we checked all invariants above
-            unsafe {
-                self.arch.update_flags(
-                    range.start,
-                    NonZeroUsize::new(range.len()).unwrap(),
-                    permissions.into(),
-                    flush,
-                )?;
-            }
-        }
 
         Ok(region)
     }

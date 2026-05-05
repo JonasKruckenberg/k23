@@ -18,6 +18,8 @@
 //! [`Flag`] via [`Flag::consume`], mirroring the dispatch loop in
 //! [`crate::shell`].
 
+use core::num::NonZeroUsize;
+
 use anyhow::{Context, anyhow};
 
 use crate::backtrace::BacktraceStyle;
@@ -43,7 +45,9 @@ pub fn parse(devtree: &DeviceTree) -> crate::Result<Bootargs> {
         } else if let Some(v) = BACKTRACE.consume(tok, &mut tokens) {
             bootargs.backtrace = v.parse().context(BACKTRACE.name)?;
         } else if let Some(v) = HEAP_MAX.consume(tok, &mut tokens) {
-            bootargs.heap_max = Some(parse_size(v).context(HEAP_MAX.name)?);
+            let size = parse_size(v).context(HEAP_MAX.name)?;
+            let size = NonZeroUsize::new(size).context("`--heap-max` cannot be zero")?;
+            bootargs.heap_max = Some(size);
         }
     }
 
@@ -66,7 +70,7 @@ pub struct Bootargs {
     pub log: Filter,
     pub backtrace: BacktraceStyle,
     /// Hard cap on the kernel heap, in bytes. `None` means use the built-in default.
-    pub heap_max: Option<usize>,
+    pub heap_max: Option<NonZeroUsize>,
 }
 
 /// A bootarg flag declaration. Built with the const-builder, e.g.

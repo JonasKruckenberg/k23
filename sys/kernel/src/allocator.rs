@@ -14,6 +14,7 @@
 //! `KERNEL_ASPACE` (mapping into the kernel address space itself allocates from the heap).
 
 use core::alloc::Layout;
+use core::num::NonZeroUsize;
 use core::range::Range;
 
 use arrayvec::ArrayVec;
@@ -168,19 +169,18 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
             .unwrap();
 
     let phys = boot_alloc.allocate_contiguous(layout).unwrap();
+
     let virt: Range<VirtualAddress> = {
-        let start = boot_info.physical_address_offset.add(phys.get());
+        let start = boot_info.physmap.phys_to_virt(phys);
         Range::from_start_len(start, layout.size())
     };
-    tracing::debug!("Kernel Heap: {virt:#x?}");
+    log::debug!("Kernel Heap: {virt:#x?} {phys:?}");
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
 
     // Safety: just allocated the memory region. The compile-time assertion at the top of
     // this module guarantees the initial heap is large enough for talc's first-claim metadata.
-    unsafe {
-        alloc.claim(virt.start.as_mut_ptr(), virt.len()).unwrap();
-    }
+    unsafe { alloc.claim(virt.start.as_mut_ptr(), virt.len()).unwrap() };
 
     // Safety: `chunks` is empty and `MAX_HEAP_CHUNKS >= 1`.
     unsafe {
@@ -197,9 +197,9 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
 ///
 /// Must be called after `frame_alloc::init`. `heap_max_bytes` is the value of the `--heap-max`
 /// bootarg in bytes, or `None` to use the default cap.
-pub fn late_init(fa: &'static FrameAllocator, heap_max_bytes: Option<usize>) {
+pub fn late_init(fa: &'static FrameAllocator, heap_max_bytes: Option<NonZeroUsize>) {
     let max_total_pages = match heap_max_bytes {
-        Some(bytes) => bytes / arch::PAGE_SIZE,
+        Some(bytes) => bytes.get() / arch::PAGE_SIZE,
         None => HEAP_DEFAULT_MAX_PAGES,
     };
 

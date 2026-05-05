@@ -12,9 +12,8 @@ use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ptr::NonNull;
-use core::range::Range;
 use core::sync::atomic::AtomicUsize;
-use core::{cmp, fmt, iter, slice};
+use core::{cmp, fmt, slice};
 
 use arena::{Arena, select_arenas};
 use cordyceps::list::List;
@@ -36,9 +35,9 @@ pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 
 pub fn init(
     boot_alloc: BootstrapAllocator,
-    fdt_region: Range<PhysicalAddress>,
+    physical_memory_regions: loader_api::MemoryRegions,
 ) -> &'static FrameAllocator {
-    FRAME_ALLOC.get_or_init(|| FrameAllocator::new(boot_alloc, fdt_region))
+    FRAME_ALLOC.get_or_init(|| FrameAllocator::new(boot_alloc, physical_memory_regions))
 }
 
 #[derive(Debug)]
@@ -72,15 +71,14 @@ pub struct AllocError;
 // === impl FrameAllocator ===
 
 impl FrameAllocator {
-    pub fn new(boot_alloc: BootstrapAllocator, fdt_region: Range<PhysicalAddress>) -> Self {
+    pub fn new(
+        _boot_alloc: BootstrapAllocator,
+        physical_memory_regions: loader_api::MemoryRegions,
+    ) -> Self {
         let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();
 
-        let phys_regions = boot_alloc
-            .free_regions()
-            .chain(iter::once(fdt_region))
-            .collect();
-        for selection_result in select_arenas(phys_regions).iterator() {
+        for selection_result in select_arenas(physical_memory_regions).iterator() {
             match selection_result {
                 Ok(selection) => {
                     tracing::trace!("selection {selection:?}");
