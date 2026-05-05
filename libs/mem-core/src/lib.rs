@@ -4,12 +4,13 @@
 #![feature(debug_closure_helpers)]
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
-extern crate core;
+#![feature(new_range_api)]
 
 mod address;
 mod address_range;
 mod address_space;
 pub mod arch;
+mod bootstrap;
 mod flush;
 mod frame_allocator;
 mod memory_attributes;
@@ -23,6 +24,7 @@ pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_range::AddressRangeExt;
 pub use address_space::HardwareAddressSpace;
 pub use arch::Arch;
+pub use bootstrap::Bootstrap;
 pub use flush::Flush;
 pub use frame_allocator::{AllocError, BumpAllocator, DEFAULT_MAX_REGIONS, FrameAllocator};
 pub use memory_attributes::{MemoryAttributes, WriteOrExecute};

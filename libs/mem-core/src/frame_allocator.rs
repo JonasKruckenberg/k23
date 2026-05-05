@@ -2,7 +2,7 @@ mod bump;
 
 use core::alloc::Layout;
 use core::fmt;
-use core::ops::Range;
+use core::range::Range;
 
 pub use bump::{BumpAllocator, DEFAULT_MAX_REGIONS};
 

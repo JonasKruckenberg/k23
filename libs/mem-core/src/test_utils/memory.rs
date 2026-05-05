@@ -1,7 +1,7 @@
 use std::alloc::{Allocator, Layout};
 use std::collections::BTreeMap;
-use std::ops::Range;
 use std::ptr::NonNull;
+use std::range::Range;
 use std::{fmt, mem};
 
 use crate::arch::Arch;
@@ -29,7 +29,7 @@ impl Memory {
                 let region = std::alloc::System.allocate(layout).unwrap();
 
                 // Safety: we just allocated the ptr, we know it is valid
-                let Range { start, end } = unsafe { region.as_ref() }.as_ptr_range();
+                let core::ops::Range { start, end } = unsafe { region.as_ref() }.as_ptr_range();
 
                 (
                     PhysicalAddress::from_ptr(end),
@@ -42,7 +42,10 @@ impl Memory {
     }
 
     pub fn regions(&self) -> impl Iterator<Item = Range<PhysicalAddress>> {
-        self.regions.iter().map(|(end, (start, _, _))| *start..*end)
+        self.regions.iter().map(|(end, (start, _, _))| Range {
+            start: *start,
+            end: *end,
+        })
     }
 
     fn get_region_containing(

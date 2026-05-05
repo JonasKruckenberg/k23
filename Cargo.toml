@@ -29,7 +29,9 @@ kabort = { path = "libs/abort" }
 kpanic-unwind = { path = "libs/panic-unwind" }
 kutil = { path = "libs/util" }
 kasync = { path = "libs/async" }
+kmem = { path = "libs/mem" }
 kmem-core = { path = "libs/mem-core" }
+kmem-aslr = { path = "libs/mem-aslr" }
 karrayvec = { path = "libs/arrayvec" }
 range-tree  = { path = "libs/range-tree" }
 

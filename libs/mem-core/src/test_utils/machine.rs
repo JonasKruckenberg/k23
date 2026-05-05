@@ -2,14 +2,13 @@ use std::alloc::Layout;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
-use std::ops::Range;
+use std::range::Range;
 use std::sync::Arc;
 use std::{cmp, fmt};
 
 use karrayvec::ArrayVec;
 use kcpu_local::collection::CpuLocal;
 
-use crate::address_space::Active;
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::frame_allocator::BumpAllocator;
 use crate::test_utils::arch::EmulateArch;
@@ -58,7 +57,7 @@ impl<A: Arch> Machine<A> {
         &self,
         physmap_start: VirtualAddress,
     ) -> (
-        HardwareAddressSpace<EmulateArch<A>, Active>,
+        HardwareAddressSpace<EmulateArch<A>>,
         BumpAllocator<parking_lot::RawMutex>,
         PhysMap,
     ) {
@@ -414,7 +413,10 @@ impl<A: Arch> Cpu<A> {
 
         self.reload_map(
             asid,
-            VirtualAddress::MIN..VirtualAddress::MAX.align_down(A::GRANULE_SIZE),
+            Range {
+                start: VirtualAddress::MIN,
+                end: VirtualAddress::MAX.align_down(A::GRANULE_SIZE),
+            },
             0,
             self.page_table.unwrap(),
             memory,
@@ -457,7 +459,6 @@ pub struct MissingMemory;
 pub struct HasMemory;
 
 pub struct MachineBuilder<A: Arch, Mem> {
-    // under_construction: HardwareAddressSpace<A, Bootstrapping>,
     memory: Option<Memory>,
     _has: PhantomData<Mem>,
     _m: PhantomData<A>,

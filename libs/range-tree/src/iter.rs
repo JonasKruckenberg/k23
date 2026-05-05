@@ -407,6 +407,15 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Gaps<'a, I, V, A> {
     }
 }
 
+impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Gaps<'a, I, V, A> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            prev_end: self.prev_end,
+        }
+    }
+}
+
 fn is_empty<I>(gap: impl RangeBounds<I>) -> bool
 where
     I: RangeTreeIndex,

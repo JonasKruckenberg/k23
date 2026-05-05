@@ -1,7 +1,7 @@
 pub mod riscv64;
 
 use core::alloc::Layout;
-use core::ops::Range;
+use core::range::Range;
 use core::{fmt, ptr, slice};
 
 use crate::{MemoryAttributes, PhysicalAddress, VirtualAddress};
