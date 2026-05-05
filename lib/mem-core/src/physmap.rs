@@ -181,6 +181,8 @@ mod tests {
     };
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(if cfg!(miri) { 25 } else { 250 }))]
+
         #[test]
         fn single_region(base in aligned_virt(any::<VirtualAddress>(), 1*GIB), region_start in aligned_phys(any::<PhysicalAddress>(), 4*KIB), region_size in 0..256*GIB) {
             let map = PhysMap::new(

@@ -392,9 +392,15 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
             "address range span be at least one page"
         );
         debug_assert!(
-            virt.start.is_aligned_to(A::GRANULE_SIZE,),
+            virt.start.is_aligned_to(A::GRANULE_SIZE),
             "virtual address {} must be aligned to at least page size {}",
             virt.start,
+            A::GRANULE_SIZE,
+        );
+        debug_assert!(
+            virt.end.is_aligned_to(A::GRANULE_SIZE),
+            "virtual address {} must be aligned to at least page size {}",
+            virt.end,
             A::GRANULE_SIZE,
         );
         debug_assert!(
@@ -407,8 +413,12 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
                               range: Range<VirtualAddress>,
                               level: &'static PageTableLevel|
          -> Result<(), AllocError> {
+            // If the entry is a table, just keep walking
+            if entry.is_table() {
+                return Ok(());
+            }
+
             debug_assert!(entry.is_vacant());
-            debug_assert!(!entry.is_leaf() && !entry.is_table());
 
             if level.can_map(range.start, phys, range.len()) {
                 *entry = <A as Arch>::PageTableEntry::new_leaf(phys, attributes);
@@ -886,6 +896,99 @@ mod tests {
             assert_eq!(attrs.allows_write(), false);
             assert_eq!(attrs.allows_execution(), true);
             assert_eq!(lvl.page_size(), 4096);
+        }
+    });
+}
+
+#[cfg(test)]
+mod proptests {
+    use core::alloc::Layout;
+    use core::range::Range;
+
+    use proptest::prelude::*;
+
+    use crate::arch::Arch;
+    use crate::flush::Flush;
+    use crate::frame_allocator::FrameAllocator;
+    use crate::test_utils::{Machine, MachineBuilder};
+    use crate::{MemoryAttributes, VirtualAddress, for_arch};
+
+    for_arch!(A in [
+        Riscv64Sv39,
+        #[cfg(not(miri))]
+        Riscv64Sv48,
+        #[cfg(not(miri))]
+        Riscv64Sv57,
+    ] {
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(if cfg!(miri) { 10 } else { 250 }))]
+
+            /// Regression test for `map_contiguous` across a higher-level page-table
+            /// boundary (review Blocker).
+            ///
+            /// A contiguous physical block mapped to a contiguous virtual range that
+            /// straddles a leaf-table boundary must map every virtual page to the
+            /// matching physical page, in order. This currently fails for two
+            /// compounding reasons:
+            ///  - `PageTableEntries::next` (utils.rs) overshoots the per-entry sub-range
+            ///    when the range start is not aligned to the level's page size.
+            ///  - `visit_mut` (table.rs) descends sibling subtables LIFO.
+            #[test]
+            fn map_contiguous_across_table_boundary(
+                pages_before in 1usize..=8,
+                pages_after in 1usize..=8,
+                boundary_idx in 1usize..256,
+            ) {
+                let machine: Machine<A> = MachineBuilder::new()
+                    .with_memory_regions([
+                        Layout::from_size_align(0x40000, A::GRANULE_SIZE).unwrap()
+                    ])
+                    .finish();
+
+                let (mut address_space, frame_allocator, physmap) =
+                    machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
+
+                let granule = A::GRANULE_SIZE;
+                let total_pages = pages_before + pages_after;
+
+                // A single contiguous physical block backing the whole mapping.
+                let phys = frame_allocator
+                    .allocate_contiguous(
+                        Layout::from_size_align(total_pages * granule, granule).unwrap(),
+                    )
+                    .unwrap();
+
+                // A contiguous virtual range straddling a leaf-table boundary: the
+                // page size of the level whose entries point at leaf tables is the
+                // span of one leaf table, and thus the gap between two of them.
+                let leaf_table_span = A::LEVELS[A::LEVELS.len() - 2].page_size();
+                let boundary = VirtualAddress::new(boundary_idx * leaf_table_span);
+                let virt = Range::from(boundary.sub(pages_before * granule)
+                    ..boundary.add(pages_after * granule));
+
+                let mut flush = Flush::new();
+                unsafe {
+                    address_space
+                        .map_contiguous(
+                            virt,
+                            phys,
+                            MemoryAttributes::new().with(MemoryAttributes::READ, true),
+                            frame_allocator.by_ref(),
+                            &physmap,
+                            &mut flush,
+                        )
+                        .unwrap();
+                }
+                flush.flush(address_space.arch());
+
+                // Every page must be mapped, to the matching physical page, in order.
+                for i in 0..total_pages {
+                    let page = virt.start.add(i * granule);
+                    let mapped = address_space.lookup(page, &physmap);
+                    prop_assert!(mapped.is_some(), "page {} is not mapped", page);
+                    prop_assert_eq!(mapped.unwrap().0, phys.add(i * granule));
+                }
+            }
         }
     });
 }

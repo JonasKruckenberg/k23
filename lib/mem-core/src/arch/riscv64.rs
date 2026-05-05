@@ -341,6 +341,7 @@ mod tests {
 
     proptest! {
         #[test]
+        #[cfg_attr(miri, ignore)]
         fn pte_new_leaf(address in aligned_phys(phys(0..1 << PHYSICAL_ADDRESS_BITS), 4*KIB)) {
             let pte = <super::PageTableEntry as PageTableEntry>::new_leaf(address, MemoryAttributes::new());
 

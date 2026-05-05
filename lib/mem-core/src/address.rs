@@ -336,6 +336,7 @@ mod tests {
 
     proptest! {
         #[test]
+        #[cfg_attr(miri, ignore)]
         fn lower_half_is_canonical(addr in 0x0usize..0x3fffffffff) {
             let addr = VirtualAddress::new(addr);
             prop_assert!(addr.is_canonical::<crate::arch::riscv64::Riscv64Sv39>());
@@ -343,6 +344,7 @@ mod tests {
         }
 
         #[test]
+        #[cfg_attr(miri, ignore)]
         fn upper_half_is_canonical(addr in 0xffffffc000000000usize..0xffffffffffffffff) {
             let addr = VirtualAddress::new(addr);
             prop_assert!(addr.is_canonical::<crate::arch::riscv64::Riscv64Sv39>());
@@ -350,6 +352,7 @@ mod tests {
         }
 
         #[test]
+        #[cfg_attr(miri, ignore)]
         fn non_canonical_hole(addr in 0x4000000000usize..0xffffffbfffffffff) {
             let addr = VirtualAddress::new(addr);
             prop_assert_ne!(addr.canonicalize::<crate::arch::riscv64::Riscv64Sv39>(), addr);

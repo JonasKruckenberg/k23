@@ -182,34 +182,51 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
             entries_iter: PageTableEntries<A>,
         }
 
+        // NB: we use a fixed size stack here to help with loop unrolling and
+        // enforce a known upper bound on the runtime-complexity of this function
+        // (5 level deep max). 5 is chosen because it is the deepest page table depth
+        // across all our supported target architectures.
         let mut stack: ArrayVec<Level<'_, _>, 5> = ArrayVec::from_iter([Level {
             table: self,
             entries_iter: page_table_entries_for(range, &A::LEVELS[0]),
         }]);
 
-        while let Some(mut frame) = stack.pop() {
-            for (entry_index, range) in frame.entries_iter {
-                // Safety: `page_table_entries_for` yields only in-bound indices
-                let mut entry = unsafe { frame.table.get(entry_index, physmap, arch) };
+        // Depth-first, in-order walk of the page tables.
+        while let Some(frame) = stack.last_mut() {
+            let Some((entry_index, range)) = frame.entries_iter.next() else {
+                // This table is fully visited; backtrack to its parent.
+                stack.pop();
+                continue;
+            };
 
-                visit_entry(&mut entry, range, frame.table.level())?;
+            // Safety: `page_table_entries_for` yields only in-bound indices
+            let mut entry = unsafe { frame.table.get(entry_index, physmap, arch) };
 
-                // Safety: `page_table_entries_for` yields only in-bound indices
-                unsafe {
-                    frame.table.set(entry_index, entry, physmap, arch);
-                }
+            visit_entry(&mut entry, range, frame.table.level())?;
 
-                if entry.is_table() {
-                    // Safety: We checked the entry is a table above (1.) know the depth is correct (2.).
-                    let subtable: Table<_, marker::Mut<'_>> =
-                        unsafe { Table::from_raw_parts(entry.address(), frame.table.depth() + 1) };
+            // Safety: `page_table_entries_for` yields only in-bound indices
+            unsafe {
+                frame.table.set(entry_index, entry, physmap, arch);
+            }
 
-                    // Push new frame for subtable
-                    stack.push(Level {
-                        entries_iter: page_table_entries_for(range, subtable.level()),
-                        table: subtable,
-                    });
-                }
+            if entry.is_table() {
+                debug_assert!((frame.table.depth() as usize + 1) < A::LEVELS.len());
+
+                // Safety: We checked the entry is a table above (1.) know the depth is correct (2.)
+                // and inherit the mutable access from self.
+                let subtable: Table<_, marker::Mut<'_>> = unsafe {
+                    Table::from_raw_parts(
+                        entry.address(),
+                        frame.table.depth().checked_add(1).unwrap(),
+                    )
+                };
+
+                // Descend at once, before advancing to the next sibling, so entries
+                // are visited in ascending address order.
+                stack.push(Level {
+                    entries_iter: page_table_entries_for(range, subtable.level()),
+                    table: subtable,
+                });
             }
         }
 
