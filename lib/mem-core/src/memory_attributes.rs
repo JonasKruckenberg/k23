@@ -41,9 +41,11 @@ mycelium_bitfield::enum_from_bits! {
 
 impl MemoryAttributes {
     /// Returns whether these `MemoryAttributes` allow _only_ reading memory.
-    pub const fn is_read_only(&self) -> bool {
-        const READ_MASK: u8 = MemoryAttributes::READ.max_value();
-        self.0 & READ_MASK == 1
+    ///
+    /// `true` exactly when reading is permitted and neither writing nor
+    /// execution is.
+    pub fn is_read_only(&self) -> bool {
+        self.allows_read() && !self.allows_write() && !self.allows_execution()
     }
 
     /// Returns whether these `MemoryAttributes` allow reading from memory.
@@ -59,5 +61,55 @@ impl MemoryAttributes {
     /// Returns whether these `MemoryAttributes` allow executing instructions from memory.
     pub fn allows_execution(&self) -> bool {
         matches!(self.get(Self::WRITE_OR_EXECUTE), WriteOrExecute::Execute)
+    }
+}
+
+#[cfg(feature = "test_utils")]
+impl proptest::arbitrary::Arbitrary for MemoryAttributes {
+    type Parameters = ();
+    type Strategy = proptest::strategy::BoxedStrategy<Self>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        use proptest::prelude::*;
+
+        // Generate only valid bit patterns: an arbitrary `u8` would allow the
+        // `WRITE_OR_EXECUTE` pattern `0b11`, which has no `WriteOrExecute` variant
+        // and panics in `get`.
+        (any::<bool>(), 0u8..3)
+            .prop_map(|(read, write_or_execute)| {
+                let write_or_execute = match write_or_execute {
+                    0 => WriteOrExecute::Neither,
+                    1 => WriteOrExecute::Write,
+                    2 => WriteOrExecute::Execute,
+                    _ => unreachable!(),
+                };
+
+                MemoryAttributes::new()
+                    .with(MemoryAttributes::READ, read)
+                    .with(MemoryAttributes::WRITE_OR_EXECUTE, write_or_execute)
+            })
+            .boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    proptest! {
+        /// `is_read_only` must be `true` exactly when reading is permitted and the
+        /// `WRITE_OR_EXECUTE` field is `Neither` — it must not ignore that field.
+        #[test]
+        fn is_read_only_iff_read_and_not_write_or_execute(attrs: MemoryAttributes) {
+            let expected = attrs.allows_read()
+                && matches!(
+                    attrs.get(MemoryAttributes::WRITE_OR_EXECUTE),
+                    WriteOrExecute::Neither,
+                );
+
+            prop_assert_eq!(attrs.is_read_only(), expected);
+        }
     }
 }
