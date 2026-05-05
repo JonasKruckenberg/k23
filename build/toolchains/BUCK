@@ -293,10 +293,11 @@ clang_toolchain(
 
 qemu_toolchain(
     name = "qemu",
-    qemu = select({
-        "prelude//cpu:riscv64": ":qemu_bin[qemu-system-riscv64]",
-        "prelude//cpu:arm64": ":qemu_bin[qemu-system-aarch64]",
-        "prelude//cpu:x86_64": ":qemu_bin[qemu-system-x86_64]",
+    qemu = ":qemu_bin",
+    qemu_binary = select({
+        "prelude//cpu:riscv64": "qemu-system-riscv64",
+        "prelude//cpu:arm64": "qemu-system-aarch64",
+        "prelude//cpu:x86_64": "qemu-system-x86_64",
     }),
     qemu_args = [
         # general
@@ -325,8 +326,16 @@ qemu_toolchain(
         "-numa",
         "dist,src=0,dst=1,val=20"
     ] + select({
-        "prelude//cpu:riscv64": ["-machine", "virt", "-cpu", "rv64", "-semihosting-config", "enable=on,target=native"],
+        "prelude//cpu:riscv64": ["-machine", "virt,acpi=off", "-cpu", "rv64", "-semihosting-config", "enable=on,target=native"],
         "DEFAULT": []
+    }),
+    firmware_code_path = select({
+        "prelude//cpu/constraints:riscv64": "share/qemu/edk2-riscv-code.fd",
+        "DEFAULT": None
+    }),
+    firmware_vars_path = select({
+        "prelude//cpu/constraints:riscv64": "share/qemu/edk2-riscv-vars.fd",
+        "DEFAULT": None
     }),
     visibility = ["PUBLIC"],
 )
