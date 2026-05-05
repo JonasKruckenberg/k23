@@ -249,3 +249,37 @@ jobs:
           restore-keys: |
             cargo-deny-${{ runner.os }}-
       - run: nix develop .#ci --command just cargo-deny
+
+  # Aggregate gate for branch protection. This is the SINGLE required status
+  # check in the `main CI` ruleset.
+  #
+  # It exists because GitHub never satisfies a required check for a job that is
+  # skipped: a docs-only PR skips every matrix job (`changed-targets` emits
+  # `skip=true`), and skipped matrix jobs don't even expand their context names
+  # (`check (riscv64)` etc. are never reported), so those required contexts hang
+  # forever in the "Expected" state and block the PR.
+  #
+  # This job always runs, so the ruleset always gets a `ci-status` result. It
+  # fails only when a dependency actually failed or was cancelled — an
+  # intentionally-skipped job counts as a pass.
+  ci-status:
+    name: ci-status
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs:
+      - lint
+      - changed-targets
+      - check
+      - clippy
+      - unittests
+      - miri
+      - loom
+      - selftests
+      - cargo-deny
+    steps:
+      - name: Report dependency results
+        run: |
+          echo "results: ${{ join(needs.*.result, ', ') }}"
+      - name: Fail if any dependency failed or was cancelled
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
