@@ -34,14 +34,18 @@ pub fn init() {
     tracing::trace!("setting sscratch to {:#x}", trap_stack_top);
     sscratch::set(trap_stack_top);
 
-    #[expect(
-        function_casts_as_integer,
-        reason = "stvec takes the trap-handler address as an integer per the RISC-V privileged spec"
-    )]
     {
-        tracing::trace!("setting trap vec to {:#x}", default_trap_entry as usize);
+        tracing::trace!(
+            "setting trap vec to {:#x}",
+            default_trap_entry as *const () as usize
+        );
         // Safety: register access
-        unsafe { stvec::write(default_trap_entry as usize, stvec::Mode::Direct) };
+        unsafe {
+            stvec::write(
+                default_trap_entry as *const () as usize,
+                stvec::Mode::Direct,
+            );
+        };
     }
 }
 
@@ -269,8 +273,10 @@ extern "C-unwind" fn default_trap_handler(frame: &mut unwind::Registers) {
     let epc = sepc::read();
     let tval = stval::read();
     tracing::trace!(
-        "{cause:?} {:?};epc={epc:#x};tval={tval:#x}",
-        sstatus::read()
+        "{cause:?} {:?};epc={epc:#x};tval={tval:#x};ra={:#x};gp={:#x?}",
+        sstatus::read(),
+        frame.gp[1],
+        frame.gp
     );
     let epc = VirtualAddress::new(epc);
     let tval = VirtualAddress::new(tval);

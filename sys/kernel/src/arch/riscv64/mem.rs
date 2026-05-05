@@ -13,12 +13,12 @@ use core::range::{Range, RangeInclusive};
 use core::{fmt, slice};
 
 use bitflags::bitflags;
-use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use mem_core::{AddressRangeExt, PhysMap, PhysicalAddress, VirtualAddress};
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
 
-use crate::arch::{mb, wmb};
+use crate::arch::mb;
 use crate::mem::flush::Flush;
 use crate::mem::frame_alloc::{Frame, FrameAllocator};
 
@@ -62,25 +62,6 @@ pub const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2 Sv39
 pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usize;
 /// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
 const PTE_PPN_SHIFT: usize = 2;
-
-#[cold]
-pub fn init() {
-    let root_pgtable = get_active_pgtable(DEFAULT_ASID);
-
-    // Zero out the lower half of the kernel address space to remove e.g. the leftover loader identity mappings
-    // Safety: `get_active_pgtable` & `VirtualAddress::from_phys` do minimal checking that the address is valid
-    // but otherwise we have to trust the address is valid for the entire page.
-    unsafe {
-        slice::from_raw_parts_mut(phys_to_virt(root_pgtable).as_mut_ptr(), PAGE_SIZE / 2).fill(0);
-    }
-
-    wmb();
-}
-
-#[must_use]
-pub fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-    KERNEL_ASPACE_RANGE.start.add(phys.get())
-}
 
 pub const fn is_canonical(virt: VirtualAddress) -> bool {
     (virt.get() & CANONICAL_ADDRESS_MASK).wrapping_sub(1) >= CANONICAL_ADDRESS_MASK - 1
@@ -178,7 +159,11 @@ pub struct AddressSpace {
 impl crate::mem::ArchAddressSpace for AddressSpace {
     type Flags = PTEFlags;
 
-    fn new(asid: u16, frame_alloc: &FrameAllocator) -> crate::Result<(Self, Flush)>
+    fn new(
+        asid: u16,
+        physmap: &PhysMap,
+        frame_alloc: &FrameAllocator,
+    ) -> crate::Result<(Self, Flush)>
     where
         Self: Sized,
     {
@@ -188,14 +173,19 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
             debug_assert!(root_pgtable.get() != 0);
 
-            let base = phys_to_virt(root_pgtable).add(PAGE_SIZE / 2).as_ptr();
+            let base = physmap
+                .phys_to_virt(root_pgtable)
+                .add(PAGE_SIZE / 2)
+                .as_ptr();
 
             slice::from_raw_parts(base, PAGE_SIZE / 2)
         };
 
-        let mut root_pgtable = frame_alloc.alloc_one_zeroed()?;
+        let mut root_pgtable = frame_alloc.alloc_one_zeroed(physmap)?;
 
-        Frame::get_mut(&mut root_pgtable).unwrap().as_mut_slice()[PAGE_SIZE / 2..]
+        Frame::get_mut(&mut root_pgtable)
+            .unwrap()
+            .as_mut_slice(physmap)[PAGE_SIZE / 2..]
             .copy_from_slice(src);
 
         mb();
@@ -231,6 +221,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         mut phys: PhysicalAddress,
         len: NonZeroUsize,
         flags: Self::Flags,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
@@ -271,7 +262,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         // while mapping the vast majority of the middle of a chunk using larger page sizes.
         'outer: while remaining_bytes > 0 {
             let mut pgtable: NonNull<PageTableEntry> =
-                self.pgtable_ptr_from_phys(self.root_pgtable);
+                self.pgtable_ptr_from_phys(physmap, self.root_pgtable);
 
             for lvl in (0..PAGE_TABLE_LEVELS).rev() {
                 let index = pte_index_for_level(virt, lvl);
@@ -295,7 +286,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                     continue 'outer;
                 } else if pte.is_valid() && !pte.is_leaf() {
                     // This PTE is an internal node pointing to another page table
-                    pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
+                    pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
                 } else {
                     // The current PTE is vacant, but we couldn't map at this level (because the
                     // page size was too large, or the request wasn't sufficiently aligned or
@@ -303,12 +294,12 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                     // we need to allocate a new sub-table and retry.
                     // allocate a new physical frame to hold the next level table and
                     // mark this PTE as a valid internal node pointing to that sub-table.
-                    let frame = frame_alloc.alloc_one_zeroed()?;
+                    let frame = frame_alloc.alloc_one_zeroed(physmap)?;
 
                     mb();
 
                     pte.replace_address_and_flags(frame.addr(), PTEFlags::VALID);
-                    pgtable = self.pgtable_ptr_from_phys(frame.addr());
+                    pgtable = self.pgtable_ptr_from_phys(physmap, frame.addr());
                     self.wired_frames.push(frame);
                 }
             }
@@ -324,6 +315,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         mut virt: VirtualAddress,
         len: NonZeroUsize,
         new_flags: Self::Flags,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
@@ -346,7 +338,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         // that we don't replace the PTEs address but instead the PTEs flags ensuring that the caller
         // can't increase the permissions.
         'outer: while remaining_bytes > 0 {
-            let mut pgtable = self.pgtable_ptr_from_phys(self.root_pgtable);
+            let mut pgtable = self.pgtable_ptr_from_phys(physmap, self.root_pgtable);
 
             for lvl in (0..PAGE_TABLE_LEVELS).rev() {
                 // Safety: index is always within one page
@@ -377,7 +369,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                     continue 'outer;
                 } else if pte.is_valid() {
                     // This PTE is an internal node pointing to another page table
-                    pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
+                    pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
                 } else {
                     remaining_bytes = remaining_bytes.saturating_sub(page_size);
                 }
@@ -393,6 +385,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         &mut self,
         mut virt: VirtualAddress,
         len: NonZeroUsize,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
@@ -411,10 +404,11 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         // if by doing so the parent has become empty in which case we also need to unmap the parent.
         while remaining_bytes > 0 {
             self.unmap_inner(
-                self.pgtable_ptr_from_phys(self.root_pgtable),
+                self.pgtable_ptr_from_phys(physmap, self.root_pgtable),
                 &mut virt,
                 &mut remaining_bytes,
                 PAGE_TABLE_LEVELS - 1,
+                physmap,
                 flush,
             )?;
         }
@@ -424,8 +418,13 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         Ok(())
     }
 
-    unsafe fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, Self::Flags)> {
-        let mut pgtable: NonNull<PageTableEntry> = self.pgtable_ptr_from_phys(self.root_pgtable);
+    unsafe fn query(
+        &mut self,
+        virt: VirtualAddress,
+        physmap: &PhysMap,
+    ) -> Option<(PhysicalAddress, Self::Flags)> {
+        let mut pgtable: NonNull<PageTableEntry> =
+            self.pgtable_ptr_from_phys(physmap, self.root_pgtable);
 
         for lvl in (0..PAGE_TABLE_LEVELS).rev() {
             // Safety: index is always within one page
@@ -439,7 +438,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                 return Some((addr, flags));
             } else if pte.is_valid() {
                 // This PTE is an internal node pointing to another page table
-                pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
+                pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
             } else {
                 // This PTE is vacant, which means at whatever level we're at, there is no
                 // point at doing any more work since this address cannot be mapped to anything
@@ -473,6 +472,7 @@ impl AddressSpace {
         virt: &mut VirtualAddress,
         remaining_bytes: &mut usize,
         lvl: usize,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> crate::Result<()> {
         let index = pte_index_for_level(*virt, lvl);
@@ -491,8 +491,8 @@ impl AddressSpace {
             *remaining_bytes -= page_size;
         } else if pte.is_valid() {
             // This PTE is an internal node pointing to another page table
-            let pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
-            self.unmap_inner(pgtable, virt, remaining_bytes, lvl - 1, flush)?;
+            let pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
+            self.unmap_inner(pgtable, virt, remaining_bytes, lvl - 1, physmap, flush)?;
 
             // The recursive descend above might have unmapped the last child of this PTE in which
             // case we need to unmap it as well
@@ -514,15 +514,16 @@ impl AddressSpace {
         Ok(())
     }
 
-    fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<PageTableEntry> {
-        NonNull::new(
-            KERNEL_ASPACE_RANGE
-                .start
-                .add(phys.get())
-                .as_mut_ptr()
-                .cast(),
-        )
-        .unwrap()
+    fn pgtable_ptr_from_phys(
+        &self,
+        physmap: &PhysMap,
+        phys: PhysicalAddress,
+    ) -> NonNull<PageTableEntry> {
+        physmap
+            .phys_to_virt(phys)
+            .as_non_null()
+            .unwrap()
+            .cast::<PageTableEntry>()
     }
 }
 

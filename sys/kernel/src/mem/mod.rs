@@ -26,7 +26,7 @@ pub use address_space::{AddressSpace, Batch};
 pub use address_space_region::AddressSpaceRegion;
 pub use flush::Flush;
 use loader_api::BootInfo;
-use mem_core::{PhysicalAddress, VirtualAddress};
+use mem_core::{PhysMap, PhysicalAddress, VirtualAddress};
 pub use mmap::Mmap;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -85,8 +85,6 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
         )
         .unwrap();
 
-    // The kernel image's mem_size as reported by the loader is byte-sized; round up to a page
-    // boundary so the reserve precondition holds.
     let kernel_virt = Range::from(
         boot_info.kernel_virt.start..boot_info.kernel_virt.end.align_up(arch::PAGE_SIZE),
     );
@@ -179,7 +177,11 @@ impl From<PageFaultFlags> for Permissions {
 pub trait ArchAddressSpace {
     type Flags: From<Permissions> + bitflags::Flags;
 
-    fn new(asid: u16, frame_alloc: &FrameAllocator) -> crate::Result<(Self, Flush)>
+    fn new(
+        asid: u16,
+        physmap: &PhysMap,
+        frame_alloc: &FrameAllocator,
+    ) -> crate::Result<(Self, Flush)>
     where
         Self: Sized;
     fn from_active(asid: u16) -> (Self, Flush)
@@ -193,6 +195,7 @@ pub trait ArchAddressSpace {
         phys: PhysicalAddress,
         len: NonZeroUsize,
         flags: Self::Flags,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> crate::Result<()>;
 
@@ -201,6 +204,7 @@ pub trait ArchAddressSpace {
         virt: VirtualAddress,
         len: NonZeroUsize,
         new_flags: Self::Flags,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> crate::Result<()>;
 
@@ -208,10 +212,15 @@ pub trait ArchAddressSpace {
         &mut self,
         virt: VirtualAddress,
         len: NonZeroUsize,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> crate::Result<()>;
 
-    unsafe fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, Self::Flags)>;
+    unsafe fn query(
+        &mut self,
+        virt: VirtualAddress,
+        physmap: &PhysMap,
+    ) -> Option<(PhysicalAddress, Self::Flags)>;
 
     unsafe fn activate(&self);
 

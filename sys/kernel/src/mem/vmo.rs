@@ -97,16 +97,18 @@ impl PagedVmo {
 
             tracing::trace!("require_owned_frame for resident frame, allocating new...");
 
-            let mut new_frame = self.frame_alloc.alloc_one_zeroed()?;
+            let mut new_frame = self
+                .frame_alloc
+                .alloc_one_zeroed(self.frame_alloc.physmap)?;
 
             // If `old_frame` is the zero frame we don't need to copy any data around, it's
             // all zeroes anyway
             if !Frame::ptr_eq(old_frame, THE_ZERO_FRAME.frame()) {
                 tracing::trace!("performing copy-on-write...");
-                let src = old_frame.as_slice();
+                let src = old_frame.as_slice(self.frame_alloc.physmap);
                 let dst = Frame::get_mut(&mut new_frame)
                     .expect("newly allocated frame should be unique")
-                    .as_mut_slice();
+                    .as_mut_slice(self.frame_alloc.physmap);
 
                 tracing::trace!(
                     "copying from {:?} to {:?}",

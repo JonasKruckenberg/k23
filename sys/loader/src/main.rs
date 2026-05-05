@@ -1,4 +1,4 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2026 Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -7,307 +7,333 @@
 
 #![no_std]
 #![no_main]
-
-use core::ffi::c_void;
-use core::mem;
-use core::range::Range;
-
-use arrayvec::ArrayVec;
-use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
-
-use crate::boot_info::prepare_boot_info;
-use crate::error::Error;
-use crate::frame_alloc::FrameAllocator;
-use crate::kernel::Kernel;
-use crate::machine_info::MachineInfo;
-use crate::mapping::{
-    StacksAllocation, TlsAllocation, identity_map_self, map_boot_hart_stack, map_kernel,
-    map_physical_memory,
-};
+#![feature(ptr_as_uninit)]
+#![feature(slice_partition_dedup)]
 
 mod arch;
-mod boot_info;
 mod error;
 mod frame_alloc;
 mod kernel;
-mod logger;
 mod machine_info;
 mod mapping;
-mod page_alloc;
-mod panic;
 
-pub const ENABLE_KASLR: bool = false;
-pub const LOG_LEVEL: log::Level = log::Level::Trace;
-pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
+use core::range::Range;
+use core::slice;
+use core::time::Duration;
+
+use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
+use mem_core::{
+    AddressRangeExt, Flush, HardwareAddressSpace, PhysMap, PhysicalAddress, VirtualAddress,
+};
+use uefi::boot::{AllocateType, memory_map};
+use uefi::mem::memory_map::{MemoryMap, MemoryMapOwned, MemoryType};
+
+use crate::error::Error;
+use crate::frame_alloc::UefiFrameAlloc;
+use crate::kernel::{Kernel, RelocatedKernel, StagedKernel};
+use crate::machine_info::MachineInfo;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// # Safety
-///
-/// The passed `opaque` ptr must point to a valid memory region.
-unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-    let res = do_global_init(hartid, opaque, boot_ticks);
+#[uefi::entry]
+fn main() -> uefi::Status {
+    use uefi::prelude::*;
 
-    // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
-    // but there is no harm in that.
-    // Safety: there is no safety
-    unsafe {
-        log::trace!("activating MMU...");
-        arch::activate_aspace(res.root_pgtable);
-        log::trace!("activated.");
+    // Step 1: Initialize UEFI logger
+    uefi::helpers::init().unwrap();
+
+    match init() {
+        Ok(()) => Status::SUCCESS,
+        Err(err) => {
+            log::error!("{err}");
+            Status::LOAD_ERROR
+        }
     }
-
-    if let Some(alloc) = &res.maybe_tls_alloc {
-        alloc.initialize_for_boot_hart();
-    }
-
-    // Safety: this will jump to the kernel entry
-    unsafe { arch::handoff_to_kernel(hartid, &res) }
 }
 
-pub struct GlobalInitResult {
-    boot_info: *mut loader_api::BootInfo,
-    kernel_entry: VirtualAddress,
-    root_pgtable: PhysicalAddress,
-    stacks_alloc: StacksAllocation,
-    maybe_tls_alloc: Option<TlsAllocation>,
-}
+fn init() -> Result<()> {
+    let boot_ticks = arch::get_ticks();
 
-// Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
-unsafe impl Send for GlobalInitResult {}
-// Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
-unsafe impl Sync for GlobalInitResult {}
+    // Step 1: discover basic machine information required for boot
+    let mut minfo = machine_info::discover()?;
 
-fn do_global_init(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> GlobalInitResult {
-    logger::init(LOG_LEVEL.to_level_filter());
-    // Safety: TODO
-    let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
-    log::debug!("\n{minfo}");
+    // Step 1b: relocate the firmware tables into loader-owned memory *before* any
+    // deep-stack UEFI work (e.g. file I/O) can overrun them or `ExitBootServices`
+    // can reclaim them. See `MachineInfo::stage_tables`.
+    minfo.stage_tables()?;
+    log::info!("{minfo:?}");
 
-    // Single-CPU at handoff is the current contract: leave secondary harts parked in firmware
-    // so only the boot hart enters the kernel.
-    let _ = hartid;
+    let memory_map = memory_map(MemoryType::LOADER_DATA)?;
 
-    let self_regions = SelfRegions::collect();
-    log::debug!("{self_regions:#x?}");
+    let identity_physmap = PhysMap::new_identity(physical_memory_regions(&memory_map));
 
-    let fdt_phys = Range::from_start_len(
-        PhysicalAddress::from_ptr(minfo.fdt.as_ptr()),
-        minfo.fdt.len(),
-    );
+    let mut aspace = {
+        let arch = mem_core::arch::riscv64::Riscv64Sv39::new(0);
+        HardwareAddressSpace::new(arch, &identity_physmap, UefiFrameAlloc)?
+    };
 
-    // Mirror `map_physical_memory`'s coverage: align the machine's memory hull to the L2 page
-    // boundary so the kernel can re-derive the same translation when building its `PhysMap`.
-    let phys_hull = minfo.memory_hull().align_out(arch::page_size_for_level(2));
+    let mut flush = Flush::new();
 
-    // Initialize the frame allocator
-    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys);
-    log::debug!("allocatable memory regions {allocatable_memories:#x?}");
-    let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
+    // Step 2: locate, parse and validate the kernel ELF from the ESP
+    let (kernel_file, debuginfo_file) = kernel::locate()?;
+    let kernel = Kernel::from_files(kernel_file, debuginfo_file)?;
+    log::debug!("parsed kernel");
 
-    // initialize the random number generator
-    let rng = ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
-        minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-    ));
-    let rng_seed = rng.as_ref().map(ChaCha20Rng::get_seed).unwrap_or_default();
+    // Step 3: stage (allocate and copy) the kernel into physical memory
+    let kernel = kernel.stage()?;
+    log::debug!("staged kernel");
 
-    // Initialize the page allocator
-    let mut page_alloc = page_alloc::init(rng);
-
-    let root_pgtable = frame_alloc
-        .allocate_one_zeroed(
-            VirtualAddress::MIN, // called before translation into higher half
-        )
-        .unwrap();
-
-    // Identity map the loader itself (this binary).
-    //
-    // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
-    // as opposed to m-mode where it would take effect after the jump to s-mode.
-    // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
-    // We will then unmap the loader in the kernel.
-    identity_map_self(root_pgtable, &mut frame_alloc, &self_regions).unwrap();
-
-    // Map the physical memory into kernel address space.
-    //
-    // This will be used by the kernel to access the page tables, BootInfo struct and maybe
-    // more in the future.
-    let (phys_off, _phys_map) =
-        map_physical_memory(root_pgtable, &mut frame_alloc, &mut page_alloc, &minfo).unwrap();
-
-    // Activate the MMU with the address space we have built so far.
-    // the rest of the address space setup will happen in virtual memory (mostly so that we
-    // can correctly apply relocations without having to do expensive virt to phys queries)
-    // Safety: there is no safety
-    unsafe {
-        log::trace!("activating MMU...");
-        arch::activate_aspace(root_pgtable);
-        log::trace!("activated.");
-    }
-
-    let kernel = Kernel::from_static(phys_off).unwrap();
-    // print the elf sections for debugging purposes
-    log::debug!("\n{kernel}");
-
-    let (kernel_virt, maybe_tls_alloc) = map_kernel(
-        root_pgtable,
-        &mut frame_alloc,
-        &mut page_alloc,
+    let aspace_layout = layout_kernel_aspace(
         &kernel,
-        phys_off,
-    )
-    .unwrap();
-
-    log::trace!("KASLR: Kernel image at {:?}", kernel_virt.start);
-
-    let stacks_alloc = map_boot_hart_stack(
-        root_pgtable,
-        &mut frame_alloc,
-        &mut page_alloc,
-        usize::try_from(kernel._loader_config.kernel_stack_size_pages).unwrap(),
-        phys_off,
-    )
-    .unwrap();
-
-    let frame_usage = frame_alloc.frame_usage();
-    log::debug!(
-        "Mapping complete, permanently used {} KiB.",
-        (frame_usage * arch::PAGE_SIZE) / 1024,
+        256 * 4096,
+        aspace.granule_size(),
+        physical_memory_regions(&memory_map),
+        aspace.granule_size(),
     );
+    log::debug!("kernel address space layout {aspace_layout:?}");
 
-    let physmap = mem_core::PhysMap::new(
-        arch::KERNEL_ASPACE_BASE.add(phys_hull.start.get()),
-        [phys_hull],
-    );
+    // Step 5: relocate the kernel
+    let kernel = kernel.relocate(aspace_layout.kernel_image.clone())?;
+    log::debug!("relocated kernel");
 
-    let boot_info = prepare_boot_info(
-        frame_alloc,
-        physmap,
-        kernel_virt,
-        maybe_tls_alloc.as_ref().map(|alloc| alloc.template.clone()),
-        kernel.debuginfo_phys_range(),
-        fdt_phys,
-        hartid,
+    // Instantiate the boot hart's TLS block from the relocated image.
+    let boot_hart_tls = kernel.instantiate_tls_block()?;
+
+    let boot_hart_stack = instantiate_stack(256 * 4096, aspace.granule_size())?;
+
+    let boot_info = instantiate_boot_info(
+        &minfo,
+        &aspace_layout,
+        &kernel,
         boot_ticks,
-        rng_seed,
-    )
-    .unwrap();
+        aspace.granule_size(),
+    )?;
 
-    let kernel_entry = kernel_virt
-        .start
-        .add(usize::try_from(kernel.elf_file.header.pt2.entry_point()).unwrap());
+    log::debug!("mapping kernel...");
+    mapping::map_kernel_image(
+        &mut aspace,
+        &aspace_layout,
+        &kernel,
+        &identity_physmap,
+        &mut flush,
+    )?;
+    log::debug!("mapped kernel");
 
-    GlobalInitResult {
+    log::debug!("mapping boot hart TLS block...");
+    mapping::map_tls_block(
+        &mut aspace,
+        &aspace_layout,
+        boot_hart_tls,
+        &identity_physmap,
+        &mut flush,
+    )?;
+    log::debug!("mapped boot hart TLS block");
+
+    log::debug!("mapping boot hart stack...");
+    mapping::map_stack(
+        &mut aspace,
+        &aspace_layout,
+        boot_hart_stack,
+        &identity_physmap,
+        &mut flush,
+    )?;
+    log::debug!("mapped boot hart stack");
+
+    log::debug!("mapping boot info...");
+    mapping::map_boot_info(
+        &mut aspace,
+        &aspace_layout,
         boot_info,
-        kernel_entry,
-        root_pgtable,
-        maybe_tls_alloc,
-        stacks_alloc,
+        &identity_physmap,
+        &mut flush,
+    )?;
+    log::debug!("mapped boot info");
+
+    log::debug!("mapping physical memory...");
+    mapping::map_physical_memory(&mut aspace, &aspace_layout, &identity_physmap, &mut flush)?;
+    log::debug!("mapped physical memory");
+
+    log::debug!("mapping handoff trampoline...");
+    boot_info.handoff_trampoline_virt =
+        mapping::map_handoff_trampoline(&mut aspace, &identity_physmap, &mut flush)?;
+    log::debug!("mapped handoff trampoline");
+
+    unsafe {
+        flush.ignore();
     }
+
+    log::debug!("exiting boot services...");
+
+    let memory_map = unsafe { uefi::boot::exit_boot_services(None) };
+
+    boot_info.memory_regions = collect_memory_regions(memory_map)?;
+
+    unsafe {
+        arch::handoff(aspace_layout, &kernel, aspace);
+    }
+
+    uefi::boot::stall(Duration::from_secs(10));
+    Ok(())
+}
+
+fn instantiate_boot_info(
+    minfo: &MachineInfo,
+    aspace_layout: &KernelAspaceLayout,
+    kernel: &RelocatedKernel,
+    boot_ticks: u64,
+    granule: usize,
+) -> crate::Result<&'static mut BootInfo> {
+    let boot_info_pages = size_of::<BootInfo>().div_ceil(granule);
+    debug_assert!(boot_info_pages > 0);
+
+    let block = uefi::boot::allocate_pages(
+        AllocateType::AnyPages,
+        MemoryType::RESERVED,
+        boot_info_pages,
+    )?
+    .cast::<BootInfo>();
+
+    let block = unsafe { block.as_uninit_mut() };
+
+    let boot_info = block.write(BootInfo::new(aspace_layout.physmap.clone()));
+    boot_info.boot_cpu_id = minfo.boot_hart_id;
+    boot_info.boot_ticks = boot_ticks;
+    boot_info.rng_seed = minfo.rng_seed;
+    boot_info.acpi_rsdp = minfo.raw_rsdp;
+    boot_info.fdt = minfo.raw_fdt;
+    boot_info.smbios3 = minfo.raw_smbios3;
+    boot_info.kernel_virt = aspace_layout.kernel_image.clone();
+    boot_info.tls_template = kernel.tls_template().clone();
+    boot_info.kernel_debuginfo_phys = kernel.debug_info_phys().clone();
+
+    let (time, rtc_caps) = uefi::runtime::get_time_and_caps()?;
+    log::debug!("{time:?} {rtc_caps:?}");
+
+    Ok(boot_info)
+}
+
+fn physical_memory_regions<'a>(
+    memory_map: &'a MemoryMapOwned,
+) -> impl Iterator<Item = Range<PhysicalAddress>> + use<'a> {
+    memory_map.entries().map(|desc| {
+        let start = PhysicalAddress::new(usize::try_from(desc.phys_start).unwrap());
+        let len = usize::try_from(desc.page_count).unwrap() * uefi::boot::PAGE_SIZE;
+
+        Range::from_start_len(start, len)
+    })
+}
+
+fn collect_memory_regions(memory_map: MemoryMapOwned) -> Result<loader_api::MemoryRegions> {
+    let mut regions = loader_api::MemoryRegions::new();
+
+    for desc in memory_map.entries() {
+        let kind = match desc.ty {
+            MemoryType::RESERVED | MemoryType::UNUSABLE => MemoryRegionKind::Unusable,
+            MemoryType::LOADER_CODE
+            | MemoryType::LOADER_DATA
+            | MemoryType::BOOT_SERVICES_CODE
+            | MemoryType::BOOT_SERVICES_DATA
+            | MemoryType::CONVENTIONAL => MemoryRegionKind::Usable,
+
+            MemoryType::RUNTIME_SERVICES_CODE | MemoryType::RUNTIME_SERVICES_DATA => {
+                MemoryRegionKind::Usable
+            }
+
+            // TODO handle MMIO, and other memory region types here instead of defaulting to unusable
+            _ => MemoryRegionKind::Unusable,
+        };
+
+        let start = PhysicalAddress::new(usize::try_from(desc.phys_start).unwrap());
+        let len = usize::try_from(desc.page_count).unwrap() * uefi::boot::PAGE_SIZE;
+
+        // TODO preserve the reported memory region attributes (caechable, write through, write combine, write back, etc)
+
+        regions
+            .try_push(MemoryRegion {
+                range: Range::from_start_len(start, len),
+                kind,
+            })
+            .expect("too many memory regions in memory map"); // TODO error
+    }
+
+    regions.sort_unstable_by_key(|region| region.range.start);
+
+    // merge adjacent regions IFF they have the same attributes
+    let (coalesced, _) = regions.partition_dedup_by(|a, b| {
+        if a.kind == b.kind && a.range.start <= b.range.end {
+            b.range.end = b.range.end.max(a.range.end);
+            true
+        } else {
+            false
+        }
+    });
+    let n = coalesced.len();
+    regions.truncate(n);
+
+    Ok(regions)
+}
+
+fn instantiate_stack(boot_hart_stack_size: usize, granule: usize) -> Result<&'static mut [u8]> {
+    let stack_size = boot_hart_stack_size.next_multiple_of(granule);
+    let stack_pages = stack_size / granule;
+    debug_assert!(stack_pages > 0);
+
+    let block =
+        uefi::boot::allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, stack_pages)?;
+
+    {
+        let block = unsafe {
+            slice::from_raw_parts_mut(block.as_ptr().cast::<u64>(), stack_size / size_of::<u64>())
+        };
+
+        block.fill(0xACE0BACE);
+    }
+
+    let block = unsafe { slice::from_raw_parts_mut(block.as_ptr(), stack_size) };
+
+    Ok(block)
 }
 
 #[derive(Debug)]
-struct SelfRegions {
-    pub executable: Range<PhysicalAddress>,
-    pub read_only: Range<PhysicalAddress>,
-    pub read_write: Range<PhysicalAddress>,
+struct KernelAspaceLayout {
+    pub physmap: PhysMap,
+    pub kernel_image: Range<VirtualAddress>,
+    pub boot_hart_tls: Range<VirtualAddress>,
+    pub boot_hart_stack: Range<VirtualAddress>,
+    pub boot_info: Range<VirtualAddress>,
 }
 
-impl SelfRegions {
-    pub fn collect() -> Self {
-        unsafe extern "C" {
-            static __text_start: u8;
-            static __text_end: u8;
-            static __rodata_start: u8;
-            static __rodata_end: u8;
-            static __bss_start: u8;
-            static __stack_start: u8;
-        }
+fn layout_kernel_aspace(
+    kernel: &StagedKernel,
+    boot_hart_stack_size: usize,
+    stack_guard_region: usize,
+    physical_memory_regions: impl Iterator<Item = Range<PhysicalAddress>>,
+    granule: usize,
+) -> KernelAspaceLayout {
+    const BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
 
-        SelfRegions {
-            executable: Range {
-                start: PhysicalAddress::from_ptr(&raw const __text_start),
-                end: PhysicalAddress::from_ptr(&raw const __text_end),
-            },
-            read_only: Range {
-                start: PhysicalAddress::from_ptr(&raw const __rodata_start),
-                end: PhysicalAddress::from_ptr(&raw const __rodata_end),
-            },
-            read_write: Range {
-                start: PhysicalAddress::from_ptr(&raw const __bss_start),
-                end: PhysicalAddress::from_ptr(&raw const __stack_start).add(STACK_SIZE),
-            },
-        }
+    let physmap = PhysMap::new(BASE, physical_memory_regions);
+
+    let kernel_image =
+        Range::from_start_len(physmap.range_virt().end, kernel.size()).align_out(granule);
+
+    let boot_hart_tls =
+        Range::from_start_len(kernel_image.end, kernel.tls_template().mem_size).align_out(granule);
+
+    let boot_hart_stack: Range<VirtualAddress> =
+        Range::from_start_len(boot_hart_tls.end, boot_hart_stack_size).align_out(granule);
+
+    let boot_info = Range::from_start_len(
+        boot_hart_stack.end.add(stack_guard_region),
+        size_of::<BootInfo>(),
+    )
+    .align_out(granule);
+
+    KernelAspaceLayout {
+        physmap,
+        kernel_image,
+        boot_hart_tls,
+        boot_hart_stack,
+        boot_info,
     }
-}
-
-fn allocatable_memory_regions(
-    minfo: &MachineInfo,
-    self_regions: &SelfRegions,
-    fdt: Range<PhysicalAddress>,
-) -> ArrayVec<Range<PhysicalAddress>, 16> {
-    let mut temp: ArrayVec<Range<PhysicalAddress>, 16> = minfo.memories.clone();
-
-    let mut exclude = |to_exclude: Range<PhysicalAddress>| {
-        for mut region in mem::take(&mut temp) {
-            if to_exclude.contains(&region.start) && to_exclude.contains(&region.end) {
-                // remove region
-                continue;
-            } else if region.contains(&to_exclude.start) && region.contains(&to_exclude.end) {
-                temp.push(Range::from(region.start..to_exclude.start));
-                temp.push(Range::from(to_exclude.end..region.end));
-            } else if to_exclude.contains(&region.start) {
-                region.start = to_exclude.end;
-                temp.push(region);
-            } else if to_exclude.contains(&region.end) {
-                region.end = to_exclude.start;
-                temp.push(region);
-            } else {
-                temp.push(region);
-            }
-        }
-    };
-
-    exclude(Range::from(
-        self_regions.executable.start..self_regions.read_write.end,
-    ));
-
-    exclude(fdt);
-
-    // // merge adjacent regions
-    // let mut out: ArrayVec<Range<usize>, 16> = ArrayVec::new();
-    // 'outer: for region in temp {
-    //     for other in &mut out {
-    //         if region.start == other.end {
-    //             other.end = region.end;
-    //             continue 'outer;
-    //         }
-    //         if region.end == other.start {
-    //             other.start = region.start;
-    //             continue 'outer;
-    //         }
-    //     }
-    //
-    //     out.push(region);
-    // }
-
-    temp.sort_unstable_by_key(|region| region.start);
-
-    #[cfg(debug_assertions)]
-    for (i, region) in temp.iter().enumerate() {
-        for (j, other) in temp.iter().enumerate() {
-            if i == j {
-                continue;
-            }
-
-            assert!(
-                !region.overlaps(other),
-                "regions {region:#x?} and {other:#x?} overlap"
-            );
-        }
-    }
-
-    temp
 }

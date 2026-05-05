@@ -19,7 +19,7 @@ pub use asid_allocator::AsidAllocator;
 pub use block_on::block_on;
 pub use mem::{
     AddressSpace, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_RANGE,
-    invalidate_range, is_canonical, is_kernel_address, is_user_address, phys_to_virt,
+    invalidate_range, is_canonical, is_kernel_address, is_user_address,
 };
 use mem_core::VirtualAddress;
 use riscv::sstatus::FS;
@@ -36,7 +36,6 @@ pub fn init() -> state::Global {
     let supported = riscv::sbi::supported_extensions().unwrap();
     tracing::trace!("Supported SBI extensions: {supported:?}");
 
-    mem::init();
     asid_allocator::init();
 
     state::Global {}

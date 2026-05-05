@@ -39,6 +39,10 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
         }
     }
 
+    pub(crate) const fn into_raw_parts(self) -> (PhysicalAddress, u8) {
+        (self.base, self.depth)
+    }
+
     /// Returns the depth of this table in the page table hierarchy.
     ///
     /// `0` represents the root page table.

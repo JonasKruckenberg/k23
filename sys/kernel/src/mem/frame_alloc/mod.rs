@@ -20,7 +20,7 @@ use cordyceps::list::List;
 use cpu_local::cpu_local;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
-use mem_core::PhysicalAddress;
+use mem_core::{PhysMap, PhysicalAddress};
 use spin::{Mutex, OnceLock};
 
 use crate::arch;
@@ -36,8 +36,9 @@ pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 pub fn init(
     boot_alloc: BootstrapAllocator,
     physical_memory_regions: loader_api::MemoryRegions,
+    physmap: &'static PhysMap,
 ) -> &'static FrameAllocator {
-    FRAME_ALLOC.get_or_init(|| FrameAllocator::new(boot_alloc, physical_memory_regions))
+    FRAME_ALLOC.get_or_init(|| FrameAllocator::new(boot_alloc, physical_memory_regions, physmap))
 }
 
 #[derive(Debug)]
@@ -49,6 +50,7 @@ pub struct FrameAllocator {
     /// This value must only ever be treated as a hint and should only be used to
     /// produce more accurate frame usage statistics.
     frames_in_caches_hint: AtomicUsize,
+    pub physmap: &'static PhysMap,
 }
 
 #[derive(Debug)]
@@ -74,6 +76,7 @@ impl FrameAllocator {
     pub fn new(
         _boot_alloc: BootstrapAllocator,
         physical_memory_regions: loader_api::MemoryRegions,
+        physmap: &'static PhysMap,
     ) -> Self {
         let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();
@@ -82,7 +85,7 @@ impl FrameAllocator {
             match selection_result {
                 Ok(selection) => {
                     tracing::trace!("selection {selection:?}");
-                    let arena = Arena::from_selection(selection);
+                    let arena = Arena::from_selection(selection, physmap);
                     tracing::trace!("max arena alignment {}", arena.max_alignment());
                     max_alignment = cmp::max(max_alignment, arena.max_alignment());
                     arenas.push(arena);
@@ -97,6 +100,7 @@ impl FrameAllocator {
             global: Mutex::new(GlobalFrameAllocator { arenas }),
             max_alignment,
             frames_in_caches_hint: AtomicUsize::new(0),
+            physmap,
         }
     }
 
@@ -122,11 +126,11 @@ impl FrameAllocator {
     }
 
     /// Allocate a single [`Frame`] and ensure the backing physical memory is zero initialized.
-    pub fn alloc_one_zeroed(&self) -> Result<Frame, AllocError> {
+    pub fn alloc_one_zeroed(&self, physmap: &PhysMap) -> Result<Frame, AllocError> {
         let frame = self.alloc_one()?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = arch::phys_to_virt(frame.addr());
+        let virt = physmap.phys_to_virt(frame.addr());
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated
@@ -169,11 +173,15 @@ impl FrameAllocator {
 
     /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`
     /// and ensuring the backing physical memory is zero initialized.
-    pub fn alloc_contiguous_zeroed(&self, layout: Layout) -> Result<List<FrameInfo>, AllocError> {
+    pub fn alloc_contiguous_zeroed(
+        &self,
+        layout: Layout,
+        physmap: &PhysMap,
+    ) -> Result<List<FrameInfo>, AllocError> {
         let frames = self.alloc_contiguous(layout)?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = arch::phys_to_virt(frames.iter().next().unwrap().addr());
+        let virt = physmap.phys_to_virt(frames.iter().next().unwrap().addr());
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated

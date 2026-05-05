@@ -1,4 +1,4 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2026 Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -9,7 +9,12 @@ cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
         mod riscv64;
         pub use riscv64::*;
-        pub use riscv::*;
+    } else if #[cfg(target_arch = "aarch64")] {
+        mod aarch64;
+        pub use aarch64::*;
+    } else if #[cfg(target_arch = "x86_64")] {
+        mod x86_64;
+        pub use x86_64::*;
     } else {
         compile_error!("Unsupported target architecture");
     }

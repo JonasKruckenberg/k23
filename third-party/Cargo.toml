@@ -28,6 +28,7 @@ rand = { version = "0.10.0", default-features = false }
 rand_chacha = { version = "0.10.0", default-features = false }
 static_assertions = "1.1.0"
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
+uefi = { version = "0.37", features = [ "panic_handler", "logger", "alloc", "global_allocator" ] }
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }
@@ -48,8 +49,8 @@ hashbrown = { version = "0.17", default-features = false, features = [
 ] }
 wasmparser = { version = "0.251", default-features = false, features = ["features", "validate", "simd"] }
 target-lexicon = { version = "0.13.3", default-features = false }
-cranelift-codegen = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "9c49989a2e71382fd8639288088472f150f2f534", default-features = false, features = ["core", "riscv64"] }
-cranelift-frontend = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "9c49989a2e71382fd8639288088472f150f2f534", default-features = false, features = ["core"] }
+cranelift-codegen = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "9c49989a2e71382fd8639288088472f150f2f534", default-features = false, features = ["riscv64"] }
+cranelift-frontend = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "9c49989a2e71382fd8639288088472f150f2f534", default-features = false }
 cranelift-entity = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "9c49989a2e71382fd8639288088472f150f2f534", default-features = false }
 wasmtime-slab = "34.0.0"
 
@@ -78,7 +79,7 @@ libfuzzer-sys = { version = "0.4", optional = true }
 fatfs = { version = "0.3.6", default-features = false, features = ["std", "alloc"], optional = true }
 clap = { version = "4.5.38", features = ["derive", "env"], optional = true }
 memmap2 = { version = "0.9.10", optional = true }
-object = { version = "0.39.1", optional = true }
+object = { version = "0.39.1", default-features = false, features = ["elf"], optional = true }
 
 [features]
 default = [
@@ -90,9 +91,11 @@ default = [
     "test-log/trace",
     "memchr/std",
     "zerocopy/std",
+    "object/default",
     "object/write",
     "cranelift-codegen/std",
     "cranelift-frontend/std",
+    "object/pe",
 
     "dep:proptest",
     "dep:proptest-derive",
@@ -121,4 +124,5 @@ default = [
 no_std = [
     "cranelift-codegen/core",
     "cranelift-frontend/core",
+    "object/read_core"
 ]
