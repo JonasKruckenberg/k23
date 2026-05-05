@@ -118,10 +118,14 @@ impl<A: Arch> Machine<A> {
 
         if let Some((phys, attrs, level)) = self.cpu().translate(asid, address) {
             assert!(attrs.allows_read());
+            // NB: a read of N bytes touches `[address, address + N)`.
+            // the last byte is at `address + N - 1`.
             assert_eq!(
                 address.align_down(level.page_size()),
-                address.add(size_of::<T>()).align_down(level.page_size()),
-                "reads crossing page boundaries are not supported. {address} + {}",
+                address
+                    .add(size_of::<T>().saturating_sub(1))
+                    .align_down(level.page_size()),
+                "typed reads crossing page boundaries are not supported. {address} + {}",
                 size_of::<T>()
             );
 
@@ -153,9 +157,13 @@ impl<A: Arch> Machine<A> {
 
         if let Some((phys, attrs, level)) = self.cpu().translate(asid, address) {
             assert!(attrs.allows_write());
+            // NB: a write of N bytes touches `[address, address + N)`.
+            // the last byte is at `address + N - 1`.
             assert_eq!(
                 address.align_down(level.page_size()),
-                address.add(size_of::<T>()).align_down(level.page_size()),
+                address
+                    .add(size_of::<T>().saturating_sub(1))
+                    .align_down(level.page_size()),
                 "typed writes crossing page boundaries are not supported. {address} + {}",
                 size_of::<T>()
             );
@@ -181,9 +189,13 @@ impl<A: Arch> Machine<A> {
     pub unsafe fn read_bytes(&self, asid: u16, address: VirtualAddress, count: usize) -> &[u8] {
         if let Some((phys, attrs, level)) = self.cpu().translate(asid, address) {
             assert!(attrs.allows_read());
+            // NB: a read of N bytes touches `[address, address + N)`.
+            // the last byte is at `address + N - 1`.
             assert_eq!(
                 address.align_down(level.page_size()),
-                address.add(count).align_down(level.page_size()),
+                address
+                    .add(count.saturating_sub(1))
+                    .align_down(level.page_size()),
                 "reads crossing page boundaries are not supported. {address} + {}",
                 count
             );
