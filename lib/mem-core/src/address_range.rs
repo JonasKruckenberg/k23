@@ -108,6 +108,7 @@ mod test {
 
     proptest::proptest! {
         #[test]
+        #[cfg_attr(miri, ignore)]
         fn len(len: usize) {
             let r: Range<VirtualAddress> = Range::from_start_len(VirtualAddress::new(0), len);
 

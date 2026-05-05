@@ -16,10 +16,15 @@ use crate::arch::{Arch, PageTableLevel};
 /// `range` must lie within a single table at `level`: a `PageTableEntries`
 /// indexes one table, and each caller consumes it against one `Table`. A
 /// cross-table range cannot be represented and panics in debug builds.
+///
+/// # Panics
+///
+/// Panics in debug builds if the range crosses tables at the chosen level.
 pub fn page_table_entries_for<A: Arch>(
     range: Range<VirtualAddress>,
     level: &PageTableLevel,
 ) -> PageTableEntries<A> {
+    debug_assert!(range.start.is_canonical::<A>() && range.end.is_canonical::<A>());
     debug_assert!(
         {
             // `range` stays within one table at this level iff its first and last
@@ -164,6 +169,7 @@ mod tests {
         /// table, so it must panic rather than silently truncate.
         #[test]
         #[should_panic = "crosses a page-table boundary"]
+        #[cfg_attr(not(debug_assertions), ignore)]
         fn rejects_a_range_crossing_a_table_boundary() {
             let level = &A::LEVELS[A::LEVELS.len() - 1];
             let table_span = level.entries() as usize * level.page_size();
