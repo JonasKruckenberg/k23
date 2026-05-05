@@ -12,6 +12,7 @@ allow = [
     "MIT", # requires license notice
     "Apache-2.0", # requires license notice
     "Unicode-3.0", # requires license notice
+    "BSD-2-Clause", # requires license notice
     "Apache-2.0 WITH LLVM-exception",
     "Zlib",
     "NCSA"

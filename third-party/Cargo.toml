@@ -60,6 +60,7 @@ proc-macro2 = { version = "1", optional = true }
 quote = { version = "1", optional = true }
 syn = { version = "2", features = ["full"], optional = true }
 
+# build and dev-dependencies
 proptest = { version = "1.8.0", optional = true }
 proptest-derive = { version = "0.8.0", optional = true }
 libm = { version = "0.2.15", optional = true }
@@ -86,6 +87,7 @@ default = [
     "tracing-subscriber/env-filter",
     "test-log/trace",
     "memchr/std",
+    "zerocopy/std",
 
     "dep:proptest",
     "dep:proptest-derive",
@@ -105,7 +107,7 @@ default = [
     "dep:brie-tree",
     "dep:libc-errno",
     "dep:arbitrary",
-    "dep:libfuzzer-sys"
+    "dep:libfuzzer-sys",
 ]
 no_std = []
 
