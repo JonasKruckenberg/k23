@@ -155,6 +155,10 @@ where
         &self,
         layout: Layout,
     ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError> {
+        if layout.size() == 0 {
+            return Err(AllocError);
+        }
+
         let mut inner = self.inner.lock();
 
         if let Some(p) = inner.allocate_contiguous_fast(self.min_align, layout) {
@@ -172,6 +176,10 @@ where
 
     #[inline(always)]
     fn allocate_contiguous(&self, layout: Layout) -> Result<PhysicalAddress, AllocError> {
+        if layout.size() == 0 {
+            return Err(AllocError);
+        }
+
         let mut inner = self.inner.lock();
 
         if let Some(p) = inner.allocate_contiguous_fast(self.min_align, layout) {
@@ -369,13 +377,6 @@ impl Arena {
     #[inline]
     fn allocate(&mut self, min_align: NonZeroUsize, layout: Layout) -> Option<PhysicalAddress> {
         debug_assert!(
-            self.region.start <= self.ptr && self.ptr <= self.region.end,
-            "bump pointer {:?} should in region range {}..={}",
-            self.ptr,
-            self.region.start,
-            self.region.end
-        );
-        debug_assert!(
             self.ptr.is_aligned_to(min_align.get()),
             "bump pointer {:?} should be aligned to the minimum alignment of {min_align:#x}",
             self.ptr
@@ -437,8 +438,8 @@ impl Arena {
             "pointer {aligned_ptr:?} should be aligned to minimum alignment of {min_align}",
         );
         debug_assert!(
-            self.region.start <= aligned_ptr && aligned_ptr <= self.ptr,
-            "pointer {aligned_ptr:?} should be in range {:?}..={:?}",
+            self.region.contains(&aligned_ptr),
+            "pointer {aligned_ptr:?} should be in range {:?}..{:?}",
             self.region.start,
             self.ptr
         );
@@ -670,6 +671,39 @@ mod tests {
 
                 assert_zeroed(block.start, block.len(), &physmap, &arch);
             }
+        }
+
+        // A zero-sized layout would return the same address for two allocations.
+        // Since we do not have the concept of a "dangling address" we MUST reject
+        // all ZST layouts.
+        #[test_log::test]
+        fn allocate_zero_sized<A: Arch>() {
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(2 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
+                .finish();
+
+            let arch = EmulateArch::new(machine.clone());
+            let physmap = PhysMap::ABSENT;
+
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
+
+            let zero = Layout::from_size_align(0, A::GRANULE_SIZE).unwrap();
+
+            // `allocate`/`allocate_zeroed` yield iterators that aren't `Debug`,
+            // so collapse the success arm to `()` before asserting the error.
+            frame_allocator.allocate(zero).map(drop).unwrap_err();
+            frame_allocator
+                .allocate_zeroed(zero, &physmap, &arch)
+                .map(drop)
+                .unwrap_err();
+            frame_allocator.allocate_contiguous(zero).unwrap_err();
+            frame_allocator
+                .allocate_contiguous_zeroed(zero, &physmap, &arch)
+                .unwrap_err();
         }
 
         #[test_log::test]
