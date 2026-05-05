@@ -431,7 +431,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
     ///
     /// Note that this method **does not** establish any ordering between address space modification
     /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// updated mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    /// updated mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned [`Flush`].
     ///
     /// After the modifications have been synchronized with current execution, all accesses to the virtual
     /// address range will translate to accesses of the new physical address range.
@@ -478,7 +478,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
     ///
     /// Note that this method **does not** establish any ordering between address space modification
     /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// updated mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    /// updated mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned [`Flush`].
     ///
     /// After the modifications have been synchronized with current execution, all accesses to the virtual
     /// address range will translate to accesses of the new physical address range.
@@ -552,7 +552,6 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
     ///
     /// 1. The entire range `virt` must be mapped.
     /// 2. `virt` must be aligned to at least the smallest architecture block size.
-    /// 3. `phys` must be aligned to `at least the smallest architecture block size.
     pub unsafe fn set_attributes(
         &mut self,
         virt: Range<VirtualAddress>,
@@ -611,7 +610,6 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
     ///
     /// 1. The entire range `virt` must be mapped.
     /// 2. `virt` must be aligned to at least the smallest architecture block size.
-    /// 3. `phys` must be aligned to `at least the smallest architecture block size.
     pub unsafe fn unmap(
         &mut self,
         virt: Range<VirtualAddress>,
@@ -656,6 +654,8 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
                 // TODO fence(modified pages, 0) if attributes includes GLOBAL
                 flush.invalidate(range);
             } else {
+                debug_assert!((table.depth() as usize + 1) < A::LEVELS.len());
+
                 // Safety: We checked the entry is a table above (1.) know the depth is correct (2.).
                 let mut subtable: Table<A, marker::Mut<'_>> =
                     unsafe { Table::from_raw_parts(entry.address(), table.depth() + 1) };
