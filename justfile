@@ -33,7 +33,7 @@ _default:
     @just --list
 
 run target buck2_args="" *qemu_args="":
-    {{ _buck2 }} run {{ target }} {{ buck2_args }} {{ qemu_args }}
+    {{ _buck2 }} run {{ target }} {{ _platform_args }} {{ buck2_args }} {{ qemu_args }}
 
 # quick check for development.
 # The prelude's [diag.json] action is infallible by design; gate on the
@@ -99,11 +99,11 @@ fuzz_args := ""
 @fuzz targets="" *buck2_args:
     {{ _buck2 }} test {{ _uquery(_q_fuzz_tests(_targets_query(targets))) }} {{ _platform_args }} {{ buck2_args }} {{ if fuzz_args == "" { "" } else { "-- " + fuzz_args } }}
 
-# run kernel selftests under qemu.
-# Pass kernel bootargs args after `--`, e.g.
+# run kernel selftests under qemu. Pinned to riscv64 for now; long-term this
+# should loop over every supported arch. Pass kernel bootargs after `--`, e.g.
 # just selftests -- --format=json
 @selftests *buck2_args:
-    {{ _buck2 }} test //sys:k23-qemu-riscv64-tests {{ buck2_args }}
+    {{ _buck2 }} test //sys:k23-qemu-tests --target-platforms //platforms:riscv64 {{ buck2_args }}
 
 # ===== formatting =====
 
@@ -138,8 +138,8 @@ benchmark targets="" *buck2_args:
 # audit the buck2 graph: cell config plus visibility/providers for top-level kernel targets.
 @buck2-audit:
     {{ _buck2 }} audit cell
-    {{ _buck2 }} audit providers //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
-# {{ _buck2 }} audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+    {{ _buck2 }} audit providers //sys:k23 //sys:k23-qemu //sys/kernel:kernel //sys/loader:loader {{ _platform_args }}
+#   {{ _buck2 }} audit visibility //sys:k23 //sys:k23-qemu //sys/kernel:kernel //sys/loader:loader {{_platform_args}}
 
 # run cargo-deny against the third-party Cargo workspace.
 @cargo-deny:
