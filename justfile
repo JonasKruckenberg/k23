@@ -28,7 +28,7 @@ run target buck2_args="" *qemu_args="":
     {{ _buck2 }} build {{append("[check]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
 
 # run all lints and tests on a crate or the entire workspace.
-preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) buck2-audit cargo-deny reindeer-clean # (loom targets buck2_args)
+preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args) buck2-audit cargo-deny reindeer-clean
 
 # run linters on a crate or the entire workspace.
 lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
@@ -74,7 +74,7 @@ fuzz_args := ""
 
 # run fuzz tests for a crate or the entire workspace.
 fuzz targets="" *buck2_args:
-    {{ _buck2 }} test {{_uquery(_q_fuzz_tests(_targets_query(targets)))}} {{_platform_args}} {{if fuzz_args == "" { "" } else { "-- " + fuzz_args }}}
+    {{ _buck2 }} test {{_uquery(_q_fuzz_tests(_targets_query(targets)))}} {{_platform_args}} {{buck2_args}} {{if fuzz_args == "" { "" } else { "-- " + fuzz_args }}}
 
 # ===== formatting =====
 
@@ -109,8 +109,8 @@ benchmark targets="" *buck2_args:
 # audit the buck2 graph: cell config plus visibility/providers for top-level kernel targets.
 @buck2-audit:
     {{ _buck2 }} audit cell
-    {{ _buck2 }} audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
-    {{ _buck2 }} audit providers //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+    {{ _buck2 }} audit visibility //sys:k23 //sys:k23-qemu //sys/kernel:kernel //sys/loader:loader
+    {{ _buck2 }} audit providers //sys:k23 //sys:k23-qemu //sys/kernel:kernel //sys/loader:loader
 
 # run cargo-deny against the third-party Cargo workspace.
 @cargo-deny:
