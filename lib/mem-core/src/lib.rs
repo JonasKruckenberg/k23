@@ -26,15 +26,9 @@ mod utils;
 
 pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_range::AddressRangeExt;
-pub use address_space::HardwareAddressSpace;
+pub use address_space::{Active, Bootstrapping, HardwareAddressSpace};
 pub use arch::Arch;
 pub use flush::Flush;
 pub use frame_allocator::{AllocError, BumpAllocator, DEFAULT_MAX_REGIONS, FrameAllocator};
 pub use memory_attributes::{MemoryAttributes, WriteOrExecute};
 pub use physmap::PhysMap;
-
-pub const KIB: usize = 1024;
-pub const MIB: usize = KIB * 1024;
-pub const GIB: usize = MIB * 1024;
-#[cfg(target_pointer_width = "64")]
-pub const TIB: usize = GIB * 1024;

@@ -39,10 +39,6 @@ use xmas_elf::program::Type;
 use crate::arch;
 use crate::mem::frame_alloc::FrameAllocator;
 
-pub const KIB: usize = 1024;
-pub const MIB: usize = KIB * 1024;
-pub const GIB: usize = MIB * 1024;
-
 static KERNEL_ASPACE: OnceLock<Arc<Mutex<AddressSpace>>> = OnceLock::new();
 
 pub fn with_kernel_aspace<F, R>(f: F) -> R

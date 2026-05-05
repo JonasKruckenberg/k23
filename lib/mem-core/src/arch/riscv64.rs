@@ -7,14 +7,12 @@
 
 use core::range::Range;
 
+use human_bytes::{GIB, KIB, MIB, TIB};
 use riscv::satp;
 use riscv::sbi::rfence::{sfence_vma, sfence_vma_asid};
 
 use crate::arch::PageTableLevel;
-use crate::{
-    AddressRangeExt, GIB, KIB, MIB, MemoryAttributes, PhysicalAddress, TIB, VirtualAddress,
-    WriteOrExecute,
-};
+use crate::{AddressRangeExt, MemoryAttributes, PhysicalAddress, VirtualAddress, WriteOrExecute};
 
 /// The number of usable bits in a `PhysicalAddress`. This may be used for address canonicalization.
 #[cfg_attr(not(test), expect(unused, reason = "only used by tests"))]
@@ -329,12 +327,13 @@ fn fence_all() {
 
 #[cfg(test)]
 mod tests {
+    use human_bytes::KIB;
     use proptest::{prop_assert_eq, proptest};
 
     use super::*;
+    use crate::MemoryAttributes;
     use crate::arch::PageTableEntry;
     use crate::test_utils::proptest::{aligned_phys, phys};
-    use crate::{KIB, MemoryAttributes};
 
     proptest! {
         #[test]

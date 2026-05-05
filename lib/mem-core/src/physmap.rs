@@ -103,6 +103,7 @@ impl PhysMap {
 
 #[cfg(test)]
 mod tests {
+    use human_bytes::{GIB, KIB};
     use proptest::prelude::*;
 
     use super::*;
@@ -110,7 +111,6 @@ mod tests {
     use crate::test_utils::proptest::{
         aligned_phys, aligned_virt, pick_address_in_regions, regions_phys,
     };
-    use crate::{GIB, KIB};
 
     proptest! {
         #[test]
