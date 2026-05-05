@@ -141,7 +141,6 @@ pub fn map_kernel(
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     kernel: &Kernel,
-    minfo: &MachineInfo,
     phys_off: VirtualAddress,
 ) -> crate::Result<(Range<VirtualAddress>, Option<TlsAllocation>)> {
     let kernel_virt = page_alloc.allocate(
@@ -181,7 +180,6 @@ pub fn map_kernel(
                     page_alloc,
                     &ph,
                     kernel_virt.start,
-                    minfo,
                     phys_off,
                 )?);
                 log::trace!("{maybe_tls_allocation:?}");
@@ -454,14 +452,11 @@ fn handle_tls_segment(
     page_alloc: &mut PageAllocator,
     ph: &ProgramHeader,
     virt_base: VirtualAddress,
-    minfo: &MachineInfo,
     phys_off: VirtualAddress,
 ) -> crate::Result<TlsAllocation> {
+    // Single-CPU handoff: allocate a single TLS region rather than one per hart.
     let layout = Layout::from_size_align(ph.mem_size, cmp::max(ph.align, arch::PAGE_SIZE))
         .unwrap()
-        .repeat(minfo.hart_mask.count_ones() as usize)
-        .unwrap()
-        .0
         .pad_to_align();
     log::trace!("allocating TLS segment {layout:?}...");
 
@@ -495,44 +490,35 @@ fn handle_tls_segment(
     Ok(TlsAllocation {
         virt,
         template: TlsTemplate {
-            start_addr: virt_base.add(ph.virtual_address),
+            image_offset: ph.virtual_address,
             mem_size: ph.mem_size,
             file_size: ph.file_size,
             align: ph.align,
         },
+        start_addr: virt_base.add(ph.virtual_address),
     })
 }
 
 #[derive(Debug)]
 pub struct TlsAllocation {
-    /// The TLS region in virtual memory
     virt: Range<VirtualAddress>,
-    /// The template we allocated for
     pub template: TlsTemplate,
+    start_addr: VirtualAddress,
 }
 
 impl TlsAllocation {
-    pub fn region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
-        let aligned_size = checked_align_up(
-            self.template.mem_size,
-            cmp::max(self.template.align, arch::PAGE_SIZE),
-        )
-        .unwrap();
-        let start = self.virt.start.add(aligned_size * hartid);
-
-        Range::from_start_len(start, self.template.mem_size)
+    pub fn region_for_boot_hart(&self) -> Range<VirtualAddress> {
+        Range::from_start_len(self.virt.start, self.template.mem_size)
     }
 
-    pub fn initialize_for_hart(&self, hartid: usize) {
+    pub fn initialize_for_boot_hart(&self) {
         if self.template.file_size != 0 {
             // Safety: We have to trust the loaders BootInfo here
             unsafe {
-                let src: &[u8] = slice::from_raw_parts(
-                    self.template.start_addr.as_mut_ptr(),
-                    self.template.file_size,
-                );
+                let src: &[u8] =
+                    slice::from_raw_parts(self.start_addr.as_mut_ptr(), self.template.file_size);
                 let dst: &mut [u8] = slice::from_raw_parts_mut(
-                    self.region_for_hart(hartid).start.as_mut_ptr(),
+                    self.region_for_boot_hart().start.as_mut_ptr(),
                     self.template.file_size,
                 );
 
@@ -546,82 +532,68 @@ impl TlsAllocation {
     }
 }
 
-pub fn map_kernel_stacks(
+pub fn map_boot_hart_stack(
     root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
-    minfo: &MachineInfo,
-    per_cpu_size_pages: usize,
+    size_pages: usize,
     phys_off: VirtualAddress,
 ) -> crate::Result<StacksAllocation> {
-    let per_cpu_size = per_cpu_size_pages * arch::PAGE_SIZE;
-    let per_cpu_size_with_guard = per_cpu_size + arch::PAGE_SIZE;
+    let size = size_pages * arch::PAGE_SIZE;
+    let size_with_guard = size + arch::PAGE_SIZE;
 
-    let layout_with_guard = Layout::from_size_align(per_cpu_size_with_guard, arch::PAGE_SIZE)
-        .unwrap()
-        .repeat(minfo.hart_mask.count_ones() as usize)
-        .unwrap()
-        .0;
+    // Single-CPU handoff: a single stack region with one guard page.
+    let layout_with_guard = Layout::from_size_align(size_with_guard, arch::PAGE_SIZE).unwrap();
 
     let virt = page_alloc.allocate(layout_with_guard);
     log::trace!("Mapping stacks region {virt:#x?}...");
 
-    for hart in 0..minfo.hart_mask.count_ones() {
-        let layout = Layout::from_size_align(per_cpu_size, arch::PAGE_SIZE).unwrap();
+    let layout = Layout::from_size_align(size, arch::PAGE_SIZE).unwrap();
+    let mut virt_cursor = virt.end.sub(size);
 
-        let mut virt = virt
-            .end
-            .add(per_cpu_size_with_guard * hart as usize)
-            .sub(per_cpu_size);
+    log::trace!("Allocating stack {layout:?}...");
+    // The stacks region doesn't need to be zeroed, since we will be filling it with
+    // the canary pattern anyway
+    let mut frame_iter = frame_alloc.allocate(layout);
 
-        log::trace!("Allocating stack {layout:?}...");
-        // The stacks region doesn't need to be zeroed, since we will be filling it with
-        // the canary pattern anyway
-        let mut frame_iter = frame_alloc.allocate(layout);
+    while let Some(chunk) = frame_iter.next()? {
+        log::trace!(
+            "mapping stack {virt_cursor:?}..{:?} => {chunk:?}",
+            virt_cursor.add(chunk.len())
+        );
 
-        while let Some(chunk) = frame_iter.next()? {
-            log::trace!(
-                "mapping stack for hart {hart} {virt:?}..{:?} => {chunk:?}",
-                virt.add(chunk.len())
-            );
-
-            // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
-            // abort startup anyway
-            unsafe {
-                arch::map_contiguous(
-                    root_pgtable,
-                    frame_iter.alloc(),
-                    virt,
-                    chunk.start,
-                    chunk.len(),
-                    Flags::READ | Flags::WRITE,
-                    phys_off,
-                )?;
-            }
-
-            virt = virt.add(chunk.len());
+        // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+        // abort startup anyway
+        unsafe {
+            arch::map_contiguous(
+                root_pgtable,
+                frame_iter.alloc(),
+                virt_cursor,
+                chunk.start,
+                chunk.len(),
+                Flags::READ | Flags::WRITE,
+                phys_off,
+            )?;
         }
+
+        virt_cursor = virt_cursor.add(chunk.len());
     }
 
     Ok(StacksAllocation {
         virt,
-        per_cpu_size,
-        per_cpu_size_with_guard,
+        guard_size: arch::PAGE_SIZE,
     })
 }
 
 pub struct StacksAllocation {
-    /// The TLS region in virtual memory
+    /// The stack region in virtual memory
     virt: Range<VirtualAddress>,
-    per_cpu_size: usize,
-    per_cpu_size_with_guard: usize,
+    guard_size: usize,
 }
 
 impl StacksAllocation {
-    pub fn region_for_cpu(&self, cpuid: usize) -> Range<VirtualAddress> {
-        let end = self.virt.end.add(self.per_cpu_size_with_guard * cpuid);
-
-        Range::from(end.sub(self.per_cpu_size)..end)
+    pub fn region_for_boot_hart(&self) -> Range<VirtualAddress> {
+        Range::from(self.virt.start.add(self.guard_size)..self.virt.end)
     }
 }
 

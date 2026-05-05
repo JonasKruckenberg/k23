@@ -5,55 +5,52 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::alloc::Layout;
-use core::mem::MaybeUninit;
-use core::range::Range;
-use core::slice;
+//! Construct the [`BootInfo`] handed off to the kernel.
+//!
+//! The loader as it stands today is throwaway scaffolding kept just functional enough to feed the
+//! new `BootInfo` surface. The upcoming loader rewrite will replace it wholesale; this file only
+//! exists to bridge the gap.
 
-use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
-use mem_core::{PhysicalAddress, VirtualAddress};
+use core::alloc::Layout;
+use core::range::Range;
+
+use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, TlsTemplate};
+use mem_core::{PhysMap, PhysicalAddress, VirtualAddress};
 
 use crate::arch;
 use crate::frame_alloc::FrameAllocator;
 
-#[expect(clippy::too_many_arguments, reason = "")]
+#[expect(clippy::too_many_arguments, reason = "loader is throwaway")]
 pub fn prepare_boot_info(
     mut frame_alloc: FrameAllocator,
-    physical_address_offset: VirtualAddress,
-    physical_memory_map: Range<VirtualAddress>,
+    physmap: PhysMap,
     kernel_virt: Range<VirtualAddress>,
     maybe_tls_template: Option<TlsTemplate>,
-    loader_phys: Range<PhysicalAddress>,
-    kernel_phys: Range<PhysicalAddress>,
     kernel_debuginfo_phys: Range<PhysicalAddress>,
     fdt_phys: Range<PhysicalAddress>,
-    hart_mask: usize,
+    boot_cpu_id: usize,
+    boot_ticks: u64,
     rng_seed: [u8; 32],
 ) -> crate::Result<*mut BootInfo> {
+    let phys_off = physmap
+        .range_virt()
+        .start
+        .sub(physmap.range_phys().start.get());
     let frame = frame_alloc.allocate_contiguous_zeroed(
         Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
-        arch::KERNEL_ASPACE_BASE,
+        phys_off,
     )?;
-    let page = physical_address_offset.add(frame.get());
+    let page = phys_off.add(frame.get());
 
-    let memory_regions = init_boot_info_memory_regions(
-        page,
-        frame_alloc,
-        fdt_phys,
-        loader_phys,
-        kernel_phys,
-        kernel_debuginfo_phys,
-    );
-
-    let mut boot_info = BootInfo::new(memory_regions);
-    boot_info.physical_address_offset = physical_address_offset;
-    boot_info.physical_memory_map = physical_memory_map;
-    boot_info.tls_template = maybe_tls_template;
+    let mut boot_info = BootInfo::new(physmap);
+    boot_info.boot_cpu_id = boot_cpu_id;
+    boot_info.boot_ticks = boot_ticks;
+    boot_info.fdt = Some(fdt_phys.start);
     boot_info.kernel_virt = kernel_virt;
-    boot_info.kernel_phys = kernel_phys;
-    boot_info.kernel_debuginfo_phys = kernel_debuginfo_phys;
-    boot_info.cpu_mask = hart_mask;
+    boot_info.tls_template = maybe_tls_template.unwrap_or_default();
+    boot_info.kernel_debuginfo_phys = Some(kernel_debuginfo_phys);
     boot_info.rng_seed = rng_seed;
+    boot_info.memory_regions = collect_free_regions(&frame_alloc);
 
     #[expect(
         clippy::cast_ptr_alignment,
@@ -66,93 +63,21 @@ pub fn prepare_boot_info(
     Ok(boot_info_ptr)
 }
 
-fn init_boot_info_memory_regions(
-    page: VirtualAddress,
-    frame_alloc: FrameAllocator,
-    fdt_phys: Range<PhysicalAddress>,
-    loader_phys: Range<PhysicalAddress>,
-    kernel_phys: Range<PhysicalAddress>,
-    kernel_debuginfo_phys: Range<PhysicalAddress>,
-) -> MemoryRegions {
-    // Safety: we just allocated a whole frame for the boot info
-    let regions: &mut [MaybeUninit<MemoryRegion>] = unsafe {
-        let base = page.add(size_of::<BootInfo>());
-        let len = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
-
-        #[expect(
-            clippy::cast_ptr_alignment,
-            reason = "`page` is actually page aligned, so this is perfectly fine"
-        )]
-        slice::from_raw_parts_mut(base.as_mut_ptr().cast::<MaybeUninit<MemoryRegion>>(), len)
-    };
-
-    let mut len = 0;
-    let mut push_region = |region: MemoryRegion| {
-        debug_assert!(!region.range.is_empty());
-        regions[len].write(region);
-        len += 1;
-    };
-
-    // Report the memory we consumed during startup as used.
-    for used_region in frame_alloc.used_regions() {
-        push_region(MemoryRegion {
-            range: used_region,
-            kind: MemoryRegionKind::Loader,
-        });
-    }
-
-    // Report the free regions as usable.
-    for free_region in frame_alloc.free_regions() {
-        push_region(MemoryRegion {
-            range: free_region,
+/// Report the remaining free regions reported by the bump allocator as `Usable`.
+///
+/// The new `BootInfo` schema's `MemoryRegions` is just a sorted, non-overlapping list of physical
+/// runs. The kernel reserves its own image/FDT/debuginfo via the dedicated `BootInfo` fields, so
+/// we only need to expose the *free* regions here.
+fn collect_free_regions(frame_alloc: &FrameAllocator) -> loader_api::MemoryRegions {
+    let mut regions: loader_api::MemoryRegions = frame_alloc
+        .free_regions()
+        .filter(|r| !r.is_empty())
+        .map(|range| MemoryRegion {
+            range,
             kind: MemoryRegionKind::Usable,
-        });
-    }
+        })
+        .collect();
 
-    // go over the embedded kernel and kernel debuginfo that are
-    // directly mapped and mark every around them as usable memory
-    {
-        let mut holes = [kernel_phys, kernel_debuginfo_phys];
-        holes.sort_unstable_by_key(|r| r.start);
-
-        let start = Range::from(loader_phys.start..holes[0].start);
-        if !start.is_empty() {
-            push_region(MemoryRegion {
-                range: start,
-                kind: MemoryRegionKind::Usable,
-            });
-        }
-
-        let mid = Range::from(holes[0].end..holes[1].start);
-        if !mid.is_empty() {
-            push_region(MemoryRegion {
-                range: mid,
-                kind: MemoryRegionKind::Usable,
-            });
-        }
-
-        let end = Range::from(holes[1].end..loader_phys.end);
-        if !end.is_empty() {
-            push_region(MemoryRegion {
-                range: end,
-                kind: MemoryRegionKind::Usable,
-            });
-        }
-    }
-
-    // Report the flattened device tree as a separate region.
-    push_region(MemoryRegion {
-        range: fdt_phys,
-        kind: MemoryRegionKind::FDT,
-    });
-
-    // Truncate the slice to include only initialized elements
-    // Safety: closure above ensures the slice up to len is valid
-    let regions = unsafe { regions[0..len].assume_init_mut() };
-
-    // Sort the memory regions by start address, we do this now in the loader
-    // because the BootInfo struct will be passed as a read-only static reference to the kernel.
     regions.sort_unstable_by_key(|region| region.range.start);
-
-    MemoryRegions::from(regions)
+    regions
 }

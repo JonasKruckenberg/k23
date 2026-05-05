@@ -214,7 +214,7 @@ impl Arena {
 
 // === Arena selection ===
 
-pub fn select_arenas(free_regions: SmallVec<[Range<PhysicalAddress>; 4]>) -> ArenaSelections {
+pub fn select_arenas(free_regions: loader_api::MemoryRegions) -> ArenaSelections {
     ArenaSelections {
         free_regions,
         wasted_bytes: 0,
@@ -235,7 +235,7 @@ pub struct SelectionError {
 }
 
 pub struct ArenaSelections {
-    free_regions: SmallVec<[Range<PhysicalAddress>; 4]>,
+    free_regions: loader_api::MemoryRegions,
     wasted_bytes: usize,
 }
 
@@ -248,18 +248,18 @@ impl FallibleIterator for ArenaSelections {
             return Ok(None);
         };
 
-        let mut hull = seed;
+        let mut hull = seed.range;
         let mut regions: SmallVec<[Range<PhysicalAddress>; 4]> = SmallVec::new();
-        regions.push(seed);
+        regions.push(seed.range);
 
         while let Some(region) = self.free_regions.pop() {
-            debug_assert!(!hull.overlaps(&region));
+            debug_assert!(!hull.overlaps(&region.range));
 
-            let hole_pages = if hull.end <= region.start {
-                region.start.offset_from_unsigned(hull.end)
+            let hole_pages = if hull.end <= region.range.start {
+                region.range.start.offset_from_unsigned(hull.end)
             } else {
-                debug_assert!(region.end <= hull.start);
-                hull.start.offset_from_unsigned(region.end)
+                debug_assert!(region.range.end <= hull.start);
+                hull.start.offset_from_unsigned(region.range.end)
             } / arch::PAGE_SIZE;
 
             let waste = ARENA_PAGE_BOOKKEEPING_SIZE * hole_pages;
@@ -268,9 +268,9 @@ impl FallibleIterator for ArenaSelections {
                 break;
             }
             self.wasted_bytes += waste;
-            hull.start = cmp::min(hull.start, region.start);
-            hull.end = cmp::max(hull.end, region.end);
-            regions.push(region);
+            hull.start = cmp::min(hull.start, region.range.start);
+            hull.end = cmp::max(hull.end, region.range.end);
+            regions.push(region.range);
         }
 
         let arena = hull.align_in(arch::PAGE_SIZE);

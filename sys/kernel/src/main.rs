@@ -12,6 +12,7 @@
 #![feature(debug_closure_helpers)]
 #![feature(iter_next_chunk)]
 #![feature(allocator_api)]
+#![feature(slice_partition_dedup)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 
 extern crate alloc;
@@ -34,7 +35,6 @@ mod util;
 mod wasm;
 
 use core::range::Range;
-use core::slice;
 use core::time::Duration;
 
 use abort::abort;
@@ -43,9 +43,9 @@ use cfg_if::cfg_if;
 use fastrand::FastRand;
 use kasync::executor::{Executor, Worker};
 use kasync::time::{Instant, Ticks, Timer};
-use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
+use loader_api::{BootInfo, LoaderConfig};
 use mem::frame_alloc;
-use mem_core::{AddressRangeExt, PhysicalAddress};
+use mem_core::PhysicalAddress;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -77,22 +77,26 @@ static LOADER_CONFIG: LoaderConfig = {
 };
 
 #[unsafe(no_mangle)]
-fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     panic_unwind::set_hook(|info| {
-        tracing::error!("CPU {info}");
+        log::error!("CPU {info}");
 
         // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
         //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
         //  is no good way to do conditional compilation based on the opt-level.
         const MAX_BACKTRACE_FRAMES: usize = 32;
 
-        let backtrace = backtrace::__rust_end_short_backtrace(|| {
-            Backtrace::<MAX_BACKTRACE_FRAMES>::capture().unwrap()
-        });
-        tracing::error!("{backtrace}");
+        match backtrace::__rust_end_short_backtrace(Backtrace::<MAX_BACKTRACE_FRAMES>::capture) {
+            Ok(bt) => {
+                log::error!("{bt}");
 
-        if backtrace.frames_omitted {
-            tracing::warn!("Stack trace was larger than backtrace buffer, omitted some frames.");
+                if bt.frames_omitted {
+                    log::warn!(
+                        "Stack trace was larger than backtrace buffer, omitted some frames."
+                    );
+                }
+            }
+            Err(err) => log::error!("backtrace unavailable: {err}"),
         }
     });
 
@@ -100,7 +104,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // bubble up to this point is also a good idea since we can perform some last cleanup and
     // print an error message.
     let res = panic_unwind::catch_unwind(|| {
-        backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
+        backtrace::__rust_begin_short_backtrace(|| kmain(boot_info));
     });
 
     match res {
@@ -114,13 +118,22 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     }
 }
 
-fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
+fn kmain(boot_info: &'static BootInfo) {
+    let cpuid = boot_info.boot_cpu_id;
+    let boot_ticks = boot_info.boot_ticks;
+
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
     arch::per_cpu_init_early();
     tracing::per_cpu_init_early(cpuid);
 
-    let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
+    assert_eq!(
+        boot_info.version,
+        loader_api::BOOT_INFO_VERSION,
+        "loader/kernel BootInfo version mismatch"
+    );
+
+    let fdt_phys = boot_info.fdt.expect("loader did not provide FDT");
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
     let global = state::try_init_global(|| {
@@ -136,7 +149,9 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
-        let device_tree = DeviceTree::parse(fdt)?;
+        // Safety: the loader passes a valid FDT virtual address via the physmap.
+        let device_tree =
+            unsafe { DeviceTree::from_fdt(boot_info.physmap.phys_to_virt(fdt_phys))? };
         log::debug!("{device_tree:?}");
 
         let bootargs = bootargs::parse(&device_tree)?;
@@ -151,10 +166,17 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // perform global, architecture-specific initialization
         let arch = arch::init();
 
-        // initialize the global frame allocator
-        // at this point we have parsed and processed the flattened device tree, so we pass it to the
-        // frame allocator for reuse
-        let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
+        // Hand the still-free regions (after the initial-heap carve-out) to the frame
+        // allocator. `boot_alloc.free_regions()` reports usable bytes that haven't been
+        // burned during early boot, so the buddy never re-hands those out.
+        let free_regions: loader_api::MemoryRegions = boot_alloc
+            .free_regions()
+            .map(|range| loader_api::MemoryRegion {
+                range,
+                kind: loader_api::MemoryRegionKind::Usable,
+            })
+            .collect();
+        let frame_alloc = frame_alloc::init(boot_alloc, free_regions);
 
         // wire the frame allocator into the kernel heap's OOM handler so the heap can grow
         // automatically. Must come after `frame_alloc::init`; safe to come before `mem::init`
@@ -164,11 +186,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initialize the virtual memory subsystem
         mem::init(boot_info, &mut rng, frame_alloc).unwrap();
 
-        // perform LATE per-cpu, architecture-specific initialization
-        // (e.g. setting the trap vector and enabling interrupts)
         let cpu = arch::device::cpu::Cpu::new(&device_tree, cpuid)?;
 
-        let executor = Executor::with_capacity(boot_info.cpu_mask.count_ones() as usize).unwrap();
+        // single-CPU at handoff is the current contract.
+        let executor = Executor::with_capacity(1).unwrap();
         let timer = Timer::new(Duration::from_millis(1), cpu.clock);
 
         Ok(Global {
@@ -201,17 +222,9 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
     cfg_if! {
         if #[cfg(test)] {
-            if cpuid == 0 {
-                arch::block_on(worker2.run(tests::run_tests(global))).unwrap().unwrap().unwrap().exit_if_failed();
-            } else {
-                arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap().unwrap_err(); // the only way `run` can return is when the executor is closed
-            }
+            arch::block_on(worker2.run(tests::run_tests(global))).unwrap().unwrap().unwrap().exit_if_failed();
         } else {
-            shell::init(
-                &global.device_tree,
-                &global.executor,
-                boot_info.cpu_mask.count_ones() as usize,
-            );
+            shell::init(&global.device_tree, &global.executor, 1);
             arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap().unwrap_err(); // the only way `run` can return is when the executor is closed
         }
     }
@@ -219,49 +232,32 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.
 ///
-/// The regions passed by the loader are guaranteed to be non-overlapping, but might not be
-/// sorted and might not be optimally "packed". This function will both sort regions and
-/// attempt to compact the list by merging adjacent regions.
-fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAddress>, 16> {
-    let temp: ArrayVec<Range<PhysicalAddress>, 16> = boot_info
+/// The regions handed off by the loader are guaranteed non-overlapping and sorted by start
+/// address; this function coalesces contiguous neighbours into one entry.
+fn allocatable_memory_regions(
+    boot_info: &BootInfo,
+) -> ArrayVec<Range<PhysicalAddress>, { loader_api::MAX_MEMORY_REGIONS }> {
+    let mut out: ArrayVec<_, _> = boot_info
         .memory_regions
         .iter()
-        .filter_map(|region| region.kind.is_usable().then_some(region.range))
+        .filter(|region| region.kind.is_usable())
+        .map(|region| region.range)
         .collect();
 
-    // merge adjacent regions
-    let mut out: ArrayVec<Range<PhysicalAddress>, 16> = ArrayVec::new();
-    'outer: for region in temp {
-        for other in &mut out {
-            if region.start == other.end {
-                other.end = region.end;
-                continue 'outer;
+    // partition_dedup_by keeps the first of each "same" pair; mutating prev to absorb next
+    // and returning true folds runs of contiguous regions into a single entry.
+    let dedup_len = {
+        let (dedup, _) = out.partition_dedup_by(|next, prev| {
+            if prev.end == next.start {
+                prev.end = next.end;
+                true
+            } else {
+                false
             }
-            if region.end == other.start {
-                other.start = region.start;
-                continue 'outer;
-            }
-        }
-
-        out.push(region);
-    }
+        });
+        dedup.len()
+    };
+    out.truncate(dedup_len);
 
     out
-}
-
-fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAddress>) {
-    let fdt = boot_info
-        .memory_regions
-        .iter()
-        .find(|region| region.kind == MemoryRegionKind::FDT)
-        .expect("no FDT region");
-
-    let base = boot_info
-        .physical_address_offset
-        .add(fdt.range.start.get())
-        .as_mut_ptr();
-
-    // Safety: we need to trust the bootinfo data is correct
-    let slice = unsafe { slice::from_raw_parts(base, fdt.range.len()) };
-    (slice, fdt.range)
 }
