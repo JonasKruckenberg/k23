@@ -1,0 +1,15 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+rust_library(
+    name = "human-bytes",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["PUBLIC"],
+    tests = [":human-bytes_unittests"],
+)
+
+rust_test(
+    name = "human-bytes_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)

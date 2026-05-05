@@ -508,12 +508,14 @@ impl<const MAX: usize> ExactSizeIterator for Blocks<MAX> {}
 mod tests {
     use core::alloc::Layout;
 
+    use human_bytes::GIB;
+
     use super::*;
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;
     use crate::frame_allocator::FrameAllocator;
     use crate::test_utils::{EmulateArch, Machine, MachineBuilder};
-    use crate::{GIB, PhysMap, PhysicalAddress, archtest};
+    use crate::{PhysMap, PhysicalAddress, archtest};
 
     fn assert_zeroed(frame: PhysicalAddress, bytes: usize, physmap: &PhysMap, arch: &impl Arch) {
         let frame = unsafe { arch.read_bytes(physmap.phys_to_virt(frame), bytes) };
@@ -768,14 +770,15 @@ mod tests {
 mod proptests {
     use core::alloc::Layout;
 
+    use human_bytes::{GIB, KIB};
     use proptest::prelude::*;
 
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;
+    use crate::for_every_arch;
     use crate::frame_allocator::{BumpAllocator, DEFAULT_MAX_REGIONS, FrameAllocator};
     use crate::test_utils::proptest::region_layouts;
     use crate::test_utils::{Machine, MachineBuilder};
-    use crate::{GIB, KIB, for_every_arch};
 
     for_every_arch!(A => {
         proptest! {
