@@ -1,4 +1,5 @@
 buildscript.run = false
+omit_deps = ["cc"]
 
 [[cxx_library]]
 name = "libfuzzer"
