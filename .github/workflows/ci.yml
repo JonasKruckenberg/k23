@@ -28,9 +28,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix develop . --command buck2 audit cell
-      - run: nix develop . --command buck2 audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
-      - run: nix develop . --command buck2 audit providers //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+      - run: nix develop . --command just buck2-audit
 
   # Computes the set of Buck2 targets impacted by a PR. Skipped on push to main
   # (no useful base ref). See .github/workflows/_changed-targets.yml for details.
@@ -118,10 +116,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Check Rust Code
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          manifest-path: third-party/Cargo.toml
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix develop . --command just cargo-deny
 
   # Re-run reindeer and fail if third-party/BUCK (or any other reindeer-managed
   # file) is out of sync with third-party/Cargo.toml. Forces contributors to
@@ -133,11 +130,4 @@ jobs:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix develop . --command just buckify
-      - name: verify clean
-        run: |
-          if ! git diff --quiet; then
-            echo "::error::reindeer output is stale — run 'just buckify' and commit the result"
-            git diff --stat
-            exit 1
-          fi
+      - run: nix develop . --command just reindeer-clean
