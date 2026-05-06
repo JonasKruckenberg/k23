@@ -119,7 +119,7 @@ benchmark targets="" *buck2_args:
 # Re-run reindeer and fail if third-party/BUCK (or any other reindeer-managed
 # file) is out of sync with third-party/Cargo.toml. Forces contributors to
 # commit the regenerated BUCK alongside any dep change.
-reindeer-clean: buckify
+@reindeer-clean: buckify
     #!/usr/bin/env bash
     set -euo pipefail
     if ! git diff --quiet; then
@@ -127,6 +127,13 @@ reindeer-clean: buckify
         git diff --stat >&2
         exit 1
     fi
+
+# fail if any third-party rust_library has no first-party (transitive) consumer.
+@unused-third-party *buck2_args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$({{ _buck2 }} uquery "kind(rust_library, //third-party/...) except deps({{_default_query}})" {{buck2_args}})
+    [ -z "$out" ] || { echo "$out" >&2; exit 1; }
 
 # ===== changed-targets (powered by buck2-change-detector) =====
 #

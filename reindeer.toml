@@ -43,11 +43,3 @@ execution-platform = true
 [platform.linux-x86_64]
 target = "x86_64-unknown-linux-gnu"
 execution-platform = true
-
-[platform.windows-arm64]
-target = "aarch64-pc-windows-msvc"
-execution-platform = true
-
-[platform.windows-x86_64]
-target = "x86_64-pc-windows-msvc"
-execution-platform = true
