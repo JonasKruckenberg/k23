@@ -8,6 +8,7 @@ _typos := require("typos")
 _supertd := require("supertd")
 _reindeer := require("reindeer")
 _rust_project := require("rust-project")
+_cargo_deny := require("cargo-deny")
 
 _docstring := "
 justfile for k23
@@ -27,7 +28,7 @@ run target buck2_args="" *qemu_args="":
     {{ _buck2 }} build {{append("[check]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
 
 # run all lints and tests on a crate or the entire workspace.
-preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) # (loom targets buck2_args)
+preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) buck2-audit cargo-deny reindeer-clean # (loom targets buck2_args)
 
 # run linters on a crate or the entire workspace.
 lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
@@ -102,6 +103,30 @@ benchmark targets="" *buck2_args:
     for t in {{_uquery(_q_benchmarks(_targets_query(targets)))}}; do
         {{ _buck2 }} run "$t" {{_platform_args}} {{buck2_args}}
     done
+
+# ===== audit / freshness =====
+
+# audit the buck2 graph: cell config plus visibility/providers for top-level kernel targets.
+@buck2-audit:
+    {{ _buck2 }} audit cell
+    {{ _buck2 }} audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+    {{ _buck2 }} audit providers //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+
+# run cargo-deny against the third-party Cargo workspace.
+@cargo-deny:
+    {{ _cargo_deny }} --manifest-path third-party/Cargo.toml check
+
+# Re-run reindeer and fail if third-party/BUCK (or any other reindeer-managed
+# file) is out of sync with third-party/Cargo.toml. Forces contributors to
+# commit the regenerated BUCK alongside any dep change.
+reindeer-clean: buckify
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! git diff --quiet; then
+        echo "::error::reindeer output is stale — run 'just buckify' and commit the result" >&2
+        git diff --stat >&2
+        exit 1
+    fi
 
 # ===== changed-targets (powered by buck2-change-detector) =====
 #

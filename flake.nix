@@ -228,6 +228,7 @@
                 typos
                 dtc
                 cargo-nextest
+                cargo-deny
 
                 # for testing the kernel
                 qemu
