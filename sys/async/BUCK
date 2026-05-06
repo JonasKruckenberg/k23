@@ -2,7 +2,7 @@ load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//build:bench.bzl", "rust_benchmark")
 load("//build:loom.bzl", "rust_loom_test")
 
-_TEST_DEPS = [
+_DEPS = [
     "//lib/util:util",
     "//lib/cpu-local:cpu-local",
     "//lib/spin:spin",
@@ -16,6 +16,9 @@ _TEST_DEPS = [
     "//third-party:bitflags",
     "//third-party:pin-project",
     "//third-party:futures",
+]
+
+_TEST_DEPS = [
     "//third-party:tracing-subscriber",
     "//third-party:lazy_static",
     "//third-party:criterion",
@@ -28,21 +31,7 @@ rust_library(
         "constraints//:env[kernel]": ["unwind", "counters"],
         "DEFAULT": [],
     }),
-    deps = [
-        "//lib/util:util",
-        "//lib/cpu-local:cpu-local",
-        "//lib/spin:spin",
-        "//lib/fastrand:fastrand",
-        "//lib/arrayvec:arrayvec",
-        "//third-party:cordyceps",
-        "//third-party:static_assertions",
-        "//third-party:cfg-if",
-        "//third-party:mycelium-bitfield",
-        "//third-party:tracing",
-        "//third-party:bitflags",
-        "//third-party:pin-project",
-        "//third-party:futures",
-    ] + select({
+    deps = _DEPS + select({
         "constraints//:env[kernel]": ["//lib/panic-unwind:panic-unwind"],
         "DEFAULT": [],
     }),
@@ -54,7 +43,7 @@ rust_test(
     name = "kasync_tests",
     srcs = glob(["src/**/*.rs"]),
     crate = "kasync",
-    deps = _TEST_DEPS,
+    deps = _DEPS + _TEST_DEPS,
     features = ["counters"],
     visibility = ["PUBLIC"],
 )
@@ -63,8 +52,8 @@ rust_loom_test(
     name = "kasync_loom_tests",
     srcs = glob(["src/**/*.rs"]),
     crate = "kasync",
+    deps = _DEPS + _TEST_DEPS + ["//third-party:loom"],
     features = ["counters"],
-    deps = _TEST_DEPS + ["//third-party:loom"],
 )
 
 # Host-only rebuild of kasync with the `__bench` feature enabled, which
@@ -74,21 +63,7 @@ rust_library(
     srcs = glob(["src/**/*.rs"]),
     crate = "kasync",
     features = ["__bench"],
-    deps = [
-        "//lib/util:util",
-        "//lib/cpu-local:cpu-local",
-        "//lib/spin:spin",
-        "//lib/fastrand:fastrand",
-        "//lib/arrayvec:arrayvec",
-        "//third-party:cordyceps",
-        "//third-party:static_assertions",
-        "//third-party:cfg-if",
-        "//third-party:mycelium-bitfield",
-        "//third-party:tracing",
-        "//third-party:bitflags",
-        "//third-party:pin-project",
-        "//third-party:futures",
-    ],
+    deps = _DEPS,
     visibility = ["PUBLIC"],
 )
 

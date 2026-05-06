@@ -5120,6 +5120,44 @@ cargo.rust_library(
         "simd",
         "zerocopy-derive",
     ],
+    platform = {
+        "linux-arm64": dict(
+            features = [
+                "alloc",
+                "std",
+            ],
+        ),
+        "linux-x86_64": dict(
+            features = [
+                "alloc",
+                "std",
+            ],
+        ),
+        "macos-arm64": dict(
+            features = [
+                "alloc",
+                "std",
+            ],
+        ),
+        "macos-x86_64": dict(
+            features = [
+                "alloc",
+                "std",
+            ],
+        ),
+        "windows-arm64": dict(
+            features = [
+                "alloc",
+                "std",
+            ],
+        ),
+        "windows-x86_64": dict(
+            features = [
+                "alloc",
+                "std",
+            ],
+        ),
+    },
     visibility = [],
     deps = [":zerocopy-derive-0.8.48"],
 )

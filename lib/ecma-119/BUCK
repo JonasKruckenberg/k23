@@ -1,0 +1,37 @@
+_DEPS = [
+    "//third-party:anyhow",
+    "//third-party:fallible-iterator",
+    "//third-party:bitflags",
+    "//third-party:zerocopy",
+]
+
+rust_library(
+    name = "ecma-119",
+    srcs = glob(["src/**/*.rs"]),
+    features = select({
+        "prelude//os:none": [],
+        "DEFAULT": ["build"]
+    }),
+    deps = _DEPS,
+    tests = [":ecma-119_unittests", ":ecma-119_roundtrip"]
+)
+
+rust_test(
+    name = "ecma-119_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    features = ["build"],
+    visibility = ["PUBLIC"],
+    deps = _DEPS
+)
+
+rust_test(
+    name = "ecma-119_roundtrip",
+    srcs = ["tests/roundtrip.rs"],
+    crate_root = "tests/roundtrip.rs",
+    visibility = ["PUBLIC"],
+    deps = [
+        ":ecma-119",
+        "//third-party:fallible-iterator",
+        "//third-party:zerocopy",
+    ],
+)
