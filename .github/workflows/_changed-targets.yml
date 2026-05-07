@@ -30,11 +30,18 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
 
       - name: Colocate jj on git
-        run: nix develop . --command jj git init --colocate
+        run: nix develop .#ci --command jj git init --colocate
 
       - name: Determine base SHA
         id: base
@@ -58,7 +65,7 @@ jobs:
           if [ ! -f /tmp/base-tree/.buckconfig ]; then
             echo "Base ${{ steps.base.outputs.sha }} predates buck2 setup — no base.jsonl will be produced"
           else
-            (cd /tmp/base-tree && nix develop "$REPO" --command supertd targets root//... --output "$REPO/base.jsonl") \
+            (cd /tmp/base-tree && nix develop "$REPO#ci" --command supertd targets root//... --output "$REPO/base.jsonl") \
               || { echo "::warning::supertd targets failed at base — base.jsonl skipped"; rm -f base.jsonl; }
           fi
           git worktree remove --force /tmp/base-tree
@@ -72,9 +79,9 @@ jobs:
             : > impacted-targets.txt
             exit 0
           fi
-          nix develop . --command just changed-targets-diff "${{ steps.base.outputs.sha }}" > changes.txt
+          nix develop .#ci --command just changed-targets-diff "${{ steps.base.outputs.sha }}" > changes.txt
           set +e
-          IMPACTED=$(nix develop . --command just changed-targets changes.txt base.jsonl)
+          IMPACTED=$(nix develop .#ci --command just changed-targets changes.txt base.jsonl)
           rc=$?
           set -e
           if [ "$rc" -ne 0 ]; then

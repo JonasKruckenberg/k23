@@ -16,13 +16,13 @@ shift $(( $# < 3 ? $# : 3 ))
 
 # Push to main / changed-targets skipped → run the full suite.
 if [ "$targets_result" = "skipped" ]; then
-    exec nix develop . --command just "$@" "$recipe"
+    exec nix develop .#ci --command just "$@" "$recipe"
 fi
 
 case "$targets_mode" in
     all)
         echo "changed-targets: pessimistic fallback — running full suite"
-        exec nix develop . --command just "$@" "$recipe"
+        exec nix develop .#ci --command just "$@" "$recipe"
         ;;
     noop)
         echo "changed-targets: no impacted targets — skipping $recipe"
@@ -35,7 +35,7 @@ case "$targets_mode" in
         fi
         impacted=$(tr '\n' ' ' < impacted-targets.txt)
         echo "changed-targets: filtered run — targets: $impacted"
-        exec nix develop . --command just "$@" "$recipe" "$impacted"
+        exec nix develop .#ci --command just "$@" "$recipe" "$impacted"
         ;;
     *)
         echo "::error::Unknown targets_mode='$targets_mode' (targets_result=$targets_result)" >&2
