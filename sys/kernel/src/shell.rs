@@ -19,7 +19,6 @@ use alloc::string::{String, ToString};
 use core::fmt;
 use core::fmt::Write;
 use core::ops::{DerefMut, Range};
-use core::str::FromStr;
 
 use fallible_iterator::FallibleIterator;
 use kasync::executor::Executor;
@@ -203,14 +202,6 @@ pub struct Error<'a> {
 #[derive(Debug)]
 enum ErrorKind<'a> {
     UnknownCommand(&'a [Command<'a>]),
-    InvalidArguments {
-        help: &'a str,
-        arg: &'a str,
-        flag: Option<&'a str>,
-    },
-    FlagRequired {
-        flags: &'a [&'a str],
-    },
     Other(&'static str),
 }
 
@@ -325,35 +316,12 @@ impl fmt::Display for Error<'_> {
                 .chain(core::iter::once("help"))
         }
 
-        fn fmt_flag_names(f: &mut fmt::Formatter<'_>, flags: &[&str]) -> fmt::Result {
-            let mut names = flags.iter();
-            if let Some(name) = names.next() {
-                f.write_str(name)?;
-                for name in names {
-                    write!(f, "|{name}")?;
-                }
-            }
-            Ok(())
-        }
-
         let Self { line, kind } = self;
         match kind {
             ErrorKind::UnknownCommand(commands) => {
                 write!(f, "unknown command {line:?}, expected one of: [")?;
                 comma_delimited(&mut f, command_names(commands))?;
                 f.write_char(']')?;
-            }
-            ErrorKind::InvalidArguments { help, arg, flag } => {
-                f.write_str("invalid argument")?;
-                if let Some(flag) = flag {
-                    write!(f, " {flag}")?;
-                }
-                write!(f, " {arg:?}: {help}")?;
-            }
-            ErrorKind::FlagRequired { flags } => {
-                write!(f, "the '{line}' command requires the ")?;
-                fmt_flag_names(f, flags)?;
-                write!(f, " flag")?;
             }
             ErrorKind::Other(msg) => write!(f, "could not execute {line:?}: {msg}")?,
         }
@@ -389,160 +357,10 @@ impl<'cmd> Context<'cmd> {
         }
     }
 
-    pub fn command(&self) -> &'cmd str {
-        self.current.trim()
-    }
-
     fn unknown_command(&self, commands: &'cmd [Command]) -> Error<'cmd> {
         Error {
             line: self.line,
             kind: ErrorKind::UnknownCommand(commands),
         }
-    }
-
-    pub fn invalid_argument(&self, help: &'static str) -> Error<'cmd> {
-        Error {
-            line: self.line,
-            kind: ErrorKind::InvalidArguments {
-                arg: self.current,
-                flag: None,
-                help,
-            },
-        }
-    }
-
-    pub fn invalid_argument_named(&self, name: &'static str, help: &'static str) -> Error<'cmd> {
-        Error {
-            line: self.line,
-            kind: ErrorKind::InvalidArguments {
-                arg: self.current,
-                flag: Some(name),
-                help,
-            },
-        }
-    }
-
-    pub fn other_error(&self, msg: &'static str) -> Error<'cmd> {
-        Error {
-            line: self.line,
-            kind: ErrorKind::Other(msg),
-        }
-    }
-
-    pub fn parse_bool_flag(&mut self, flag: &str) -> bool {
-        if let Some(rest) = self.command().trim().strip_prefix(flag) {
-            self.current = rest.trim();
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn parse_optional_u32_hex_or_dec(
-        &mut self,
-        name: &'static str,
-    ) -> Result<Option<u32>, Error<'cmd>> {
-        let (chunk, rest) = match self.command().split_once(" ") {
-            Some((chunk, rest)) => (chunk.trim(), rest),
-            None => (self.command(), ""),
-        };
-
-        if chunk.is_empty() {
-            return Ok(None);
-        }
-
-        let val = if let Some(hex_num) = chunk.strip_prefix("0x") {
-            u32::from_str_radix(hex_num.trim(), 16).map_err(|_| Error {
-                line: self.line,
-                kind: ErrorKind::InvalidArguments {
-                    arg: chunk,
-                    flag: Some(name),
-                    help: "expected a 32-bit hex number",
-                },
-            })?
-        } else {
-            u32::from_str(chunk).map_err(|_| Error {
-                line: self.line,
-                kind: ErrorKind::InvalidArguments {
-                    arg: chunk,
-                    flag: Some(name),
-                    help: "expected a 32-bit decimal number",
-                },
-            })?
-        };
-
-        self.current = rest;
-        Ok(Some(val))
-    }
-
-    pub fn parse_u32_hex_or_dec(&mut self, name: &'static str) -> Result<u32, Error<'cmd>> {
-        self.parse_optional_u32_hex_or_dec(name).and_then(|val| {
-            val.ok_or_else(|| self.invalid_argument_named(name, "expected a number"))
-        })
-    }
-
-    pub fn parse_optional_flag<T>(
-        &mut self,
-        names: &'static [&'static str],
-    ) -> Result<Option<T>, Error<'cmd>>
-    where
-        T: FromStr,
-        T::Err: fmt::Display,
-    {
-        for name in names {
-            if let Some(rest) = self.command().strip_prefix(name) {
-                let (chunk, rest) = match rest.trim().split_once(" ") {
-                    Some((chunk, rest)) => (chunk.trim(), rest),
-                    None => (rest, ""),
-                };
-
-                if chunk.is_empty() {
-                    return Err(Error {
-                        line: self.line,
-                        kind: ErrorKind::InvalidArguments {
-                            arg: chunk,
-                            flag: Some(name),
-                            help: "expected a value",
-                        },
-                    });
-                }
-
-                match chunk.parse() {
-                    Ok(val) => {
-                        self.current = rest;
-                        return Ok(Some(val));
-                    }
-                    Err(e) => {
-                        tracing::warn!(target: "shell", "invalid value {chunk:?} for flag {name}: {e}");
-                        return Err(Error {
-                            line: self.line,
-                            kind: ErrorKind::InvalidArguments {
-                                arg: chunk,
-                                flag: Some(name),
-                                help: "invalid value",
-                            },
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(None)
-    }
-
-    pub fn parse_required_flag<T>(
-        &mut self,
-        names: &'static [&'static str],
-    ) -> Result<T, Error<'cmd>>
-    where
-        T: FromStr,
-        T::Err: fmt::Display,
-    {
-        self.parse_optional_flag(names).and_then(|val| {
-            val.ok_or(Error {
-                line: self.line,
-                kind: ErrorKind::FlagRequired { flags: names },
-            })
-        })
     }
 }
