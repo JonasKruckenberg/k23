@@ -28,7 +28,7 @@ run target buck2_args="" *qemu_args="":
     {{ _buck2 }} build {{append("[check]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
 
 # run all lints and tests on a crate or the entire workspace.
-preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args) buck2-audit cargo-deny reindeer-clean
+preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
 
 # run linters on a crate or the entire workspace.
 lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
@@ -126,6 +126,21 @@ benchmark targets="" *buck2_args:
     set -euo pipefail
     out=$({{ _buck2 }} uquery "kind(rust_library, //third-party/...) except deps({{_default_query}})" {{buck2_args}})
     [ -z "$out" ] || { echo "$out" >&2; exit 1; }
+
+# Space-separated buck target patterns whose source files are exempt from
+# `check-license-headers` (e.g. vendored crates outside //third-party/...).
+license_header_excluded := "//lib/range-tree: //lib/sharded-slab: //lib/wast:"
+_license_header_excl := if license_header_excluded == "" { "" } else { f" except inputs(set({{license_header_excluded}}))" }
+
+# fail if any first-party Rust source file lacks the canonical license header
+# (build/license-header.txt) byte-for-byte at the start of the file.
+@check-license-headers *buck2_args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    n=$(wc -c < build/license-header.txt | tr -d ' ')
+    files=$({{ _buck2 }} uquery "filter('\\.rs$', inputs({{_default_query}})){{_license_header_excl}}" {{buck2_args}})
+    bad=$(for f in $files; do cmp -s <(head -c "$n" "$f") build/license-header.txt || echo "$f"; done)
+    [ -z "$bad" ] || { echo "::error::license header missing or mismatched:" >&2; echo "$bad" >&2; exit 1; }
 
 # ===== changed-targets (powered by buck2-change-detector) =====
 #
