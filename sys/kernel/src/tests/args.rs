@@ -5,21 +5,21 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use anyhow::bail;
 use test::Test;
 
-use crate::bootargs::{Flag, Parser};
+use crate::bootargs::Flag;
 
-pub const LIST: Flag = Flag::new("--list").with_help("print the list of tests, then exit");
+pub const LIST: Flag = Flag::new_bool("--list").with_help("print the list of tests, then exit");
 pub const INCLUDE_IGNORED: Flag =
-    Flag::new("--include-ignored").with_help("run ignored tests alongside the rest");
-pub const IGNORED: Flag = Flag::new("--ignored").with_help("only run ignored tests");
-pub const EXACT: Flag = Flag::new("--exact").with_help("treat `--test-name` as an exact match");
-pub const FORMAT: Flag = Flag::new("--format")
-    .with_value()
-    .with_help("output format: `pretty`, `terse`, or `json`");
-pub const TEST_NAME: Flag = Flag::new("--test-name")
-    .with_value()
-    .with_help("substring filter applied to test idents");
+    Flag::new_bool("--include-ignored").with_help("run ignored tests alongside the rest");
+pub const IGNORED: Flag = Flag::new_bool("--ignored").with_help("only run ignored tests");
+pub const EXACT: Flag =
+    Flag::new_bool("--exact").with_help("treat `--test-name` as an exact match");
+pub const FORMAT: Flag =
+    Flag::new_string("--format").with_help("output format: `pretty`, `terse`, or `json`");
+pub const TEST_NAME: Flag =
+    Flag::new_string("--test-name").with_help("substring filter applied to test idents");
 
 #[derive(Default)]
 pub struct Arguments<'a> {
@@ -40,24 +40,36 @@ pub enum FormatSetting {
 }
 
 impl<'a> Arguments<'a> {
-    pub fn parse(raw: &'a str) -> Self {
-        let parser = Parser::new(raw);
-        Self {
-            list: parser.flag(LIST.name),
-            include_ignored: parser.flag(INCLUDE_IGNORED.name),
-            ignored: parser.flag(IGNORED.name),
-            exact: parser.flag(EXACT.name),
-            format: parser
-                .value(FORMAT.name)
-                .and_then(|v| match v {
-                    "pretty" => Some(FormatSetting::Pretty),
-                    "terse" => Some(FormatSetting::Terse),
-                    "json" => Some(FormatSetting::Json),
-                    _ => None,
-                })
-                .unwrap_or_default(),
-            test_name: parser.value(TEST_NAME.name),
+    pub fn parse(raw: &'a str) -> crate::Result<Self> {
+        let mut args = Self::default();
+        let mut tokens = raw.split_ascii_whitespace();
+
+        while let Some(tok) = tokens.next() {
+            if let Some(_) = LIST.consume(tok, &mut tokens) {
+                args.list = true;
+            } else if let Some(_) = INCLUDE_IGNORED.consume(tok, &mut tokens) {
+                args.include_ignored = true;
+            } else if let Some(_) = IGNORED.consume(tok, &mut tokens) {
+                args.ignored = true;
+            } else if let Some(_) = EXACT.consume(tok, &mut tokens) {
+                args.exact = true;
+            } else if let Some(v) = FORMAT.consume(tok, &mut tokens) {
+                args.format = match v {
+                    "pretty" => FormatSetting::Pretty,
+                    "terse" => FormatSetting::Terse,
+                    "json" => FormatSetting::Json,
+                    fmt => bail!(
+                        "invalid output format \"{fmt}\". Expected one of \"pretty\", \"terse\", or \"json\"."
+                    ),
+                };
+            } else if let Some(v) = TEST_NAME.consume(tok, &mut tokens) {
+                args.test_name = Some(v);
+            } else {
+                bail!("unexpected input \"{tok}\"");
+            }
         }
+
+        Ok(args)
     }
 
     /// Returns `true` if the given test should be ignored.
