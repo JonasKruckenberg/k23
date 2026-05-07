@@ -10,6 +10,7 @@ mod address_space_region;
 pub mod bootstrap_alloc;
 pub mod flush;
 pub mod frame_alloc;
+mod frame_list;
 mod mmap;
 mod provider;
 mod trap_handler;

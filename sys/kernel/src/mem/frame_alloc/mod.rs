@@ -7,7 +7,6 @@
 
 mod arena;
 mod frame;
-pub mod frame_list;
 
 use alloc::vec::Vec;
 use core::alloc::Layout;
@@ -19,7 +18,7 @@ use core::{cmp, fmt, iter, slice};
 
 use arena::{Arena, select_arenas};
 use cordyceps::list::List;
-use cpu_local::collection::CpuLocal;
+use cpu_local::cpu_local;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
 use mem_core::PhysicalAddress;
@@ -27,9 +26,14 @@ use spin::{Mutex, OnceLock};
 
 use crate::arch;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
-use crate::mem::frame_alloc::frame_list::FrameList;
+
+cpu_local! {
+    /// Per-cpu cache of frames to speed up allocation.
+    static CPU_LOCAL_CACHE: RefCell<CpuLocalFrameCache> = const { RefCell::new(CpuLocalFrameCache { free_list: List::new() }) };
+}
 
 pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
+
 pub fn init(
     boot_alloc: BootstrapAllocator,
     fdt_region: Range<PhysicalAddress>,
@@ -42,8 +46,6 @@ pub struct FrameAllocator {
     /// Global list of arenas that can be allocated from.
     global: Mutex<GlobalFrameAllocator>,
     max_alignment: usize,
-    /// Per-cpu cache of frames to speed up allocation.
-    cpu_local_cache: CpuLocal<RefCell<CpuLocalFrameCache>>,
     /// Number of frames - across all cpus - that are in cpu-local caches.
     /// This value must only ever be treated as a hint and should only be used to
     /// produce more accurate frame usage statistics.
@@ -97,13 +99,12 @@ impl FrameAllocator {
             global: Mutex::new(GlobalFrameAllocator { arenas }),
             max_alignment,
             frames_in_caches_hint: AtomicUsize::new(0),
-            cpu_local_cache: CpuLocal::new(),
         }
     }
 
     /// Allocate a single [`Frame`].
     pub fn alloc_one(&self) -> Result<Frame, AllocError> {
-        let mut cpu_local_cache = self.cpu_local_cache.get_or_default().borrow_mut();
+        let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();
         let frame = cpu_local_cache
             .allocate_one()
             .or_else(|| {
@@ -139,9 +140,9 @@ impl FrameAllocator {
     }
 
     /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`.
-    pub fn alloc_contiguous(&self, layout: Layout) -> Result<FrameList, AllocError> {
+    pub fn alloc_contiguous(&self, layout: Layout) -> Result<List<FrameInfo>, AllocError> {
         // try to allocate from the per-cpu cache first
-        let mut cpu_local_cache = self.cpu_local_cache.get_or_default().borrow_mut();
+        let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();
         let frames = cpu_local_cache
             .allocate_contiguous(layout)
             .or_else(|| {
@@ -152,38 +153,30 @@ impl FrameAllocator {
                     layout.size() / arch::PAGE_SIZE
                 );
                 let mut frames = global_alloc.allocate_contiguous(layout)?;
-                cpu_local_cache.free_list.append(&mut frames);
+                CPU_LOCAL_CACHE.borrow_mut().free_list.append(&mut frames);
 
                 tracing::trace!("retrying allocation...");
                 // If this fails then we failed to pull enough frames from the global allocator
                 // which means we're fully out of frames
-                cpu_local_cache.allocate_contiguous(layout)
+                CPU_LOCAL_CACHE.borrow_mut().allocate_contiguous(layout)
             })
             .ok_or(AllocError)?;
-
-        let frames = FrameList::from_iter(frames.into_iter().map(|info| {
-            // Safety: we just allocated the frame
-            unsafe { Frame::from_free_info(info) }
-        }));
-
-        #[cfg(debug_assertions)]
-        frames.assert_valid("FrameAllocator::allocate_contiguous after allocation");
 
         Ok(frames)
     }
 
     /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`
     /// and ensuring the backing physical memory is zero initialized.
-    pub fn alloc_contiguous_zeroed(&self, layout: Layout) -> Result<FrameList, AllocError> {
+    pub fn alloc_contiguous_zeroed(&self, layout: Layout) -> Result<List<FrameInfo>, AllocError> {
         let frames = self.alloc_contiguous(layout)?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = arch::phys_to_virt(frames.first().unwrap().addr());
+        let virt = arch::phys_to_virt(frames.iter().next().unwrap().addr());
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated
         unsafe {
-            slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.size()).fill(0);
+            slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.len()).fill(0);
         }
 
         Ok(frames)
