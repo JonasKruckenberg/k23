@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 //! Round-trip integration test: build a small image in-memory, parse it back,
 //! and assert the directory tree, file contents, and El Torito boot catalog
 //! all survive the trip.
@@ -179,4 +186,3 @@ fn explicit_load_size_overrides_auto() {
         "explicit load_size must win over auto-computed",
     );
 }
-
