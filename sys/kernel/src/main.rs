@@ -72,12 +72,7 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropria
 /// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
 /// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
 /// size and can dynamically grow the heap as needed.
-//
-// FIXME: Talc is wired with `ErrOnOom` (see `allocator.rs`), so this size is
-// in fact the *hard cap*, not the initial size. 32 MiB isn't enough for the
-// selftest build — 10 concurrent cranelift compiles in `tests::run_tests`
-// peak well past it. Bumping to 64 MiB keeps tests running for now.
-pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 4; // 64 MiB
+pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
 pub type Result<T> = anyhow::Result<T>;
 
@@ -168,6 +163,11 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
         // frame allocator for reuse
         let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
+
+        // wire the frame allocator into the kernel heap's OOM handler so the heap can grow
+        // automatically. Must come after `frame_alloc::init`; safe to come before `mem::init`
+        // since the OOM handler doesn't touch the kernel address space.
+        allocator::late_init(frame_alloc, bootargs.heap_max);
 
         // initialize the virtual memory subsystem
         mem::init(boot_info, &mut rng, frame_alloc).unwrap();

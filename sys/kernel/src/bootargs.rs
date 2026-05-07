@@ -30,6 +30,9 @@ pub const LOG: Flag =
 pub const BACKTRACE: Flag =
     Flag::new_string("--backtrace").with_help("backtrace style on panic: `short` or `full`");
 
+pub const HEAP_MAX: Flag =
+    Flag::new_bytes("--heap-max").with_help("hard cap on the kernel heap, e.g. `512M` or `2G`");
+
 pub fn parse(devtree: &DeviceTree) -> crate::Result<Bootargs> {
     let mut bootargs = Bootargs::default();
     let mut tokens = read_raw(devtree)?.split_ascii_whitespace();
@@ -39,6 +42,8 @@ pub fn parse(devtree: &DeviceTree) -> crate::Result<Bootargs> {
             bootargs.log = v.parse().context(LOG.name)?;
         } else if let Some(v) = BACKTRACE.consume(tok, &mut tokens) {
             bootargs.backtrace = v.parse().context(BACKTRACE.name)?;
+        } else if let Some(v) = HEAP_MAX.consume(tok, &mut tokens) {
+            bootargs.heap_max = Some(parse_size(v).context(HEAP_MAX.name)?);
         } else {
             bail!("unexpected input \"{tok}\"");
         }
@@ -62,6 +67,8 @@ pub fn read_raw(devtree: &DeviceTree) -> crate::Result<&str> {
 pub struct Bootargs {
     pub log: Filter,
     pub backtrace: BacktraceStyle,
+    /// Hard cap on the kernel heap, in bytes. `None` means use the built-in default.
+    pub heap_max: Option<usize>,
 }
 
 /// A bootarg flag declaration. Built with the const-builder, e.g.
