@@ -142,7 +142,7 @@ impl HostContext {
                     .vm_store_context()
                     .last_wasm_entry_fp
                     .get();
-                let stack_pointer = kmem_core::VirtualAddress::new(get_stack_pointer());
+                let stack_pointer = mem_core::VirtualAddress::new(get_stack_pointer());
                 tracing::error!(
                     "Checking valid stack pointer {:?} against limit {:?} and wasm_entry_fp {:?}",
                     stack_pointer,
