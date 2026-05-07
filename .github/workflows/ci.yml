@@ -14,21 +14,23 @@ permissions:
   contents: read
 
 jobs:
-  fmt:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix develop . --command just check-fmt
-
-  buck2-audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix develop . --command just buck2-audit
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
+      - run: nix develop .#ci --command just check-fmt
+      - run: nix develop .#ci --command just buck2-audit
+      - run: nix develop .#ci --command just reindeer-clean
+      - run: nix develop .#ci --command just check-license-headers
 
   # Computes the set of Buck2 targets impacted by a PR. Skipped on push to main
   # (no useful base ref). See .github/workflows/_changed-targets.yml for details.
@@ -42,13 +44,27 @@ jobs:
     if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: impacted-targets
+      - uses: actions/cache@v4
+        with:
+          path: buck-out
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-
+            buck2-${{ runner.os }}-
       - run: ./.github/workflows/run-filtered.sh check '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
   clippy:
@@ -57,13 +73,27 @@ jobs:
     if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: impacted-targets
+      - uses: actions/cache@v4
+        with:
+          path: buck-out
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-
+            buck2-${{ runner.os }}-
       - run: ./.github/workflows/run-filtered.sh clippy '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
   unittests:
@@ -72,13 +102,27 @@ jobs:
     if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: impacted-targets
+      - uses: actions/cache@v4
+        with:
+          path: buck-out
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-
+            buck2-${{ runner.os }}-
       - run: ./.github/workflows/run-filtered.sh unittests '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
   miri:
@@ -87,13 +131,27 @@ jobs:
     if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: impacted-targets
+      - uses: actions/cache@v4
+        with:
+          path: buck-out
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-
+            buck2-${{ runner.os }}-
       - run: ./.github/workflows/run-filtered.sh miri '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
   loom:
@@ -102,13 +160,27 @@ jobs:
     if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: impacted-targets
+      - uses: actions/cache@v4
+        with:
+          path: buck-out
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-
+            buck2-${{ runner.os }}-
       - run: ./.github/workflows/run-filtered.sh loom '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
   cargo-deny:
@@ -116,18 +188,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix develop . --command just cargo-deny
-
-  # Re-run reindeer and fail if third-party/BUCK (or any other reindeer-managed
-  # file) is out of sync with third-party/Cargo.toml. Forces contributors to
-  # commit the regenerated BUCK alongside any dep change.
-  reindeer-clean:
-    name: reindeer-clean
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix develop . --command just reindeer-clean
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/advisory-db
+          key: cargo-deny-${{ runner.os }}-${{ hashFiles('third-party/Cargo.lock') }}
+          restore-keys: |
+            cargo-deny-${{ runner.os }}-
+      - run: nix develop .#ci --command just cargo-deny

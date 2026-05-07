@@ -201,43 +201,56 @@
                 install -Dm755 supertd "$out/bin/supertd"
               '';
             };
+          # Tools every current CI job needs. Anything outside this list
+          # is interactive-only; keeping it small shrinks the closure that
+          # cold CI runners have to fetch and realise.
+          #
+          # rust-project and typos are listed here only because the
+          # justfile resolves them via `require()` at parse time, so
+          # every `just <recipe>` invocation needs them in PATH.
+          ciInputs = with pkgs; [
+            rustToolchain
+            buck2
+            reindeer
+            supertd
+            rust-project
+            jujutsu
+            just
+            cargo-deny
+            typos
+          ];
+
+          # Extra tooling for jobs that exercise the kernel on-target.
+          ciTestInputs = with pkgs; [
+            qemu
+          ];
+
+          # Tools only useful in an interactive shell.
+          devOnlyInputs = with pkgs; [
+            mdbook
+            wabt
+            wasm-tools
+            dtc
+            cargo-nextest
+            samply
+            socat
+          ];
         in
         {
-          default =
-            with pkgs;
-            mkShell {
-              name = "k23-dev";
-              buildInputs = [
-                # compilers
-                rustToolchain
+          default = pkgs.mkShell {
+            name = "k23-dev";
+            buildInputs = ciInputs ++ ciTestInputs ++ devOnlyInputs;
+          };
 
-                # build system
-                buck2
-                reindeer
-                supertd
-                rust-project
+          ci = pkgs.mkShell {
+            name = "k23-ci";
+            buildInputs = ciInputs;
+          };
 
-                # version control
-                jujutsu
-
-                # devtools
-                just
-                mdbook
-                wabt
-                wasm-tools
-                typos
-                dtc
-                cargo-nextest
-                cargo-deny
-
-                # for testing the kernel
-                qemu
-                socat
-
-                # To profile the code or benchmarks
-                samply
-              ];
-            };
+          ci-test = pkgs.mkShell {
+            name = "k23-ci-test";
+            buildInputs = ciInputs ++ ciTestInputs;
+          };
         }
       );
     };
