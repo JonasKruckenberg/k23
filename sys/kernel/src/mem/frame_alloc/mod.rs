@@ -164,7 +164,9 @@ impl FrameAllocator {
         tracing::trace!("retrying allocation...");
         // If this fails then we failed to pull enough frames from the global allocator
         // which means we're fully out of frames.
-        cpu_local_cache.allocate_contiguous(layout).ok_or(AllocError)
+        cpu_local_cache
+            .allocate_contiguous(layout)
+            .ok_or(AllocError)
     }
 
     /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`
