@@ -2,6 +2,7 @@ rust_library(
     name = "wast",
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/lib.rs",
+    features = ["wasm-module"],
     deps = [
         "//lib/cpu-local:cpu-local",
         "//third-party:leb128fmt",

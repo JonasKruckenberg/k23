@@ -441,7 +441,7 @@ mod tests {
     /// RISC-V psABI. `s2..s11` live at `x18..x27` (not `x10..x19`) and
     /// `fs2..fs11` at `f18..f27` — code that patches a [`kunwind::Registers`] via
     /// `frame[RiscV::S2] = ...` relies on this mapping holding.
-    #[ktest::test]
+    #[test::test]
     async fn registers_index_matches_riscv_abi() {
         let mut r = unwind::Registers::default();
 
@@ -489,12 +489,12 @@ mod tests {
     /// `WastContext::run` and the underlying `catch_traps` are synchronous,
     /// so the trap fires on the same CPU executing this future and the
     /// cpu-local `IN_TRAP` we read here corresponds to that CPU.
-    #[ktest::test]
+    #[test::test]
     async fn in_trap_cleared_after_wasm_trap() {
         let mut ctx = WastContext::new_default().unwrap();
         ctx.run(
             "in_trap_cleared_after_wasm_trap",
-            include_str!("../../../../tests/trap.wast"),
+            include_str!("../../../wast/tests/trap.wast"),
         )
         .await
         .unwrap();
@@ -504,13 +504,13 @@ mod tests {
 
     /// Several back-to-back wasm traps on the same CPU must each leave the
     /// trap-handler invariants intact.
-    #[ktest::test]
+    #[test::test]
     async fn repeated_wasm_traps() {
         let mut ctx = WastContext::new_default().unwrap();
         for i in 0..5 {
             ctx.run(
                 "repeated_wasm_traps",
-                include_str!("../../../../tests/trap.wast"),
+                include_str!("../../../wast/tests/trap.wast"),
             )
             .await
             .unwrap_or_else(|e| panic!("iteration {i} failed: {e}"));
@@ -522,7 +522,7 @@ mod tests {
     /// fix up must reach the kernel-exception path, propagate up the kernel
     /// stack as a Rust panic, and land in `catch_unwind` cleanly. After the
     /// catch, the per-CPU trap invariants must be restored.
-    #[ktest::test]
+    #[test::test]
     async fn in_kernel_trap_unwinds_via_panic() {
         let result = panic_unwind::catch_unwind(|| {
             // Safety: deliberate null deref to provoke a LoadPageFault.
@@ -539,12 +539,12 @@ mod tests {
     /// and not landed on the wrong stack (`sscratch` must point at the trap
     /// stack). Provokes a self-IPI immediately after a wasm trap to verify
     /// both invariants in a single end-to-end check.
-    #[ktest::test]
+    #[test::test]
     async fn trap_after_wasm_trap_is_handled_normally() {
         let mut ctx = WastContext::new_default().unwrap();
         ctx.run(
             "trap_after_wasm_trap_is_handled_normally",
-            include_str!("../../../../tests/trap.wast"),
+            include_str!("../../../wast/tests/trap.wast"),
         )
         .await
         .unwrap();

@@ -78,6 +78,33 @@ configuration_transition(
 )
 
 configuration_transition(
+    name = "kernel-tests",
+    constraint_values = [
+        "constraints//:env[kernel]",
+        "constraints//:rust-std[source]",
+        "constraints//:kernel-tests[enabled]",
+        # On-target tests are unwatchably slow without optimizations; pin opt-3
+        # for the test build so it stays usable on a developer machine.
+        "constraints//:opt-level[3]",
+        # "constraints//:debuginfo[line-tables-only]",
+        # "constraints//:strip[debuginfo]"
+    ],
+    visibility = ["PUBLIC"],
+)
+
+# Mirrors the loader transition, but pinned to opt-3 so it matches the
+# `kernel-tests` build above. (The loader doesn't gate on kernel-tests.)
+configuration_transition(
+    name = "loader-tests",
+    constraint_values = [
+        "constraints//:env[loader]",
+        "constraints//:rust-std[source]",
+        # "constraints//:opt-level[3]",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+configuration_transition(
     name = "rust_bootstrap",
     constraint_values = [
         "constraints//:rust-std[bootstrap]",

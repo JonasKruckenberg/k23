@@ -84,13 +84,8 @@ impl Conclusion {
 }
 
 pub async fn run_tests(global: &'static state::Global) -> Conclusion {
-    let chosen = global.device_tree.find_by_path("/chosen").unwrap();
-    let args = if let Some(prop) = chosen.property("bootargs") {
-        let str = prop.as_str().unwrap();
-        Arguments::from_str(str)
-    } else {
-        Arguments::default()
-    };
+    let raw = crate::bootargs::read_raw(&global.device_tree).unwrap_or("");
+    let args = Arguments::parse(raw);
 
     let tests = if let Some(test_name) = args.test_name {
         let tests: Vec<_> = all_tests()

@@ -7,6 +7,20 @@
 
 use test::Test;
 
+use crate::bootargs::{Flag, Parser};
+
+pub const LIST: Flag = Flag::new("--list").with_help("print the list of tests, then exit");
+pub const INCLUDE_IGNORED: Flag =
+    Flag::new("--include-ignored").with_help("run ignored tests alongside the rest");
+pub const IGNORED: Flag = Flag::new("--ignored").with_help("only run ignored tests");
+pub const EXACT: Flag = Flag::new("--exact").with_help("treat `--test-name` as an exact match");
+pub const FORMAT: Flag = Flag::new("--format")
+    .with_value()
+    .with_help("output format: `pretty`, `terse`, or `json`");
+pub const TEST_NAME: Flag = Flag::new("--test-name")
+    .with_value()
+    .with_help("substring filter applied to test idents");
+
 #[derive(Default)]
 pub struct Arguments<'a> {
     pub test_name: Option<&'a str>,
@@ -26,31 +40,24 @@ pub enum FormatSetting {
 }
 
 impl<'a> Arguments<'a> {
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(str: &'a str) -> Self {
-        Self::parse(str.split_ascii_whitespace())
-    }
-
-    pub fn parse(mut iter: impl Iterator<Item = &'a str>) -> Self {
-        let mut out = Self::default();
-
-        while let Some(str) = iter.next() {
-            match str {
-                "--list" => out.list = true,
-                "--include-ignored" => out.include_ignored = true,
-                "--ignored" => out.ignored = true,
-                "--exact" => out.exact = true,
-                "--format" => match iter.next().unwrap() {
-                    "pretty" => out.format = FormatSetting::Pretty,
-                    "terse" => out.format = FormatSetting::Terse,
-                    "json" => out.format = FormatSetting::Json,
-                    _ => {}
-                },
-                _ => out.test_name = Some(str),
-            }
+    pub fn parse(raw: &'a str) -> Self {
+        let parser = Parser::new(raw);
+        Self {
+            list: parser.flag(LIST.name),
+            include_ignored: parser.flag(INCLUDE_IGNORED.name),
+            ignored: parser.flag(IGNORED.name),
+            exact: parser.flag(EXACT.name),
+            format: parser
+                .value(FORMAT.name)
+                .and_then(|v| match v {
+                    "pretty" => Some(FormatSetting::Pretty),
+                    "terse" => Some(FormatSetting::Terse),
+                    "json" => Some(FormatSetting::Json),
+                    _ => None,
+                })
+                .unwrap_or_default(),
+            test_name: parser.value(TEST_NAME.name),
         }
-
-        out
     }
 
     /// Returns `true` if the given test should be ignored.

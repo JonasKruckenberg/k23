@@ -7,7 +7,7 @@ k23 is not a typical Rust project. We produce many different artifacts:
 - The **kernel** build for a custom Rust target and with from-source-rebuilt `core` and `alloc` crates
 - The **loader** binary that is built with different Rust flags and for a different Rust target
 - The full disk image(s) that is a combination of both binaries, with an initial ramdisk and possibly drivers/apps
-- Additionally we also have many different kinds of tests (unittest, fuzz, loom, wasm-spec, on-target tests, etc) that all require different modes and apply only to subsets of libraries.
+- Additionally we also have many different kinds of tests (unittest, fuzz, loom, wasm-spec, selftests, etc) that all require different modes and apply only to subsets of libraries.
 
 [Cargo]'s build model (one `--target`, one profile, one feature resolution per workspace) is unfortunately not well equipped to handle this. k23 needs a build system that is flexible, can deal with the same source node appearing multiple times with different configuration, and where post-processing steps are easy to express.
 
