@@ -19,7 +19,7 @@ use mem_core::PhysicalAddress;
 use static_assertions::assert_impl_all;
 
 use crate::arch;
-use crate::mem::frame_alloc::FRAME_ALLOC;
+use crate::mem::frame_alloc::{CPU_LOCAL_CACHE, FRAME_ALLOC};
 
 /// Soft limit on the amount of references that may be made to a `Frame`.
 const MAX_REFCOUNT: usize = isize::MAX as usize;
@@ -198,10 +198,7 @@ impl Frame {
     fn drop_slow(&mut self) {
         // TODO if we ever add more fields to FrameInfo we should reset them here
 
-        let alloc = FRAME_ALLOC
-            .get()
-            .expect("cannot access FRAME_ALLOC before it is initialized");
-        let mut cpu_local_cache = alloc.cpu_local_cache.get().unwrap().borrow_mut();
+        let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();
         cpu_local_cache.free_list.push_back(self.ptr);
     }
 }

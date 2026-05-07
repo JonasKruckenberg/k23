@@ -14,8 +14,8 @@ use core::num::NonZeroUsize;
 use spin::{LazyLock, OnceLock};
 
 use crate::arch;
-use crate::mem::frame_alloc::frame_list::FrameList;
 use crate::mem::frame_alloc::{FRAME_ALLOC, Frame, FrameAllocator};
+use crate::mem::frame_list::FrameList;
 
 pub trait Provider: Debug {
     // TODO make async
@@ -74,11 +74,19 @@ impl Provider for TheZeroFrame {
         will_write: bool,
     ) -> crate::Result<FrameList> {
         if will_write {
-            self.frame_alloc
-                .alloc_contiguous_zeroed(
-                    Layout::from_size_align(len.get(), arch::PAGE_SIZE).unwrap(),
-                )
-                .map_err(Into::into)
+            let frames = self.frame_alloc.alloc_contiguous_zeroed(
+                Layout::from_size_align(len.get(), arch::PAGE_SIZE).unwrap(),
+            )?;
+
+            let frames = FrameList::from_iter(frames.into_iter().map(|info| {
+                // Safety: we just allocated the frame
+                unsafe { Frame::from_free_info(info) }
+            }));
+
+            #[cfg(debug_assertions)]
+            frames.assert_valid("TheZeroFrame::get_frames after allocation");
+
+            Ok(frames)
         } else {
             Ok(FrameList::from_iter(iter::repeat_n(
                 self.frame().clone(),

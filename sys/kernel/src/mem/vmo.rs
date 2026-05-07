@@ -13,8 +13,8 @@ use mem_core::{AddressRangeExt, PhysicalAddress};
 use spin::RwLock;
 
 use crate::arch;
-use crate::mem::frame_alloc::frame_list::{Entry, FrameList};
 use crate::mem::frame_alloc::{Frame, FrameAllocator};
+use crate::mem::frame_list::{Entry, FrameList};
 use crate::mem::provider::{Provider, THE_ZERO_FRAME};
 
 #[derive(Debug)]
