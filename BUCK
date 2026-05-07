@@ -7,3 +7,9 @@ filegroup(
     ],
     visibility = ["PUBLIC"],
 )
+
+filegroup(
+    name = "wast_tests",
+    srcs = glob(["tests/**/*.wast"]),
+    visibility = ["PUBLIC"],
+)

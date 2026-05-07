@@ -72,7 +72,12 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropria
 /// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
 /// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
 /// size and can dynamically grow the heap as needed.
-pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
+//
+// FIXME: Talc is wired with `ErrOnOom` (see `allocator.rs`), so this size is
+// in fact the *hard cap*, not the initial size. 32 MiB isn't enough for the
+// selftest build — 10 concurrent cranelift compiles in `tests::run_tests`
+// peak well past it. Bumping to 64 MiB keeps tests running for now.
+pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 4; // 64 MiB
 
 pub type Result<T> = anyhow::Result<T>;
 

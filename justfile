@@ -28,7 +28,7 @@ run target buck2_args="" *qemu_args="":
     {{ _buck2 }} build {{append("[check]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
 
 # run all lints and tests on a crate or the entire workspace.
-preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
+preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args) (selftests buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
 
 # run linters on a crate or the entire workspace.
 lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
@@ -73,8 +73,14 @@ lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck
 fuzz_args := ""
 
 # run fuzz tests for a crate or the entire workspace.
-fuzz targets="" *buck2_args:
+@fuzz targets="" *buck2_args:
     {{ _buck2 }} test {{_uquery(_q_fuzz_tests(_targets_query(targets)))}} {{_platform_args}} {{buck2_args}} {{if fuzz_args == "" { "" } else { "-- " + fuzz_args }}}
+
+# run kernel selftests under qemu.
+# Pass kernel bootargs args after `--`, e.g.
+#   just selftests -- --format=json
+@selftests *buck2_args:
+    {{ _buck2 }} test //sys:k23-qemu-riscv64-tests {{buck2_args}}
 
 # ===== formatting =====
 

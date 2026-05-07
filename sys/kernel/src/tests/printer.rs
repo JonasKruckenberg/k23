@@ -8,7 +8,7 @@
 use alloc::boxed::Box;
 use core::sync::atomic::Ordering;
 
-use ktest::{Test, TestInfo};
+use test::{Test, TestInfo};
 
 use super::args::FormatSetting;
 use super::{Conclusion, Outcome};
