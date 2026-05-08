@@ -44,8 +44,6 @@ pub fn parse(devtree: &DeviceTree) -> crate::Result<Bootargs> {
             bootargs.backtrace = v.parse().context(BACKTRACE.name)?;
         } else if let Some(v) = HEAP_MAX.consume(tok, &mut tokens) {
             bootargs.heap_max = Some(parse_size(v).context(HEAP_MAX.name)?);
-        } else {
-            bail!("unexpected input \"{tok}\"");
         }
     }
 

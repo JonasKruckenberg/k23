@@ -64,8 +64,6 @@ impl<'a> Arguments<'a> {
                 };
             } else if let Some(v) = TEST_NAME.consume(tok, &mut tokens) {
                 args.test_name = Some(v);
-            } else {
-                bail!("unexpected input \"{tok}\"");
             }
         }
 
