@@ -71,48 +71,56 @@ impl Arena {
             )
         };
 
-        let mut remaining_bytes = selection.arena.len();
-        let mut addr = selection.arena.start;
-        let mut total_frames = 0;
-        let mut max_order = 0;
-        let mut free_lists = [const { List::new() }; MAX_ORDER];
+        let total_frames = selection.arena.len() / arch::PAGE_SIZE;
 
-        while remaining_bytes > 0 {
-            let max_align = addr.get() & (!addr.get() + 1);
-            let max_size = prev_power_of_two(remaining_bytes);
-
-            let size = cmp::min(
-                cmp::min(max_align, max_size),
-                arch::PAGE_SIZE << (MAX_ORDER - 1),
-            );
-
-            let size_pages = size / arch::PAGE_SIZE;
-            let order = size_pages.trailing_zeros() as usize;
-            total_frames += size_pages;
-            max_order = cmp::max(max_order, order);
-
-            {
-                debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
-                let offset = addr.offset_from_unsigned(selection.arena.start);
-                let idx = offset / arch::PAGE_SIZE;
-
-                let frame = slots[idx].write(FrameInfo::new(addr)).into();
-                free_lists[order].push_back(frame);
-            }
-
-            addr = addr.add(size);
-            remaining_bytes -= size;
+        // Default-deny: every slot in the hull starts wired (not on any
+        // free list). Hole and bookkeeping pages stay this way for life;
+        // the loop below demotes pages inside `allocatable_regions` to
+        // free.
+        for (idx, slot) in slots[..total_frames].iter_mut().enumerate() {
+            slot.write(FrameInfo::new_wired(
+                selection.arena.start.add(idx * arch::PAGE_SIZE),
+            ));
         }
 
-        // Make sure we've accounted for all frames
-        debug_assert_eq!(total_frames, selection.arena.len() / arch::PAGE_SIZE);
+        let mut free_lists = [const { List::new() }; MAX_ORDER];
+        let mut max_order = 0;
+        let mut free_frames = 0;
+
+        // Hand free pages to the buddy in chunks bounded by their sub-range.
+        // No block straddles a hole, so splits stay correct without new checks.
+        for region in &selection.allocatable_regions {
+            let mut addr = region.start;
+            let mut remaining = region.len();
+            while remaining > 0 {
+                let size = cmp::min(
+                    cmp::min(
+                        addr.get() & addr.get().wrapping_neg(),
+                        prev_power_of_two(remaining),
+                    ),
+                    arch::PAGE_SIZE << (MAX_ORDER - 1),
+                );
+                let order = (size / arch::PAGE_SIZE).trailing_zeros() as usize;
+                free_frames += size / arch::PAGE_SIZE;
+                max_order = cmp::max(max_order, order);
+
+                let idx = addr.offset_from_unsigned(selection.arena.start) / arch::PAGE_SIZE;
+                // SAFETY: pass 1 initialized this slot.
+                let frame = unsafe { slots[idx].assume_init_mut() };
+                frame.mark_as_free_for_freelist();
+                free_lists[order].push_back(NonNull::from(frame));
+
+                addr = addr.add(size);
+                remaining -= size;
+            }
+        }
 
         Self {
             range: selection.arena,
             slots,
             free_lists,
             max_order,
-            used_frames: 0,
+            used_frames: total_frames - free_frames,
             total_frames,
         }
     }
@@ -136,7 +144,7 @@ impl Arena {
             let buddy = self
                 .find_specific(buddy_addr)
                 .unwrap()
-                .write(FrameInfo::new(buddy_addr))
+                .write(FrameInfo::new_free(buddy_addr))
                 .into();
 
             self.free_lists[order - 1].push_back(buddy);
@@ -171,7 +179,7 @@ impl Arena {
             let buddy = self
                 .find_specific(buddy_addr)
                 .unwrap()
-                .write(FrameInfo::new(buddy_addr))
+                .write(FrameInfo::new_free(buddy_addr))
                 .into();
 
             self.free_lists[order - 1].push_back(buddy);
@@ -189,7 +197,7 @@ impl Arena {
             let base = unsafe { frame.as_ref().addr() };
 
             uninit.iter_mut().enumerate().map(move |(idx, slot)| {
-                NonNull::from(slot.write(FrameInfo::new(base.add(idx * arch::PAGE_SIZE))))
+                NonNull::from(slot.write(FrameInfo::new_free(base.add(idx * arch::PAGE_SIZE))))
             })
         };
 
@@ -216,6 +224,7 @@ pub fn select_arenas(free_regions: SmallVec<[Range<PhysicalAddress>; 4]>) -> Are
 #[derive(Debug)]
 pub struct ArenaSelection {
     pub arena: Range<PhysicalAddress>,
+    pub allocatable_regions: SmallVec<[Range<PhysicalAddress>; 4]>,
     pub bookkeeping: Range<PhysicalAddress>,
     pub wasted_bytes: usize,
 }
@@ -235,66 +244,59 @@ impl FallibleIterator for ArenaSelections {
     type Error = SelectionError;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let Some(mut arena) = self.free_regions.pop() else {
+        let Some(seed) = self.free_regions.pop() else {
             return Ok(None);
         };
 
+        let mut hull = seed.clone();
+        let mut regions: SmallVec<[Range<PhysicalAddress>; 4]> = SmallVec::new();
+        regions.push(seed);
+
         while let Some(region) = self.free_regions.pop() {
-            tracing::debug!(arena.end=?arena.end,region=?region, "Attempting to add free region");
+            debug_assert!(!hull.overlaps(&region));
 
-            debug_assert!(!arena.overlaps(&region));
-
-            let pages_in_hole = if arena.end <= region.start {
-                // the region is higher than the current arena
-                region.start.offset_from_unsigned(arena.end) / arch::PAGE_SIZE
+            let hole_pages = if hull.end <= region.start {
+                region.start.offset_from_unsigned(hull.end)
             } else {
-                debug_assert!(region.end <= arena.start);
-                // the region is lower than the current arena
-                arena.start.offset_from_unsigned(region.end) / arch::PAGE_SIZE
-            };
+                debug_assert!(region.end <= hull.start);
+                hull.start.offset_from_unsigned(region.end)
+            } / arch::PAGE_SIZE;
 
-            let waste_from_hole = ARENA_PAGE_BOOKKEEPING_SIZE * pages_in_hole;
-
-            if self.wasted_bytes + waste_from_hole > MAX_WASTED_ARENA_BYTES {
-                tracing::trace!("waste from hole exceeded limits");
+            let waste = ARENA_PAGE_BOOKKEEPING_SIZE * hole_pages;
+            if self.wasted_bytes + waste > MAX_WASTED_ARENA_BYTES {
                 self.free_regions.push(region);
                 break;
-            } else {
-                self.wasted_bytes += waste_from_hole;
-
-                if arena.end <= region.start {
-                    arena.end = region.end;
-                } else {
-                    arena.start = region.start;
-                }
             }
+            self.wasted_bytes += waste;
+            hull.start = cmp::min(hull.start, region.start);
+            hull.end = cmp::max(hull.end, region.end);
+            regions.push(region);
         }
 
-        let mut aligned = arena.align_in(arch::PAGE_SIZE);
-        let bookkeeping_size = bookkeeping_size(aligned.len());
+        let arena = hull.align_in(arch::PAGE_SIZE);
+        let mut regions: SmallVec<[Range<PhysicalAddress>; 4]> = regions
+            .into_iter()
+            .map(|r| r.align_in(arch::PAGE_SIZE))
+            .filter(|r| !r.is_empty())
+            .collect();
+        regions.sort_unstable_by_key(|r| r.start);
 
-        // We can't use empty arenas anyway
-        if aligned.is_empty() {
-            tracing::error!("arena is too small");
-            return Err(SelectionError { range: aligned });
-        }
-
-        let bookkeeping_start = aligned
-            .end
-            .sub(bookkeeping_size)
-            .align_down(arch::PAGE_SIZE);
-
-        // The arena has no space to hold its own bookkeeping
-        if bookkeeping_start < aligned.start {
-            tracing::error!("arena is too small");
-            return Err(SelectionError { range: aligned });
-        }
-
-        let bookkeeping = bookkeeping_start..aligned.end;
-        aligned.end = bookkeeping.start;
+        // Anchor bookkeeping to the largest sub-range. `arena.end` may sit
+        // inside a merged-over hole (kernel image, debuginfo blob); writing
+        // metadata there would clobber mapped kernel memory.
+        let need = bookkeeping_size(arena.len());
+        let host = regions.iter_mut().max_by_key(|r| r.len());
+        let Some(host) = host.filter(|r| r.len() >= need) else {
+            return Err(SelectionError { range: arena });
+        };
+        let bookkeeping_start = host.end.sub(need).align_down(arch::PAGE_SIZE);
+        let bookkeeping = bookkeeping_start..host.end;
+        host.end = bookkeeping_start;
+        regions.retain(|r| !r.is_empty());
 
         Ok(Some(ArenaSelection {
-            arena: aligned,
+            arena,
+            allocatable_regions: regions,
             bookkeeping,
             wasted_bytes: mem::take(&mut self.wasted_bytes),
         }))

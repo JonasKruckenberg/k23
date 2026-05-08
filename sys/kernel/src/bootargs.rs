@@ -18,7 +18,7 @@
 //! [`Flag`] via [`Flag::consume`], mirroring the dispatch loop in
 //! [`crate::shell`].
 
-use anyhow::{Context, anyhow, bail};
+use anyhow::{Context, anyhow};
 
 use crate::backtrace::BacktraceStyle;
 use crate::device_tree::DeviceTree;
