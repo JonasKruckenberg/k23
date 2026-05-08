@@ -20,10 +20,10 @@ use cpu_local::cpu_local;
 use mem_core::VirtualAddress;
 
 use crate::arch;
-use crate::wasm::TrapKind;
 use crate::wasm::code_registry::lookup_code;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::vm::{VMContext, VMStoreContext};
+use crate::wasm::TrapKind;
 
 /// Run `f` with access to a saved register context that the trap handler
 /// or [`raise_preexisting_trap`] can later use to non-locally jump back to.
@@ -348,10 +348,12 @@ where
     R: HostResult,
 {
     let (ret, unwind) = R::maybe_catch_unwind(f);
+    tracing::error!("We've got the unwind and ret");
     if let Some(unwind) = unwind {
         // Safety: TODO
         let activation = unsafe { ACTIVATION.get().as_ref().unwrap() };
         activation.record_unwind(unwind);
+        tracing::error!("We've recorded unwind");
     }
 
     ret

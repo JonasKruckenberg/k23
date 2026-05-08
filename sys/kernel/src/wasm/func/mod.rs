@@ -30,7 +30,7 @@ use crate::wasm::vm::{
     ExportedFunction, VMArrayCallHostFuncContext, VMFuncRef, VMFunctionImport, VMOpaqueContext,
     VMVal, VmPtr,
 };
-use crate::wasm::{MAX_WASM_STACK, Module, Store};
+use crate::wasm::{Module, Store, MAX_WASM_STACK};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Func(pub(super) Stored<FuncData>);
@@ -294,13 +294,14 @@ pub(super) unsafe fn do_call(
                     VMOpaqueContext::from_vmcontext(caller),
                     NonNull::from(params_and_results),
                 );
-                tracing::trace!(success, "returned from VMFuncRef array call");
+                tracing::error!(success, "returned from VMFuncRef array call");
             });
             exit_wasm(store, exit);
 
             match res {
                 Ok(()) => Ok(()),
                 Err(Trap { reason, backtrace }) => {
+                    tracing::error!("We've got the reason in do_call");
                     let error = match reason {
                         TrapReason::User(err) => err,
                         TrapReason::Jit {

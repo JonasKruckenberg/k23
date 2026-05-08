@@ -113,7 +113,7 @@ impl WastContext {
             |caller: crate::wasm::func::host::Caller<_>| unsafe {
                 let stack_limit = caller.store.opaque.vm_store_context().stack_limit.get();
                 *stack_limit =
-                    kmem_core::VirtualAddress::new((*stack_limit).get() + 5 * 1024 * 1024);
+                    mem_core::VirtualAddress::new((*stack_limit).get() + 5 * 1024 * 1024);
             },
         )?;
 
