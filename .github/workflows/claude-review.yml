@@ -47,3 +47,60 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           trigger_phrase: "@claude /review"
           settings: .github/claude-review-settings.json
+          prompt: |
+            After running /review per .claude/skills/review/SKILL.md, publish the review
+            as ONE GitHub PR review with line-anchored, resolvable inline comments via
+            `gh api`. Do NOT post the review as an issue comment or PR comment.
+
+            1. PR context:
+                 gh pr view --json number,headRefOid,baseRefName,url
+               headRefOid is the review's `commit_id`.
+
+            2. Diff anchoring (inline comments on lines outside the diff are rejected
+               with HTTP 422):
+                 gh pr diff <number>
+               Parse the unified diff to learn which (path, line, side) tuples are
+               commentable. RIGHT = added/context lines on the new file; LEFT =
+               removed/context lines on the old file.
+
+            3. Map each finding with a concrete file:line into one comment object:
+                 single line  -> {path, line, side:"RIGHT", body}
+                 range a-b    -> {path, start_line:a, line:b, start_side:"RIGHT", side:"RIGHT", body}
+                 deleted line -> side:"LEFT" (and start_side:"LEFT" for a range)
+               The comment `body` begins with a severity tag (**Blocker** / **Major** /
+               **Minor** / **Nit**), then the rule, concrete trigger, citation, and fix
+               per SKILL.md. Keep [Fix this →] deeplinks if generated.
+
+            4. Findings whose line is NOT in the diff: do not drop them. Fold each into
+               the review body under `## Out-of-diff findings`, prefixed with `**<path>**`.
+
+            5. Review body holds only what doesn't anchor to a line — verdict, preflight,
+               out-of-diff findings, Notes:
+                 **Verdict**: <Ready | Needs Attention | Needs Work>
+                 **Preflight**: <passed ✓ | failed (<step>) | running>
+
+                 (optional) ## Out-of-diff findings
+                 (optional) ## Notes
+
+            6. Map verdict -> event:
+                 Ready           -> APPROVE
+                 Needs Attention -> COMMENT
+                 Needs Work      -> REQUEST_CHANGES
+               If unsure, prefer COMMENT (does not block automerge).
+
+            7. Submit ONE review. Build the JSON with jq (finding bodies contain
+               backticks, quotes, and newlines — never shell-interpolate them):
+                 jq -n --arg sha "$SHA" --arg body "$BODY" --arg event "$EVENT" \
+                       --argjson comments "$COMMENTS_JSON" \
+                       '{commit_id:$sha, body:$body, event:$event, comments:$comments}' \
+                   | gh api -X POST "repos/$OWNER/$REPO/pulls/$N/reviews" --input -
+
+            8. On 422 "line must be part of the diff": move the offending comment into
+               `## Out-of-diff findings` in the body and resubmit. Do not retry the same
+               payload.
+
+            9. Print the returned review URL. Do NOT also post an issue comment — that
+               produces duplicate notifications.
+
+            Re-running /review creates a second review; prior reviews remain visible.
+            Do not delete or amend prior reviews; the PR history is the audit trail.
