@@ -140,9 +140,32 @@ impl<'a> Layout<'a> {
             lba += sectors_for(extent_len);
         }
 
-        // every file's data, back to back. Zero-byte files get LBA 0
+        // Boot images go last in the file area, in catalog order. UEFI
+        // §13.3.2.1 reads an EFI no-emulation entry with `sector_count` < 2
+        // as "extends to end of CD", so the boot image must physically end
+        // the volume; we make that invariant unconditional.
+        let boot_image_indices = match boot_config.as_deref() {
+            Some(bc) => self.collect_boot_image_indices(bc)?,
+            None => Vec::new(),
+        };
+
+        // Non-boot files first, back to back. Zero-byte files get LBA 0
         // (libisofs convention) and consume no sectors.
-        for file in &mut self.files {
+        for (i, file) in self.files.iter_mut().enumerate() {
+            if boot_image_indices.contains(&i) {
+                continue;
+            }
+            if file.len == 0 {
+                file.lba = 0;
+                continue;
+            }
+            file.lba = lba;
+            lba += sectors_for(file.len as u32);
+        }
+
+        // Boot images last, in the order they were collected.
+        for &i in &boot_image_indices {
+            let file = &mut self.files[i];
             if file.len == 0 {
                 file.lba = 0;
                 continue;
@@ -157,7 +180,7 @@ impl<'a> Layout<'a> {
         // to the LBA + virtual-sector size of the corresponding file.
         if let Some(boot_config) = boot_config {
             let resolve = |entry: &mut BootEntry<'_>| -> io::Result<()> {
-                let boot_image = self.find_file(entry.boot_image_path).ok_or_else(|| {
+                let idx = self.find_file_index(entry.boot_image_path).ok_or_else(|| {
                     io::Error::new(
                         io::ErrorKind::InvalidInput,
                         format!(
@@ -166,10 +189,15 @@ impl<'a> Layout<'a> {
                         ),
                     )
                 })?;
+                let boot_image = &self.files[idx];
 
                 entry.boot_image_lba = boot_image.lba;
 
                 // Auto-compute sector_count (in 512-byte virtual sectors).
+                // Callers whose image exceeds u16::MAX can opt into the
+                // UEFI §13.3.2.1 "extends to end-of-CD" rule by passing
+                // `set_load_size(0)` — boot images are placed last in the
+                // file area precisely so that's safe.
                 if entry.load_size.is_none() {
                     let virtual_sectors = boot_image.len.div_ceil(VIRTUAL_SECTOR_SIZE);
                     entry.boot_image_sector_count =
@@ -196,6 +224,32 @@ impl<'a> Layout<'a> {
         }
 
         Ok(())
+    }
+
+    /// Resolve every boot entry's path to a file index in `self.files`,
+    /// preserving catalog order (default entry first, then sections in
+    /// declaration order). Duplicate paths collapse so the file is only
+    /// placed once.
+    fn collect_boot_image_indices(&self, bc: &BootConfig<'_>) -> io::Result<Vec<usize>> {
+        let paths = std::iter::once(bc.default_entry.boot_image_path).chain(
+            bc.sections
+                .iter()
+                .flat_map(|s| s.entries.iter().map(|e| e.boot_image_path)),
+        );
+
+        let mut indices = Vec::new();
+        for path in paths {
+            let idx = self.find_file_index(path).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("boot image path {path:?} not found in directory tree"),
+                )
+            })?;
+            if !indices.contains(&idx) {
+                indices.push(idx);
+            }
+        }
+        Ok(indices)
     }
 
     pub(crate) fn serialize(
@@ -299,10 +353,10 @@ impl<'a> Layout<'a> {
     }
 
     /// Walk the directory tree to find a file by its `/`-separated path and
-    /// return its assigned LBA. Returns `None` if the path does not exist.
-    /// A leading `/` is accepted and ignored (both `"EFI/BOOT/FILE"` and
-    /// `"/EFI/BOOT/FILE"` resolve identically).
-    fn find_file(&self, path: &str) -> Option<&FileNode<'a>> {
+    /// return its index into `self.files`. Returns `None` if the path does
+    /// not exist. A leading `/` is accepted and ignored (both `"EFI/BOOT/FILE"`
+    /// and `"/EFI/BOOT/FILE"` resolve identically).
+    fn find_file_index(&self, path: &str) -> Option<usize> {
         let mut parts = path.trim_start_matches('/').split('/').peekable();
         let mut dir_idx = 0usize; // start at root
 
@@ -321,7 +375,7 @@ impl<'a> Layout<'a> {
                     return None; // path component exists but is a directory, not a file
                 };
 
-                return self.files.get(*file_idx as usize);
+                return Some(*file_idx as usize);
             }
 
             // directory component — binary-search sorted_entry_ids and descend
