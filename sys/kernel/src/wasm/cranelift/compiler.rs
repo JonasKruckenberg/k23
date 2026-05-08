@@ -353,7 +353,7 @@ impl Compiler for CraneliftCompiler {
         let results = builder.func.dfg.inst_results(call).to_vec();
         debug_assert_eq!(results.len(), 1);
         // `bool` is the first and only result
-        self.raise_if_host_trapped(&mut builder, callee_vmctx, results[0]);
+        self.raise_if_host_trapped(&mut builder, caller_vmctx, results[0]);
 
         let results = load_values_from_array(
             &wasm_func_ty.results,
