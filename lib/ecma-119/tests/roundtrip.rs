@@ -10,7 +10,6 @@
 //! all survive the trip.
 
 use std::io::Cursor;
-use std::num::NonZeroU16;
 
 use ecma_119::build::{
     BootConfig, BootEntry, Directory as DirBuilder, File as FileBuilder, ImageBuilder,
@@ -171,7 +170,7 @@ fn explicit_load_size_overrides_auto() {
     root.add_subdir("EFI", efi).unwrap();
 
     let mut entry = BootEntry::new(EmulationType::NoEmulation, "EFI/BOOT/BOOTAA64.EFI;1");
-    entry.set_load_size(NonZeroU16::new(42).unwrap());
+    entry.set_load_size(42);
 
     let mut builder = ImageBuilder::new();
     builder.volume_id("OVERRIDE").unwrap();

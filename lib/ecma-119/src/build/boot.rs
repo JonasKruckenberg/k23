@@ -7,8 +7,6 @@
 
 //! Builders for configuring the El Torito bootable disk image properties
 
-use std::num::NonZeroU16;
-
 use crate::eltorito::{self, BootPlatform, EmulationType};
 
 #[derive(Debug)]
@@ -83,14 +81,16 @@ pub struct BootEntry<'a> {
     pub(super) bootable: bool,
     pub(super) emulation: EmulationType,
     /// Explicit override for the catalog `sector_count` field (in 512-byte
-    /// virtual sectors). If `None`, the layout pass auto-computes the size from the boot image.
-    pub(super) load_size: Option<NonZeroU16>,
+    /// virtual sectors). 0 is meaningful: per UEFI §13.3.2.1, an EFI
+    /// no-emulation entry with `sector_count` < 2 is read as extending to
+    /// end-of-CD. If `None`, the layout pass auto-computes from the image.
+    pub(super) load_size: Option<u16>,
     // must be a `/`-separated path to a file that has been added to the directory tree.
     pub(super) boot_image_path: &'a str,
     /// LBA of the boot image file; 0 until LBA assignment.
     pub(super) boot_image_lba: u32,
-    /// Sector count (512-byte virtual sectors) covering the resolved boot
-    /// image; 0 until LBA assignment. Only used when `load_size` is None.
+    /// Auto-computed sector count covering the resolved boot image; only
+    /// used when `load_size` is `None`. Set during LBA assignment.
     pub(super) boot_image_sector_count: u16,
 }
 
@@ -109,9 +109,7 @@ impl<'a> BootEntry<'a> {
     /// Resolved catalog `sector_count` value: caller-supplied `load_size` if
     /// set, otherwise the auto-computed sector count covering the whole image.
     pub(super) fn resolved_sector_count(&self) -> u16 {
-        self.load_size
-            .map(NonZeroU16::get)
-            .unwrap_or(self.boot_image_sector_count)
+        self.load_size.unwrap_or(self.boot_image_sector_count)
     }
 
     pub fn set_bootable(&mut self, bootable: bool) -> &mut Self {
@@ -124,7 +122,7 @@ impl<'a> BootEntry<'a> {
         self
     }
 
-    pub fn set_load_size(&mut self, load_size: NonZeroU16) -> &mut Self {
+    pub fn set_load_size(&mut self, load_size: u16) -> &mut Self {
         self.load_size = Some(load_size);
         self
     }

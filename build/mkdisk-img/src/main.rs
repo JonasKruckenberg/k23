@@ -81,10 +81,13 @@ fn main() -> Result<()> {
     if let Some(vid) = args.volume_id.as_deref() {
         img.volume_id(vid)?;
     }
-    img.set_boot_catalog(BootConfig::new(
-        BootPlatform::Efi,
-        BootEntry::new(EmulationType::NoEmulation, "BOOT/EFI.IMG"),
-    ));
+    // UEFI §13.3.2.1: an EFI no-emulation entry with `sector_count` < 2 tells
+    // firmware the boot partition extends to end-of-CD. The ecma-119 layout
+    // pass places boot images last, so this is always safe — and it's the
+    // only way to express an ESP whose virtual sector count exceeds u16::MAX.
+    let mut entry = BootEntry::new(EmulationType::NoEmulation, "BOOT/EFI.IMG");
+    entry.set_load_size(0);
+    img.set_boot_catalog(BootConfig::new(BootPlatform::Efi, entry));
 
     let out = File::create(&args.output)
         .with_context(|| format!("creating output {}", args.output.display()))?;
