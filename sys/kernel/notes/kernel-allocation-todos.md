@@ -25,20 +25,23 @@ Each item lists **change**, **why it matters**, **expected outcome**, and
   fully usable in some boot paths.
 - **Effort:** S (~30 LoC; tricky lifetime around `Waker::from_raw`).
 
-### T0.2 — Convert `Counter` storage to fixed-size array
+### T0.2 — Eagerly initialise every `Counter`'s per-hart slots at boot
 
-- **Change:** redesign `sys/kernel/src/metrics.rs` so each `counter!()`
-  expands to `static FOO: Counter = Counter([CachelinePadded<AtomicU64>;
-  MAX_HARTS])` indexed by `state::cpu_local().id`. Define `MAX_HARTS` as a
-  build-time constant (start with 64).
+- **Change:** keep `CpuLocal<AtomicU64>` per `counter!()` but iterate the
+  `.bss.kcounter.*` link sections at boot (the macro already places each
+  counter into a uniquely-named section) and force-allocate buckets for
+  every counter for every known hart. This can be a single
+  `metrics::init(num_harts)` call after `state::init_cpu_local`.
 - **Why:** today every counter holds a `cpu_local::collection::CpuLocal<AtomicU64>`
   which lazily allocates power-of-two buckets per hart on first increment.
   Across hundreds of counters this is a cold-path-but-unbounded allocation
   fountain on metric paths, which is the wrong place for it.
-- **Outcome:** zero-alloc metrics. Predictable BSS cost (`MAX_HARTS × 64 B`
-  per counter, ~4 KB at 64 harts). Per-hart slot is cache-line-aligned, so
-  no false sharing.
-- **Effort:** S (well-isolated module).
+- **Outcome:** all counter bucket allocations happen at one well-defined
+  cold-path moment instead of being scattered across whatever code path
+  hits a metric first. No `MAX_HARTS` requirement; the actual hart count
+  comes from `boot_info.cpu_mask.count_ones()`.
+- **Effort:** S — needs a linker-section iterator (similar to the existing
+  `__start_k23_tests` / `__stop_k23_tests` pattern in `tests/mod.rs`).
 
 ### T0.3 — Eager-allocate the remaining `CpuLocal<T>` collections
 
@@ -61,10 +64,10 @@ Each item lists **change**, **why it matters**, **expected outcome**, and
   `vec![0; bitmap_size]` (8 KB in tests) on every `WastContext::new_default`.
   Either:
   1. Cache and reset one `WastContext` across selftest cases, or
-  2. Replace `Vec<u8>` with a fixed `[AtomicU64; MAX_ASIDS / 64]` BSS array
-     and reset by zeroing.
+  2. Allocate the bitmap once at engine init from a hart count derived at
+     runtime, and reset by zeroing in place when the engine is reused.
 - **Why:** the inventory marked this as static-after-init; it isn't, in the
-  test build. 8 KB ×N tests is the largest per-test repeating allocation.
+  test build. 8 KB × N tests is the largest per-test repeating allocation.
 - **Outcome:** -8 KB × test count. Brings the trace closer to real kernel
   behaviour.
 - **Effort:** S.
@@ -72,8 +75,11 @@ Each item lists **change**, **why it matters**, **expected outcome**, and
 ### T0.5 — Pre-reserve a trap-path bump arena
 
 - **Change:** `arch/riscv64/trap_handler.rs:391,423` does `Box::new(payload)`.
-  Replace with allocations from a pre-reserved per-hart bump region (e.g.
-  64 KB BSS slab per hart) reset on each return-from-trap.
+  Replace with allocations from a per-hart bump region. The region itself
+  is allocated from the heap once during `arch::per_cpu_init_late` and
+  stored in a `#[thread_local]` pointer; the trap path bumps from it and
+  resets on return. No `MAX_HARTS` needed because the slab is owned by
+  whichever hart actually came up.
 - **Why:** trap allocations should never fail because the heap is full or
   fragmented. Today they go through `Talc` like anything else.
 - **Outcome:** trap path becomes infallible on the alloc side. Removes one
@@ -200,13 +206,6 @@ Each item lists **change**, **why it matters**, **expected outcome**, and
   predicted-hot but invisible in this run. Re-run the tracer under a
   workload that exercises mmap / page faults so we have concrete numbers
   before committing T1.x slab work.
-
-### T4.5 — Decide on a `MAX_HARTS` build-time bound
-
-- **Decision needed:** several Tier-0 items are clean if we pick a
-  compile-time `MAX_HARTS` (e.g. 64 or 256). Without it we're stuck eager-
-  initializing dynamic structures. Most kernels pick a constant; recommend
-  the same.
 
 ---
 

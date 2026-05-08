@@ -105,14 +105,12 @@ unbounded by counter count, and fired on metric-increment paths.
 
 | Site | Type | Notes |
 |---|---|---|
-| `metrics.rs:38` (every `counter!()` macro) | `CpuLocal<AtomicU64>` | Hot, many instances. Best fix: redesign `Counter` storage to a fixed `[CachelinePadded<AtomicU64>; MAX_HARTS]` in BSS. Zero alloc, better cache behavior. |
+| `metrics.rs:38` (every `counter!()` macro) | `CpuLocal<AtomicU64>` | Hot, many instances. Fix: iterate the `.bss.kcounter.*` link sections at boot and force-allocate all buckets for the actual hart count. |
 | `tracing/registry.rs:140` `current_spans` | `CpuLocal<SpanStack>` | One instance. Fix: `with_capacity(num_harts)` at construction, eager-allocate all buckets at boot. |
 | `mem/frame_alloc/mod.rs:100` `cpu_local_cache` | `CpuLocal<Cache>` | One instance. Same eager-init fix. |
 
-A `MAX_HARTS` build-time bound (e.g. 64) would let all three migrate to
-fixed BSS arrays. Boot info already exposes the actual hart count
-(`boot_info.cpu_mask.count_ones()`), so eager `with_capacity` is the no-bound
-fallback.
+The hart count is taken from `boot_info.cpu_mask.count_ones()` at boot; no
+compile-time `MAX_HARTS` bound is required.
 
 ## G. Dynamic-capacity Vecs
 
