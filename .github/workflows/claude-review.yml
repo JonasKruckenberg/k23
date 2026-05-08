@@ -48,6 +48,9 @@ jobs:
           trigger_phrase: "@claude /review"
           settings: .github/claude-review-settings.json
           prompt: |
+            DO NOT run `just preflight` as suggested by the review skill, instead query
+            the CI status checks via `gh api`. Both run the equivalent checks by the CI checks are more performant.
+
             After running /review per .claude/skills/review/SKILL.md, publish the review
             as ONE GitHub PR review with line-anchored, resolvable inline comments via
             `gh api`. Do NOT post the review as an issue comment or PR comment.
