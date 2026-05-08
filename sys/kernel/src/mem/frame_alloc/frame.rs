@@ -19,7 +19,7 @@ use mem_core::PhysicalAddress;
 use static_assertions::assert_impl_all;
 
 use crate::arch;
-use crate::mem::frame_alloc::{CPU_LOCAL_CACHE, FRAME_ALLOC};
+use crate::mem::frame_alloc::CPU_LOCAL_CACHE;
 
 /// Soft limit on the amount of references that may be made to a `Frame`.
 const MAX_REFCOUNT: usize = isize::MAX as usize;

@@ -33,14 +33,16 @@ use crate::loom::sync::atomic::{AtomicBool, Ordering};
 /// a pending IPI latches and is taken on the next `wfi`, satisfying the
 /// same property at the hardware level.
 pub trait Park {
+    type Error: core::fmt::Display;
+
     /// Block the current thread until [`unpark`](Self::unpark) is called, or
     /// until a previously-issued `unpark` token is consumed. Spurious
     /// returns are permitted; [`block_on`] re-checks state before re-parking.
-    fn park(&self);
+    fn park(&self) -> Result<(), Self::Error>;
 
     /// Wake the thread that owns this `Park`, even if it is not currently
     /// parked. Calls that precede a matching `park` must be remembered.
-    fn unpark(&self);
+    fn unpark(&self) -> Result<(), Self::Error>;
 }
 
 /// Coalesces wake notifications across polls of [`block_on`].
@@ -75,8 +77,10 @@ impl<P: Park> Notify<P> {
     pub fn wake(&self) -> bool {
         // Release: pairs with the Acquire in `drain`.
         if !self.unparked.swap(true, Ordering::Release) {
-            self.parker.unpark();
-            true
+            self.parker
+                .unpark()
+                .inspect_err(|err| tracing::error!("failed to unpark thread. {err}"))
+                .is_ok()
         } else {
             false
         }
@@ -100,23 +104,29 @@ impl<P: Park + Sync + 'static> Notify<P> {
     );
 
     unsafe fn clone_raw(data: *const ()) -> RawWaker {
+        // NB: `data` the `&'static Notify<P>`, so
+        // no refcounting (like other waker impls) required.
         RawWaker::new(data, &Self::VTABLE)
     }
 
     unsafe fn wake_raw(data: *const ()) {
         // Safety: `data` is the `&'static Notify<P>` handed to
-        // `RawWaker::new` in `waker_ref`, so it is live for any lifetime.
+        // `RawWaker::new` in `waker_ref`.
         let n = unsafe { &*data.cast::<Self>() };
         n.wake();
     }
 
     unsafe fn wake_by_ref_raw(data: *const ()) {
-        // Safety: as above.
+        // Safety: `data` is the `&'static Notify<P>` handed to
+        // `RawWaker::new` in `waker_ref`.
         let n = unsafe { &*data.cast::<Self>() };
         n.wake();
     }
 
-    unsafe fn drop_raw(_data: *const ()) {}
+    unsafe fn drop_raw(_data: *const ()) {
+        // NB: `data` the `&'static Notify<P>`, so nothing to do here.
+        // This mirrors the `Self::clone_raw` impl.
+    }
 
     /// Build a [`WakerRef`] pointing at this `Notify`. Cloning the resulting
     /// `Waker` is allocation-free; dropping is a no-op.
@@ -143,19 +153,21 @@ impl<P: Park + Sync + 'static> Notify<P> {
 ///
 /// Caller must not nest `block_on` calls on the same `notify`: the inner
 /// `drain()` would swallow the outer's pending wake.
+// NB: we require the static lifetime here so we can safely turn this into a ptr in `waker_ref`.
+// instead of forcing callers into an `Arc` allocation they can now simply use `cpu_local!`
 pub fn block_on<P: Park + Sync + 'static, F: Future>(
     notify: &'static Notify<P>,
     f: F,
-) -> F::Output {
+) -> Result<F::Output, P::Error> {
     pin_mut!(f);
     let waker = notify.waker_ref();
     let mut cx = Context::from_waker(&waker);
     loop {
         if let Poll::Ready(t) = f.as_mut().poll(&mut cx) {
-            return t;
+            return Ok(t);
         }
         while !notify.drain() {
-            notify.parker.park();
+            notify.parker.park()?;
         }
     }
 }
@@ -164,6 +176,7 @@ pub fn block_on<P: Park + Sync + 'static, F: Future>(
 mod tests {
     use core::pin::Pin;
     use core::task::{Context, Poll, Waker};
+    use std::convert::Infallible;
 
     use futures::future;
 
@@ -182,7 +195,7 @@ mod tests {
             loom::lazy_static! {
                 static ref NOTIFY: Notify<StdPark> = Notify::new(StdPark::current());
             }
-            assert_eq!(block_on(&NOTIFY, async { 42_u32 }), 42);
+            assert_eq!(block_on(&NOTIFY, async { 42_u32 }).unwrap(), 42);
         });
     }
 
@@ -200,8 +213,13 @@ mod tests {
     fn concurrent_wakes_coalesce() {
         struct NoopPark;
         impl Park for NoopPark {
-            fn park(&self) {}
-            fn unpark(&self) {}
+            type Error = Infallible;
+            fn park(&self) -> Result<(), Self::Error> {
+                Ok(())
+            }
+            fn unpark(&self) -> Result<(), Self::Error> {
+                Ok(())
+            }
         }
 
         loom::model(|| {

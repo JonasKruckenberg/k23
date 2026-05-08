@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use alloc::boxed::Box;
+use std::convert::Infallible;
 
 use crate::block_on::{Notify, Park};
 use crate::loom::thread::{self, Thread};
@@ -29,12 +30,16 @@ impl StdPark {
 }
 
 impl Park for StdPark {
-    fn park(&self) {
+    type Error = Infallible;
+
+    fn park(&self) -> Result<(), Self::Error> {
         thread::park();
+        Ok(())
     }
 
-    fn unpark(&self) {
+    fn unpark(&self) -> Result<(), Self::Error> {
         self.thread.unpark();
+        Ok(())
     }
 }
 
@@ -47,5 +52,5 @@ crate::loom::thread_local! {
 }
 
 pub fn block_on<F: Future>(f: F) -> F::Output {
-    NOTIFY.with(|notify| crate::block_on::block_on(*notify, f))
+    NOTIFY.with(|notify| crate::block_on::block_on(*notify, f).unwrap())
 }
