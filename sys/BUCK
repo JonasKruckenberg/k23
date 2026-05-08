@@ -5,14 +5,16 @@ k23_image(
     name = "k23-riscv64",
     loader = "//sys/loader:loader",
     kernel = "//sys/kernel:kernel",
+    kernel_debuginfo = "//sys/kernel:kernel[debuginfo]",
     platform = "//platforms:riscv64"
 )
 
 # Test variant: same image shape, but the loader embeds the test kernel.
 k23_image(
     name = "k23-tests-riscv64",
-    loader = "//sys/loader:loader_tests",
-    kernel = "//sys/kernel:kernel_tests",
+    loader = "//sys/loader:loader-tests",
+    kernel = "//sys/kernel:kernel-tests",
+    kernel_debuginfo = "//sys/kernel:kernel-tests[debuginfo]",
     platform = "//platforms:riscv64"
 )
 

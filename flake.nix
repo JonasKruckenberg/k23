@@ -47,9 +47,13 @@
           # The cxx toolchain bakes its lib dir into binaries as -rpath
           # so they can find it at runtime.
           cxxRuntimeLib = pkgs.stdenv.cc.cc.lib;
+
+          # Target-agnostic LLVM binutils, used to manipulate cross-compiled
+          # ELFs (e.g. riscv64) from the host without a cross-binutils.
+          llvmBintools_20 = pkgs.llvmPackages_20.bintools-unwrapped;
         in
         {
-          inherit rustToolchain cxxRuntimeLib;
+          inherit rustToolchain cxxRuntimeLib llvmBintools_20;
           inherit (pkgs)
             bash
             python3

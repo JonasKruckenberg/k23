@@ -35,10 +35,15 @@ pub struct BootInfo {
     pub tls_template: Option<TlsTemplate>,
     /// Virtual address of the loaded kernel image.
     pub kernel_virt: Range<VirtualAddress>,
-    /// Physical memory region where the kernel ELF file resides.
+    /// Physical memory region where the (stripped) kernel ELF file resides.
     ///
     /// This field can be used by the kernel to perform introspection of its own ELF file.
     pub kernel_phys: Range<PhysicalAddress>,
+    /// Physical memory region where the kernel's debuginfo ELF resides.
+    ///
+    /// Contains the `.symtab` and `.debug_*` sections stripped from the runnable kernel
+    /// image. Reachable via [`Self::physical_address_offset`].
+    pub kernel_debuginfo_phys: Range<PhysicalAddress>,
 
     pub rng_seed: [u8; 32],
 }
@@ -58,6 +63,7 @@ impl BootInfo {
             tls_template: None,
             kernel_virt: Default::default(),
             kernel_phys: Default::default(),
+            kernel_debuginfo_phys: Default::default(),
             rng_seed: [0; 32],
         }
     }
@@ -159,6 +165,13 @@ impl fmt::Display for BootInfo {
             f,
             "{:<23} : {}..{}",
             "KERNEL PHYS", self.kernel_phys.start, self.kernel_phys.end
+        )?;
+        writeln!(
+            f,
+            "{:<23} : {}..{}",
+            "KERNEL DEBUGINFO PHYS",
+            self.kernel_debuginfo_phys.start,
+            self.kernel_debuginfo_phys.end
         )?;
         if let Some(tls) = self.tls_template.as_ref() {
             writeln!(

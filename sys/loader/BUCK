@@ -34,7 +34,10 @@ rust_binary(
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/main.rs",
     default_target_platform = "//platforms:riscv64",
-    env = {"KERNEL": "$(location //sys/kernel:kernel)"},
+    env = {
+        "KERNEL": "$(location //sys/kernel:kernel)",
+        "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel[debuginfo])"
+    },
     rustc_flags = _RUSTC_FLAGS,
     deps = _DEPS,
     incoming_transition = "//build:loader",
@@ -43,11 +46,14 @@ rust_binary(
 
 # Loader variant that embeds the test kernel; consumed by `:k23-tests-riscv64`.
 rust_binary(
-    name = "loader_tests",
+    name = "loader-tests",
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/main.rs",
     default_target_platform = "//platforms:riscv64",
-    env = {"KERNEL": "$(location //sys/kernel:kernel_tests)"},
+    env = {
+        "KERNEL": "$(location //sys/kernel:kernel-tests)",
+        "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel-tests[debuginfo])"
+    },
     rustc_flags = _RUSTC_FLAGS,
     deps = _DEPS,
     incoming_transition = "//build:loader-tests",

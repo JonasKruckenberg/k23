@@ -212,7 +212,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
             if cpuid == 0 {
                 arch::block_on(worker2.run(tests::run_tests(global))).unwrap().unwrap().unwrap().exit_if_failed();
             } else {
-                arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap_err(); // the only way `run` can return is when the executor is closed
+                arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap().unwrap_err(); // the only way `run` can return is when the executor is closed
             }
         } else {
             shell::init(
@@ -220,7 +220,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
                 &global.executor,
                 boot_info.cpu_mask.count_ones() as usize,
             );
-            arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap_err(); // the only way `run` can return is when the executor is closed
+            arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap().unwrap_err(); // the only way `run` can return is when the executor is closed
         }
     }
 }

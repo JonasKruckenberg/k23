@@ -21,6 +21,18 @@ static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KER
 #[repr(C, align(4096))]
 struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 
+/// The inlined kernel debuginfo.
+///
+/// Contains the `.symtab` and `.debug_*` sections stripped from the kernel binary.
+/// The loader hands a pointer to this blob to the kernel via [`BootInfo::kernel_debuginfo_phys`]
+/// so the backtrace subsystem can resolve symbols.
+///
+/// [`BootInfo::kernel_debuginfo_phys`]: loader_api::BootInfo::kernel_debuginfo_phys
+static INLINED_KERNEL_DEBUGINFO_BYTES: KernelDebuginfoBytes =
+    KernelDebuginfoBytes(*include_bytes!(env!("KERNEL_DEBUGINFO")));
+#[repr(C, align(4096))]
+struct KernelDebuginfoBytes(pub [u8; include_bytes!(env!("KERNEL_DEBUGINFO")).len()]);
+
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data
 pub struct Kernel<'a> {
     pub elf_file: xmas_elf::ElfFile<'a>,
@@ -64,6 +76,14 @@ impl Kernel<'_> {
         Range::from_start_len(
             PhysicalAddress::from_ptr(INLINED_KERNEL_BYTES.0.as_ptr()),
             INLINED_KERNEL_BYTES.0.len(),
+        )
+    }
+
+    /// Physical range of the embedded kernel debuginfo (`.debug` artifact).
+    pub fn debuginfo_phys_range(&self) -> Range<PhysicalAddress> {
+        Range::from_start_len(
+            PhysicalAddress::from_ptr(INLINED_KERNEL_DEBUGINFO_BYTES.0.as_ptr()),
+            INLINED_KERNEL_DEBUGINFO_BYTES.0.len(),
         )
     }
 
