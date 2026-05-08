@@ -25,6 +25,7 @@
 extern crate alloc;
 extern crate panic_unwind;
 
+mod alloc_trace;
 mod allocator;
 mod arch;
 mod backtrace;
@@ -149,6 +150,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
+        // turn on the throwaway allocation tracer right after the heap is
+        // live so every subsequent allocation gets a callstack recorded.
+        alloc_trace::enable();
+
         let device_tree = DeviceTree::parse(fdt)?;
         log::debug!("{device_tree:?}");
 
@@ -210,7 +215,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     cfg_if! {
         if #[cfg(test)] {
             if cpuid == 0 {
-                arch::block_on(worker2.run(tests::run_tests(global))).unwrap().exit_if_failed();
+                let conclusion = arch::block_on(worker2.run(tests::run_tests(global))).unwrap();
+                alloc_trace::disable();
+                alloc_trace::dump();
+                conclusion.exit_if_failed();
             } else {
                 arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap_err(); // the only way `run` can return is when the executor is closed
             }
