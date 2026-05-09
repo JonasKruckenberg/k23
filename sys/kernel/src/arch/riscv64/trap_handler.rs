@@ -31,7 +31,7 @@ cpu_local! {
 
 // `default_trap_entry` writes 64 contiguous 8-byte slots — gp regs at
 // `sp[0..32]`, fp regs at `sp[32..64]` — and unconditionally bumps sp by
-// 0x210. Pin the struct's size and field offsets so the asm offsets and
+// 0x200. Pin the struct's size and field offsets so the asm offsets and
 // the Rust layout cannot drift apart.
 const _: () = {
     assert!(core::mem::offset_of!(unwind::Registers, gp) == 0x000);
@@ -42,7 +42,6 @@ const _: () = {
     }
     #[cfg(not(target_feature = "d"))]
     assert!(core::mem::size_of::<unwind::Registers>() == 0x100);
-    assert!(core::mem::size_of::<unwind::Registers>() == core::mem::size_of::<unwind::Registers>());
 };
 
 pub fn init() {
@@ -112,11 +111,11 @@ unsafe extern "C" fn default_trap_entry() {
 
         "csrrw sp, sscratch, sp", // sp points to the Registers
 
-        "add sp, sp, -0x210",
-        ".cfi_def_cfa_offset 0x210",
+        "add sp, sp, -0x200",
+        ".cfi_def_cfa_offset 0x200",
 
         // save gp regs
-        save_gp!(x0 => sp[0]),
+        // skip x0 since it is hardwired to zero
         save_gp!(x1 => sp[1]),
         // skip sp since it is saved in sscratch
         save_gp!(x3 => sp[3]),
@@ -254,7 +253,7 @@ unsafe extern "C" fn default_trap_entry() {
         load_fp!(sp[62] => f30),
         load_fp!(sp[63] => f31),
 
-        "add sp, sp, 0x210",
+        "add sp, sp, 0x200",
         ".cfi_def_cfa_offset 0",
 
         "csrrw sp, sscratch, sp",
@@ -269,16 +268,11 @@ unsafe extern "C" fn default_trap_entry() {
 // Note: The C-unwind here is important, we want the stable C ABI so we can call this function from
 // assembly, but we also want to be able to unwind past it into the trampoline above (so stack traces
 // are fully accurate)
-extern "C-unwind" fn default_trap_handler(
-    frame: &mut unwind::Registers,
-    _a1: usize,
-    _a2: usize,
-    _a3: usize,
-    _a4: usize,
-    _a5: usize,
-    _a6: usize,
-    _a7: usize,
-) {
+extern "C-unwind" fn default_trap_handler(frame: &mut unwind::Registers) {
+    // The trap entry deliberately doesn't store `x0` into the frame — `x0`
+    // is hardwired to zero, and the trap stack is zero-initialised at boot.
+    debug_assert_eq!(frame.gp[0], 0, "frame.gp[0] should be 0 for x0");
+
     let cause = scause::read().cause();
 
     let epc = sepc::read();
@@ -433,9 +427,21 @@ mod tests {
     use core::ptr;
 
     use gimli::RiscV;
+    use riscv::sscratch;
 
-    use super::IN_TRAP;
+    use super::{IN_TRAP, trap_stack_top};
     use crate::tests::wast::WastContext;
+
+    /// Both per-CPU trap invariants the trap-handler epilogue (and the
+    /// kernel-exception unwind path) must restore before returning.
+    fn assert_trap_invariants_clean(context: &str) {
+        assert!(!IN_TRAP.get(), "{context}: IN_TRAP stuck");
+        assert_eq!(
+            sscratch::read(),
+            trap_stack_top(),
+            "{context}: sscratch not pointing at trap stack",
+        );
+    }
 
     /// `gimli::RiscV` aliases must land in the GPR/FPR slot assigned by the
     /// RISC-V psABI. `s2..s11` live at `x18..x27` (not `x10..x19`) and
@@ -499,7 +505,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(!IN_TRAP.get(), "IN_TRAP not cleared after wasm trap");
+        assert_trap_invariants_clean("after wasm trap");
     }
 
     /// Several back-to-back wasm traps on the same CPU must each leave the
@@ -514,7 +520,7 @@ mod tests {
             )
             .await
             .unwrap_or_else(|e| panic!("iteration {i} failed: {e}"));
-            assert!(!IN_TRAP.get(), "iteration {i}: IN_TRAP stuck");
+            assert_trap_invariants_clean(&alloc::format!("iteration {i}"));
         }
     }
 
@@ -531,7 +537,7 @@ mod tests {
         });
         let _payload = result.expect_err("expected kernel trap to unwind via panic");
 
-        assert!(!IN_TRAP.get(), "IN_TRAP not cleared after kernel trap");
+        assert_trap_invariants_clean("after kernel trap");
     }
 
     /// After a wasm trap, the next trap on the same CPU must be handled
@@ -548,7 +554,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(!IN_TRAP.get(), "IN_TRAP stuck after wasm trap");
+        assert_trap_invariants_clean("after wasm trap");
 
         // `sie.SSIE` and `sstatus.SIE` are both set at boot, so writing
         // `sip.SSIP` delivers a SupervisorSoft trap at the next instruction
@@ -557,6 +563,6 @@ mod tests {
         // Safety: register access; we want the side effect.
         unsafe { riscv::sip::set_ssoft() };
 
-        assert!(!IN_TRAP.get(), "IN_TRAP not cleared after SupervisorSoft");
+        assert_trap_invariants_clean("after SupervisorSoft");
     }
 }
