@@ -21,8 +21,6 @@ pub fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
         _ => return ControlFlow::Continue(()),
     };
 
-    tracing::error!("Page fault: {tval} {flags} {trap:?}");
-
     // For now, use kernel address space for page faults
     // WASM tests run in kernel context, so this should work for our current needs
     // TODO: In the future, tasks should carry their own address space as metadata

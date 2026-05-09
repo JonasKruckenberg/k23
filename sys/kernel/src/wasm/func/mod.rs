@@ -30,7 +30,7 @@ use crate::wasm::vm::{
     ExportedFunction, VMArrayCallHostFuncContext, VMFuncRef, VMFunctionImport, VMOpaqueContext,
     VMVal, VmPtr,
 };
-use crate::wasm::{MAX_WASM_STACK, Module, Store};
+use crate::wasm::{Module, Store, MAX_WASM_STACK};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Func(pub(super) Stored<FuncData>);
@@ -219,8 +219,6 @@ impl Func {
 
                     let sig = self.type_index(store);
 
-                    // TODO: Provide a better error when host func signature
-                    // doesn't match import signature.
                     let ptr = module.wasm_to_array_trampoline(sig).expect(
                         "if the wasm is importing a function of a given type, it must have the \
                          type's trampoline",
@@ -294,14 +292,13 @@ pub(super) unsafe fn do_call(
                     VMOpaqueContext::from_vmcontext(caller),
                     NonNull::from(params_and_results),
                 );
-                tracing::error!(success, "returned from VMFuncRef array call");
+                tracing::trace!(success, "returned from VMFuncRef array call");
             });
             exit_wasm(store, exit);
 
             match res {
                 Ok(()) => Ok(()),
                 Err(Trap { reason, backtrace }) => {
-                    tracing::error!("We've got the reason in do_call");
                     let error = match reason {
                         TrapReason::User(err) => err,
                         TrapReason::Jit {

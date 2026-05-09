@@ -105,8 +105,8 @@ impl WastContext {
             arg
         })?;
 
-        // used in hostfunc smoke test to ensure we're checking the stack
-        // pointer on host function entry.
+        // used in check_stack_pointer smoke test to ensure we're checking the
+        // stack pointer on host function entry.
         linker.func_wrap(
             "k23",
             "corrupt_stack_limit",

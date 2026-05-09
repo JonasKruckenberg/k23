@@ -330,12 +330,6 @@ impl Drop for Activation {
         // Safety: TODO
         unsafe {
             let cx = self.vm_store_context.as_ref();
-            tracing::trace!(
-                "Dropping activation, reset wasm entry from {:?} to {:?}",
-                cx.last_wasm_entry_fp,
-                self.old_last_wasm_entry_fp
-            );
-
             *cx.last_wasm_exit_fp.get() = self.old_last_wasm_exit_fp.get();
             *cx.last_wasm_exit_pc.get() = self.old_last_wasm_exit_pc.get();
             *cx.last_wasm_entry_fp.get() = self.old_last_wasm_entry_fp.get();
@@ -348,12 +342,10 @@ where
     R: HostResult,
 {
     let (ret, unwind) = R::maybe_catch_unwind(f);
-    tracing::error!("We've got the unwind and ret");
     if let Some(unwind) = unwind {
         // Safety: TODO
         let activation = unsafe { ACTIVATION.get().as_ref().unwrap() };
         activation.record_unwind(unwind);
-        tracing::error!("We've recorded unwind");
     }
 
     ret

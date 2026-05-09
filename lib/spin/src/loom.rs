@@ -10,11 +10,8 @@ cfg_if::cfg_if! {
         pub(crate) use loom::sync;
         pub(crate) use loom::cell;
         pub(crate) use loom::thread;
-        #[cfg(test)]
         pub(crate) use loom::model;
-        #[cfg(test)]
         pub(crate) use loom::lazy_static;
-        #[cfg(test)]
         pub(crate) use loom::MAX_THREADS;
     } else {
         #[cfg(not(test))]

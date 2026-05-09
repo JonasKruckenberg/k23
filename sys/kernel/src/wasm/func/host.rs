@@ -143,15 +143,12 @@ impl HostContext {
                     .last_wasm_entry_fp
                     .get();
                 let stack_pointer = mem_core::VirtualAddress::new(get_stack_pointer());
-                tracing::error!(
-                    "Checking valid stack pointer {:?} against limit {:?} and wasm_entry_fp {:?}",
-                    stack_pointer,
-                    stack_limit,
-                    wasm_entry_fp,
-                );
                 // Expect wasm_entry_fp >= stack_pointer >= stack_limit
                 if stack_pointer < *stack_limit || stack_pointer > *wasm_entry_fp {
-                    tracing::error!("Found invalid stack pointer");
+                    tracing::error!(
+                        "Found invalid stack pointer {stack_pointer:?} for stack \\
+                        limit {stack_limit:?} and wasm_entry_fp {wasm_entry_fp:?}"
+                    );
                     bail!("Wasm attempted to call host function with invalid stack pointer.")
                 }
                 let mut params_results = NonNull::slice_from_raw_parts(
@@ -177,16 +174,6 @@ impl HostContext {
                 }
             };
 
-            let vmctx = VMContext::from_opaque(caller_vmctx);
-            Caller::with(vmctx, |caller: Caller<'_, T>| {
-                let entry = *caller
-                    .store
-                    .opaque
-                    .vm_store_context()
-                    .last_wasm_entry_fp
-                    .get();
-                tracing::error!("Initial last_wasm_entry_fp: {:?}", entry);
-            });
             crate::wasm::trap_handler::catch_unwind_and_record_trap(|| {
                 let vmctx = VMContext::from_opaque(caller_vmctx);
                 Caller::with(vmctx, run)
