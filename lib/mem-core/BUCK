@@ -23,6 +23,7 @@ rust_test(
         "//third-party:lock_api",
         "//lib/cpu-local:cpu-local",
         "//lib/spin:spin",
+        "//third-party:libc",
         "//third-party:proptest",
         "//third-party:proptest-derive",
         "//third-party:parking_lot",

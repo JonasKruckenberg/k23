@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use std::alloc::{Allocator, Layout};
+use std::alloc::Layout;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::ptr::NonNull;
@@ -23,7 +23,7 @@ impl Drop for Memory {
         let regions = mem::take(&mut self.regions);
 
         for (_end, (_start, region, layout)) in regions {
-            unsafe { std::alloc::System.deallocate(region.cast(), layout) }
+            unsafe { host_dealloc(region, layout) }
         }
     }
 }
@@ -33,7 +33,7 @@ impl Memory {
         let regions = region_sizes
             .into_iter()
             .map(|layout| {
-                let region = std::alloc::System.allocate(layout).unwrap();
+                let region = host_alloc(layout);
 
                 // Safety: we just allocated the ptr, we know it is valid
                 let Range { start, end } = unsafe { region.as_ref() }.as_ptr_range();
@@ -116,4 +116,45 @@ impl fmt::Debug for Memory {
             })
             .finish()
     }
+}
+
+// Use mmap with MAP_NORESERVE on Unix so the kernel doesn't count test memory against
+// overcommit limits. Without this, proptests that allocate hundreds of GiB of virtual
+// address space fail on Linux systems with limited RAM and no swap.
+#[cfg(unix)]
+fn host_alloc(layout: Layout) -> NonNull<[u8]> {
+    let ptr = unsafe {
+        libc::mmap(
+            std::ptr::null_mut(),
+            layout.size(),
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS | libc::MAP_NORESERVE,
+            -1,
+            0,
+        )
+    };
+    assert_ne!(ptr, libc::MAP_FAILED, "mmap failed for {layout:?}");
+    NonNull::new(std::ptr::slice_from_raw_parts_mut(
+        ptr as *mut u8,
+        layout.size(),
+    ))
+    .unwrap()
+}
+
+#[cfg(unix)]
+unsafe fn host_dealloc(region: NonNull<[u8]>, _layout: Layout) {
+    let ret = unsafe { libc::munmap(region.as_ptr() as *mut libc::c_void, region.len()) };
+    assert_eq!(ret, 0, "munmap failed");
+}
+
+#[cfg(not(unix))]
+fn host_alloc(layout: Layout) -> NonNull<[u8]> {
+    use std::alloc::Allocator;
+    std::alloc::System.allocate(layout).unwrap()
+}
+
+#[cfg(not(unix))]
+unsafe fn host_dealloc(region: NonNull<[u8]>, layout: Layout) {
+    use std::alloc::Allocator;
+    unsafe { std::alloc::System.deallocate(region.cast(), layout) }
 }
