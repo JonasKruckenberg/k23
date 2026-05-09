@@ -11,4 +11,4 @@
     )
 )
 
-(assert_trap (invoke "check_stack_limit" (i64.const 0)) "foo")
+(assert_trap (invoke "check_stack_limit" (i64.const 0)) "invalid stack pointer")
