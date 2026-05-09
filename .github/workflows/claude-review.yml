@@ -82,6 +82,9 @@ jobs:
                **Minor** / **Nit**), then the rule, concrete trigger, citation, and fix
                per SKILL.md. Keep [Fix this →] deeplinks if generated.
 
+               Use markdown formatting to structure the review comments, make them easier to read
+               (paths and code snippets in inline-code, use bold/italic where appropriate, etc)
+
             4. Findings whose line is NOT in the diff: do not drop them. Fold each into
                the review body under `## Out-of-diff findings`, prefixed with `**<path>**`.
 
@@ -89,8 +92,11 @@ jobs:
                out-of-diff findings, Notes:
                  **Verdict**: <Ready | Needs Attention | Needs Work>
 
-                 (optional) ## Out-of-diff findings
-                 (optional) ## Notes
+                 (optional) ## **Out-of-diff findings**:
+                 (optional) ## **Notes**:
+
+              Use markdown formatting to structure the review comments, make them easier to read
+              (paths and code snippets in inline-code, use bold/italic where appropriate, etc)
 
             6. Map verdict -> event:
                  Ready           -> APPROVE
