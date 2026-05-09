@@ -27,6 +27,8 @@ set_reindeer_platforms(
     select({
         "prelude//os:none": select({
             "prelude//cpu/constraints:riscv64": "riscv64",
+            "prelude//cpu/constraints:arm64": "aarch64",
+            "prelude//cpu/constraints:x86_64": "x86_64",
         }),
         "DEFAULT": DEFAULT_REINDEER_PLATFORMS,
     })
