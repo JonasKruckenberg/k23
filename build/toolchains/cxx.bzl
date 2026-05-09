@@ -32,19 +32,28 @@ def _clang_toolchain(ctx: AnalysisContext) -> list[Provider]:
     archiver_supports_argfiles = True
     asm_compiler = compiler
     asm_compiler_type = compiler_type
-    compiler = compiler
-    cxx_compiler = cxx_compiler
-    linker = ctx.attrs.linker[RunInfo] if ctx.attrs.linker else cxx_compiler
     binary_extension = ""
     object_file_extension = "o"
     static_library_extension = "a"
     shared_library_name_default_prefix = "lib"
     shared_library_name_format = "{}.so"
     shared_library_versioned_name_format = "{}.so.{}"
-    additional_linker_flags = []
     llvm_link = RunInfo(args = ["llvm-link"])
 
-    additional_linker_flags = ["-fuse-ld=lld"] if os == Os("linux") else []
+    if ctx.attrs.linker_dispatch == "driver":
+        # Drive linking through clang and force it to invoke the supplied
+        # linker via --ld-path. Use this for hosted targets where rustc emits
+        # cc-driver flags (sysroot, -arch, -lSystem, ...). Pinning --ld-path
+        # makes the linker binary reproducible regardless of system PATH.
+        linker = cxx_compiler
+        additional_linker_flags = [
+            cmd_args(ctx.attrs.linker[RunInfo].args, format = "--ld-path={}"),
+        ]
+    else:
+        # Invoke the linker directly. Use this for freestanding targets whose
+        # rustc target spec sets linker-flavor=gnu-lld (raw lld flags only).
+        linker = ctx.attrs.linker[RunInfo]
+        additional_linker_flags = []
 
     if os == Os("macos"):
         linker_type = LinkerType("darwin")
@@ -135,41 +144,20 @@ clang_toolchain = rule(
         "link_flags": attrs.list(attrs.string(), default = []),
         "link_style": attrs.string(default = "shared"),
         "clang": attrs.exec_dep(),
-        "linker": attrs.option(attrs.exec_dep(), default = None),
+        "linker": attrs.exec_dep(),
+        "linker_dispatch": attrs.enum(["direct", "driver"]),
         "_target_os_type": buck.target_os_type_arg(),
     },
     doc = """
-    Creates a cxx toolchain that is required by all C/C++ rules.
+    Creates a cxx toolchain backed by clang plus an explicit linker binary.
 
-    ## Examples
-
-    ```starlark
-    # use the `cxx` flake package output from `./nix` to provide the compiler tools
-    flake.package(
-        name = "nix_cc",
-        binaries = [
-            "ar",
-            "cc",
-            "c++",
-            "nm",
-            "objcopy",
-            "ranlib",
-            "strip",
-        ],
-        package = "cxx",
-        path = "nix",
-    )
-
-    # provide the `cxx` toolchain using the `:nix_cc` target
-    nix_cxx_toolchain(
-        name = "cxx",
-        nix_cc = ":nix_cc",
-        visibility = ["PUBLIC"],
-    )
-    ```
-
-    _Note_: The `nixpkgs` cc infrastructure depends on environment variables to be set during execution. You might
-            need to wrap the C/C++ compiler tools capturing the environment. Take a look at the example project.
+    `linker_dispatch` selects how `linker` is invoked:
+    - `"direct"`: invoked as-is with raw linker flags. Use for freestanding
+      rustc targets whose target spec already speaks raw linker (e.g.
+      `linker-flavor: "gnu-lld"`).
+    - `"driver"`: linking goes through clang, which is forced to dispatch
+      to `linker` via `--ld-path`. Use for hosted targets where rustc emits
+      cc-driver flags (sysroot, -arch, -lSystem, ...).
     """,
     is_toolchain_rule = True,
 )
