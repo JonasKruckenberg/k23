@@ -9,23 +9,25 @@ on:
 jobs:
   claude:
     if: |
-      ((github.event_name == 'issue_comment' && github.event.issue.pull_request) ||
-       github.event_name == 'pull_request_review_comment') &&
-      contains(github.event.comment.body, '@claude /review') &&
-      (github.event.comment.author_association == 'OWNER' ||
-       github.event.comment.author_association == 'MEMBER' ||
-       github.event.comment.author_association == 'COLLABORATOR')
+      ((github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude /review')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude /review')))
+      && (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-      issues: write
       id-token: write
-      actions: read
+      actions: read # Required for Claude to read CI results on PRs
+    env:
+      PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          ref: refs/pull/${{ github.event.issue.number || github.event.pull_request.number }}/head
 
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
@@ -42,10 +44,13 @@ jobs:
           nix print-dev-env .#ci > "$RUNNER_TEMP/devshell.env.sh"
           echo "BASH_ENV=$RUNNER_TEMP/devshell.env.sh" >> "$GITHUB_ENV"
 
-      - uses: anthropics/claude-code-action@v1
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           trigger_phrase: "@claude /review"
+
           settings: .github/claude-review-settings.json
           prompt: |
             DO NOT run `just preflight` as suggested by the review skill, instead query
@@ -55,13 +60,16 @@ jobs:
             as ONE GitHub PR review with line-anchored, resolvable inline comments via
             `gh api`. Do NOT post the review as an issue comment or PR comment.
 
+            The PR number is in $PR_NUMBER. Always pass it explicitly to `gh` —
+            never rely on `gh` inferring the PR from the current branch.
+
             1. PR context:
-                 gh pr view --json number,headRefOid,baseRefName,url
+                 gh pr view "$PR_NUMBER" --json number,headRefOid,baseRefName,url
                headRefOid is the review's `commit_id`.
 
             2. Diff anchoring (inline comments on lines outside the diff are rejected
                with HTTP 422):
-                 gh pr diff <number>
+                 gh pr diff "$PR_NUMBER"
                Parse the unified diff to learn which (path, line, side) tuples are
                commentable. RIGHT = added/context lines on the new file; LEFT =
                removed/context lines on the old file.
@@ -77,10 +85,9 @@ jobs:
             4. Findings whose line is NOT in the diff: do not drop them. Fold each into
                the review body under `## Out-of-diff findings`, prefixed with `**<path>**`.
 
-            5. Review body holds only what doesn't anchor to a line — verdict, preflight,
+            5. Review body holds only what doesn't anchor to a line — verdict
                out-of-diff findings, Notes:
                  **Verdict**: <Ready | Needs Attention | Needs Work>
-                 **Preflight**: <passed ✓ | failed (<step>) | running>
 
                  (optional) ## Out-of-diff findings
                  (optional) ## Notes
@@ -96,7 +103,7 @@ jobs:
                  jq -n --arg sha "$SHA" --arg body "$BODY" --arg event "$EVENT" \
                        --argjson comments "$COMMENTS_JSON" \
                        '{commit_id:$sha, body:$body, event:$event, comments:$comments}' \
-                   | gh api -X POST "repos/$OWNER/$REPO/pulls/$N/reviews" --input -
+                   | gh api -X POST "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" --input -
 
             8. On 422 "line must be part of the diff": move the offending comment into
                `## Out-of-diff findings` in the body and resubmit. Do not retry the same
