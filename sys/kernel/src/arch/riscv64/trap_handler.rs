@@ -29,21 +29,6 @@ cpu_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
 }
 
-// `default_trap_entry` writes 64 contiguous 8-byte slots — gp regs at
-// `sp[0..32]`, fp regs at `sp[32..64]` — and unconditionally bumps sp by
-// 0x200. Pin the struct's size and field offsets so the asm offsets and
-// the Rust layout cannot drift apart.
-const _: () = {
-    assert!(core::mem::offset_of!(unwind::Registers, gp) == 0x000);
-    #[cfg(target_feature = "d")]
-    {
-        assert!(core::mem::offset_of!(unwind::Registers, fp) == 0x100);
-        assert!(core::mem::size_of::<unwind::Registers>() == 0x200);
-    }
-    #[cfg(not(target_feature = "d"))]
-    assert!(core::mem::size_of::<unwind::Registers>() == 0x100);
-};
-
 pub fn init() {
     let trap_stack_top = trap_stack_top();
     tracing::trace!("setting sscratch to {:#x}", trap_stack_top);
@@ -431,6 +416,23 @@ mod tests {
 
     use super::{IN_TRAP, trap_stack_top};
     use crate::tests::wast::WastContext;
+
+    /// `default_trap_entry` writes 64 contiguous 8-byte slots — gp regs at
+    /// `sp[0..32]`, fp regs at `sp[32..64]` — and unconditionally bumps sp by
+    /// 0x200. Pin the struct's size and field offsets so the asm offsets and
+    /// the Rust layout cannot drift apart.
+    #[test::test]
+    fn check_registers_offsets() {
+        assert!(core::mem::offset_of!(unwind::Registers, gp) == 0x000);
+        #[cfg(target_feature = "d")]
+        {
+            assert!(core::mem::offset_of!(unwind::Registers, fp) == 0x100);
+            assert!(core::mem::size_of::<unwind::Registers>() == 0x200);
+        }
+        #[cfg(not(target_feature = "d"))]
+        assert!(core::mem::size_of::<unwind::Registers>() == 0x100);
+    }
+
 
     /// Both per-CPU trap invariants the trap-handler epilogue (and the
     /// kernel-exception unwind path) must restore before returning.
