@@ -249,7 +249,7 @@ impl FrameInfo {
     /// Private accessor used in `frame_alloc/arena.rs` to mark the frame
     /// that was previously "wired" as free before we push it into the buddy allocator freelist
     pub(crate) fn mark_as_free_for_freelist(&self) {
-        self.refcount.store(0, Ordering::Release)
+        self.refcount.store(0, Ordering::Release);
     }
 
     /// The physical address of this frame.

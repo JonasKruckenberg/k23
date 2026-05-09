@@ -158,9 +158,15 @@ pub fn all_tests() -> &'static [Test] {
     static mut LINKME_PLEASE: [Test; 0] = [];
 
     unsafe extern "C" {
-        #[allow(improper_ctypes)]
+        #[expect(
+            improper_ctypes,
+            reason = "These are linker-defined markers, not real C externs. We only take their addresses."
+        )]
         static __start_k23_tests: Test;
-        #[allow(improper_ctypes)]
+        #[expect(
+            improper_ctypes,
+            reason = "These are linker-defined markers, not real C externs. We only take their addresses."
+        )]
         static __stop_k23_tests: Test;
     }
 
@@ -169,12 +175,15 @@ pub fn all_tests() -> &'static [Test] {
 
     let stride = size_of::<Test>();
     let byte_offset = stop as usize - start as usize;
-    let len = match byte_offset.checked_div(stride) {
-        Some(len) => len,
-        // The #[distributed_slice] call checks `size_of::<T>() > 0` before
-        // using the unsafe `private_new`.
-        None => unsafe { hint::unreachable_unchecked() },
+
+    let Some(len) = byte_offset.checked_div(stride) else {
+        // Safety: `byte_offset.checked_div(stride)` returns `None` only when `stride == 0`,
+        // i.e. `size_of::<Test>() == 0`. The `#[distributed_slice]` macro asserts `size_of::<T>() > 0`
+        // so this branch is unreachable.
+        unsafe { hint::unreachable_unchecked() }
     };
 
+    // Safety: the linker populates `k23_tests` with properly aligned, initialized `Test` entries
+    // (registered by `#[ktest::test]`).
     unsafe { slice::from_raw_parts(start, len) }
 }

@@ -112,20 +112,17 @@ where
         };
 
         let loc = frames.next.take();
-        let func = match frames.inlined_functions.next() {
-            Some(func) => func,
-            None => {
-                let frame = Frame {
-                    dw_die_offset: Some(frames.function.dw_die_offset),
-                    function: frames.function.name.clone().map(|name| FunctionName {
-                        name,
-                        language: frames.unit.lang,
-                    }),
-                    location: loc,
-                };
-                self.0 = FrameIterState::Empty;
-                return Ok(Some(frame));
-            }
+        let Some(func) = frames.inlined_functions.next() else {
+            let frame = Frame {
+                dw_die_offset: Some(frames.function.dw_die_offset),
+                function: frames.function.name.clone().map(|name| FunctionName {
+                    name,
+                    language: frames.unit.lang,
+                }),
+                location: loc,
+            };
+            self.0 = FrameIterState::Empty;
+            return Ok(Some(frame));
         };
 
         let mut next = Location {

@@ -22,6 +22,7 @@ pub const FILTER: Flag =
     Flag::new_string("--filter").with_help("substring filter applied to test idents");
 
 #[derive(Default, Debug)]
+#[expect(clippy::struct_excessive_bools, reason = "its fiiiine")]
 pub struct Arguments<'a> {
     pub test_name: Option<&'a str>,
     pub list: bool,

@@ -123,7 +123,7 @@ impl<'a> Layout<'a> {
             lba += 1; // Boot Record VD
 
             self.boot_catalog_lba = Some(lba);
-            lba += sectors_for(boot_config.required_size() as u32);
+            lba += sectors_for(u32::try_from(boot_config.required_size()).unwrap());
         }
 
         // account for both the L and M path tables
@@ -142,13 +142,13 @@ impl<'a> Layout<'a> {
 
         // every file's data, back to back. Zero-byte files get LBA 0
         // (libisofs convention) and consume no sectors.
-        for file in self.files.iter_mut() {
+        for file in &mut self.files {
             if file.len == 0 {
                 file.lba = 0;
                 continue;
             }
             file.lba = lba;
-            lba += sectors_for(file.len as u32);
+            lba += sectors_for(u32::try_from(file.len).unwrap());
         }
 
         self.total_sectors = lba;
@@ -210,7 +210,7 @@ impl<'a> Layout<'a> {
         let mut root_record = RootDirectoryRecord::new_zeroed();
         root_record.header = build_dir_record_header(root.extent_lba, root.extent_len, true, 1);
 
-        pvd.logical_block_size = BothEndianU16::new(SECTOR_SIZE as u16);
+        pvd.logical_block_size = BothEndianU16::new(u16::try_from(SECTOR_SIZE).unwrap());
         pvd.volume_set_size = BothEndianU16::new(1);
         pvd.volume_sequence_number = BothEndianU16::new(1);
         pvd.file_structure_version = 1;
@@ -232,6 +232,10 @@ impl<'a> Layout<'a> {
         //   ...             every file's data, in BFS order
 
         // system area: sectors 0–15 are skipped (left zeroed by the writer)
+        #[expect(
+            clippy::cast_possible_wrap,
+            reason = "2048 * 16 trivially fits into i64"
+        )]
         w.seek_relative(16 * SECTOR_SIZE as i64)?;
 
         // sector 16: Primary Volume Descriptor
@@ -250,7 +254,7 @@ impl<'a> Layout<'a> {
 
             // Boot catalog
             w.seek(SeekFrom::Start(
-                boot_catalog_lba as u64 * SECTOR_SIZE as u64,
+                u64::from(boot_catalog_lba) * SECTOR_SIZE as u64,
             ))?;
             write_boot_catalog(&mut w, boot_config)?;
         } else {
@@ -259,14 +263,14 @@ impl<'a> Layout<'a> {
 
         // Path Table L (little-endian)
         w.seek(SeekFrom::Start(
-            self.path_table_l_lba as u64 * SECTOR_SIZE as u64,
+            u64::from(self.path_table_l_lba) * SECTOR_SIZE as u64,
         ))?;
         write_path_table::<LittleEndian>(&mut w, &self.dirs)?;
         pad_to_sector(&mut w)?;
 
         // Path Table M (big-endian)
         w.seek(SeekFrom::Start(
-            self.path_table_m_lba as u64 * SECTOR_SIZE as u64,
+            u64::from(self.path_table_m_lba) * SECTOR_SIZE as u64,
         ))?;
         write_path_table::<BigEndian>(&mut w, &self.dirs)?;
         pad_to_sector(&mut w)?;
@@ -281,9 +285,9 @@ impl<'a> Layout<'a> {
             if file.len == 0 {
                 continue; // zero-byte files occupy no sectors (LBA stays 0)
             }
-            w.seek(SeekFrom::Start(file.lba as u64 * SECTOR_SIZE as u64))?;
+            w.seek(SeekFrom::Start(u64::from(file.lba) * SECTOR_SIZE as u64))?;
             match file.source {
-                FileSource::InMemory(bytes) => w.write_all(bytes.as_bytes())?,
+                FileSource::InMemory { bytes, .. } => w.write_all(bytes.as_bytes())?,
                 FileSource::OnDisk { mut reader, .. } => {
                     io::copy(&mut reader, &mut w)?;
                 }
@@ -365,7 +369,7 @@ enum DirNodeEntry {
 #[derive(Debug)]
 pub(super) struct FileNode<'a> {
     pub(super) lba: u32, // 0 until LBA pass
-    pub(super) len: usize,
+    pub(super) len: u32,
     pub(super) identifier: Cow<'a, str>,
     pub(super) source: FileSource<'a>,
 }
@@ -403,8 +407,9 @@ impl<'a> DirNode<'a> {
     }
 
     fn required_path_table_record_size(&self) -> u32 {
-        let header_size = const { size_of::<raw::PathTableRecordHeader<LittleEndian>>() as u32 };
-        let id_len = self.identifier.len() as u32;
+        let header_size =
+            u32::try_from(size_of::<raw::PathTableRecordHeader<LittleEndian>>()).unwrap();
+        let id_len = u32::try_from(self.identifier.len()).unwrap();
 
         // round up so the size is always even
         header_size + id_len + (id_len & 1)
@@ -438,17 +443,18 @@ impl<'a> DirNode<'a> {
         let mut total = 0;
 
         let mut add_record = |id: &str| {
-            let record_size = dir_record_size(id.len() as u8);
+            let record_size = dir_record_size(u8::try_from(id.len()).unwrap());
 
             // no record may straddle a logical block boundary.
             // so we pad out to the end of the sector and continue
             if offset_in_sector as usize + record_size as usize > SECTOR_SIZE {
-                total += SECTOR_SIZE as u32 - offset_in_sector; // pad rest of sector
+                total += u32::try_from(SECTOR_SIZE).unwrap() - offset_in_sector; // pad rest of sector
                 offset_in_sector = 0;
             }
 
-            total += record_size as u32;
-            offset_in_sector = (offset_in_sector + record_size as u32) % SECTOR_SIZE as u32;
+            total += u32::from(record_size);
+            offset_in_sector =
+                (offset_in_sector + u32::from(record_size)) % u32::try_from(SECTOR_SIZE).unwrap();
         };
 
         // account for the `.` and `..`  special directories
@@ -461,7 +467,7 @@ impl<'a> DirNode<'a> {
             add_record(id);
         }
 
-        total.next_multiple_of(SECTOR_SIZE as u32)
+        total.next_multiple_of(u32::try_from(SECTOR_SIZE).unwrap())
     }
 }
 
@@ -474,7 +480,7 @@ static ZEROS: [u8; SECTOR_SIZE] = [0u8; SECTOR_SIZE];
 /// Converts a byte count to the number of whole sectors needed to hold it.
 #[inline]
 fn sectors_for(bytes: u32) -> u32 {
-    bytes.div_ceil(SECTOR_SIZE as u32)
+    bytes.div_ceil(u32::try_from(SECTOR_SIZE).unwrap())
 }
 
 /// Writes the three-field `VolumeDescriptorHeader` (type + "CD001" + version).
@@ -508,7 +514,7 @@ fn write_vd_terminator(w: &mut impl io::Write) -> io::Result<()> {
 
 /// Zero-fills the writer up to the next sector boundary.
 fn pad_to_sector(w: &mut (impl io::Write + io::Seek)) -> io::Result<()> {
-    let pos = w.stream_position()? as usize;
+    let pos = usize::try_from(w.stream_position()?).unwrap();
     let rem = pos % SECTOR_SIZE;
     if rem != 0 {
         w.write_all(&ZEROS[..SECTOR_SIZE - rem])?;
@@ -521,7 +527,7 @@ fn dir_record_size(id_len: u8) -> u8 {
     // DirectoryRecordHeader is 33 bytes (odd). A 1-byte pad is added when
     // id_len is even so the total record length is always even.
     let pad: u8 = 1 - (id_len & 1);
-    size_of::<DirectoryRecordHeader>() as u8 + id_len + pad
+    u8::try_from(size_of::<DirectoryRecordHeader>()).unwrap() + id_len + pad
 }
 
 /// Builds a `DirectoryRecordHeader` for a file or subdirectory record.
@@ -574,7 +580,7 @@ where
 {
     for dir in dirs {
         let id_bytes = dir.identifier.as_bytes();
-        let id_len = id_bytes.len() as u8;
+        let id_len = u8::try_from(id_bytes.len()).unwrap();
 
         // ECMA-119 1-based parent index: our in-memory indices are 0-based,
         // so root's parent wire value becomes 0 + 1 = 1 (pointing at itself).
@@ -606,13 +612,14 @@ fn write_dir_record(
     data_length: u32,
     is_dir: bool,
 ) -> io::Result<()> {
-    let id_len = id.len() as u8;
-    let record_size = dir_record_size(id_len) as u32;
+    let id_len = u8::try_from(id.len()).unwrap();
+    let record_size = u32::from(dir_record_size(id_len));
     let pad = 1 - (id_len & 1);
 
     // ECMA-119 §9.1: no directory record may straddle a sector boundary.
-    if *offset_in_sector + record_size > SECTOR_SIZE as u32 {
-        let pad_len = (SECTOR_SIZE as u32 - *offset_in_sector) as usize;
+    let sector_size_u32 = u32::try_from(SECTOR_SIZE).unwrap();
+    if *offset_in_sector + record_size > sector_size_u32 {
+        let pad_len = usize::try_from(sector_size_u32 - *offset_in_sector).unwrap();
         w.write_all(&ZEROS[..pad_len])?;
         *offset_in_sector = 0;
     }
@@ -623,7 +630,7 @@ fn write_dir_record(
     if pad > 0 {
         w.write_all(&[0u8])?;
     }
-    *offset_in_sector = (*offset_in_sector + record_size) % SECTOR_SIZE as u32;
+    *offset_in_sector = (*offset_in_sector + record_size) % sector_size_u32;
     Ok(())
 }
 
@@ -642,7 +649,9 @@ fn serialize_dir_extent(
     dirs: &[DirNode<'_>],
     files: &[FileNode<'_>],
 ) -> io::Result<()> {
-    w.seek(SeekFrom::Start(dir.extent_lba as u64 * SECTOR_SIZE as u64))?;
+    w.seek(SeekFrom::Start(
+        u64::from(dir.extent_lba) * SECTOR_SIZE as u64,
+    ))?;
 
     let mut offset: u32 = 0;
 
@@ -690,7 +699,7 @@ fn serialize_dir_extent(
                     &mut offset,
                     file.identifier.as_bytes(),
                     file.lba,
-                    file.len as u32,
+                    u32::try_from(file.len).unwrap(),
                     false,
                 )?;
             }
@@ -736,7 +745,7 @@ fn write_boot_catalog(w: &mut impl io::Write, boot_config: &BootConfig) -> io::R
         // 0x91 = last section header; 0x90 = more sections follow
         header.header_indicator = if is_last { 0x91 } else { 0x90 };
         header.platform_id = u8::from(section.platform);
-        header.entries = U16::new(section.entries.len() as u16);
+        header.entries = U16::new(u16::try_from(section.entries.len()).unwrap());
         header.id = section.id;
         header.write_to_io(&mut *w)?;
 

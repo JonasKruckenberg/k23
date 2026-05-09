@@ -1,3 +1,16 @@
+#![allow(
+    clippy::cast_ptr_alignment,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    reason = "SSE2 intrinsics: `_mm_load_si128` requires 16-byte alignment, \
+              which callers uphold via the aligned `pivots` buffer; \
+              `_mm_movemask_epi8` returns an i32 with only the low 16 bits \
+              set, so `as u16` is an exact trim; signed/unsigned bitcasts \
+              on integer lanes are required by the signed-compare \
+              intrinsics and by the `i*::MIN`-based BIAS constants."
+)]
+
 #[cfg(target_arch = "x86")]
 use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]

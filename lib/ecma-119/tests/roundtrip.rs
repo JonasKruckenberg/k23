@@ -31,13 +31,13 @@ const BOOT_CATALOG_LBA: usize = 19;
 
 fn build_image(with_boot: bool) -> Vec<u8> {
     let mut root = DirBuilder::new();
-    root.add_file("HELLO.TXT;1", FileBuilder::from_bytes(HELLO))
+    root.add_file("HELLO.TXT;1", FileBuilder::from_bytes(HELLO).unwrap())
         .unwrap();
-    root.add_file("EMPTY.BIN;1", FileBuilder::from_bytes(&[][..]))
+    root.add_file("EMPTY.BIN;1", FileBuilder::from_bytes(&[][..]).unwrap())
         .unwrap();
 
     let mut sub = DirBuilder::new();
-    sub.add_file("DEEP.TXT;1", FileBuilder::from_bytes(DEEP))
+    sub.add_file("DEEP.TXT;1", FileBuilder::from_bytes(DEEP).unwrap())
         .unwrap();
     root.add_subdir("SUB", sub).unwrap();
 
@@ -45,7 +45,7 @@ fn build_image(with_boot: bool) -> Vec<u8> {
         let mut efi_dir = DirBuilder::new();
         let mut boot_dir = DirBuilder::new();
         boot_dir
-            .add_file("BOOTAA64.EFI;1", FileBuilder::from_bytes(EFI_STUB))
+            .add_file("BOOTAA64.EFI;1", FileBuilder::from_bytes(EFI_STUB).unwrap())
             .unwrap();
         efi_dir.add_subdir("BOOT", boot_dir).unwrap();
         root.add_subdir("EFI", efi_dir).unwrap();
@@ -162,8 +162,11 @@ fn explicit_load_size_overrides_auto() {
     let mut root = DirBuilder::new();
     let mut efi = DirBuilder::new();
     let mut boot = DirBuilder::new();
-    boot.add_file("BOOTAA64.EFI;1", FileBuilder::from_bytes(&b"x"[..]))
-        .unwrap();
+    boot.add_file(
+        "BOOTAA64.EFI;1",
+        FileBuilder::from_bytes(&b"x"[..]).unwrap(),
+    )
+    .unwrap();
     efi.add_subdir("BOOT", boot).unwrap();
     root.add_subdir("EFI", efi).unwrap();
 

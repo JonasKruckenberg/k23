@@ -114,7 +114,7 @@ impl<R: gimli::Reader> Functions<R> {
                                 match attr.name() {
                                     gimli::DW_AT_low_pc => match attr.value() {
                                         gimli::AttributeValue::Addr(val) => {
-                                            ranges.low_pc = Some(val)
+                                            ranges.low_pc = Some(val);
                                         }
                                         gimli::AttributeValue::DebugAddrIndex(index) => {
                                             ranges.low_pc = Some(unit.address(index)?);
@@ -123,13 +123,13 @@ impl<R: gimli::Reader> Functions<R> {
                                     },
                                     gimli::DW_AT_high_pc => match attr.value() {
                                         gimli::AttributeValue::Addr(val) => {
-                                            ranges.high_pc = Some(val)
+                                            ranges.high_pc = Some(val);
                                         }
                                         gimli::AttributeValue::DebugAddrIndex(index) => {
                                             ranges.high_pc = Some(unit.address(index)?);
                                         }
                                         gimli::AttributeValue::Udata(val) => {
-                                            ranges.size = Some(val)
+                                            ranges.size = Some(val);
                                         }
                                         _ => {}
                                     },
@@ -426,10 +426,20 @@ impl<R: gimli::Reader> InlinedFunction<R> {
                         }
                     }
                     gimli::DW_AT_call_line => {
-                        call_line = attr.udata_value().unwrap_or(0) as u32;
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "intentional, packing line number into u32 to save memory"
+                        )]
+                        let v = attr.udata_value().unwrap_or(0) as u32;
+                        call_line = v;
                     }
                     gimli::DW_AT_call_column => {
-                        call_column = attr.udata_value().unwrap_or(0) as u32;
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "intentional, packing column number into u32 to save memory"
+                        )]
+                        let v = attr.udata_value().unwrap_or(0) as u32;
+                        call_column = v;
                     }
                     _ => {}
                 },
@@ -519,9 +529,7 @@ where
     R: gimli::Reader,
 {
     let mut entries = unit.entries_raw(Some(offset))?;
-    let abbrev = if let Some(abbrev) = entries.read_abbreviation()? {
-        abbrev
-    } else {
+    let Some(abbrev) = entries.read_abbreviation()? else {
         return Err(gimli::Error::NoEntryAtGivenOffset(offset.0.into_u64()));
     };
 

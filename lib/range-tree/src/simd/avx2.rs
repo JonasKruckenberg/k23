@@ -1,3 +1,17 @@
+#![allow(
+    clippy::cast_ptr_alignment,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    reason = "AVX2 intrinsics: `_mm256_load_si256` requires 32-byte \
+              alignment, which callers uphold via the aligned `pivots` \
+              buffer; `_mm256_movemask_epi8` returns a full-width i32 \
+              bitmask reinterpreted as u32 via `count_ones`; \
+              signed/unsigned bitcasts on integer lanes are required by \
+              the signed-compare intrinsics and by the `i*::MIN`-based \
+              BIAS constants."
+)]
+
 #[cfg(target_arch = "x86")]
 use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]

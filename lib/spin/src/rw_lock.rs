@@ -106,17 +106,31 @@ pub struct RwLockUpgradableGuard<'a, T: 'a + ?Sized> {
     inner: &'a RwLock<T>,
 }
 
-// Same unsafe impls as `std::sync::RwLock`
+// Safety: spinlocks can be unlocked from any thread, therefore `RwLock` is `Send` as long as `T` is `Send`.
 unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
+// Safety: `RwLock` (by design) can be read from multiple threads which requires `T: Sync`.
+// It also (again by design) hands out `&mut T` so other threads _could_ `mem::take` the value.
+// This means `T` must be safe to move to a different thread, hence `T: Send`.
 unsafe impl<T: ?Sized + Send + Sync> Sync for RwLock<T> {}
 
-unsafe impl<T: ?Sized + Send + Sync> Send for RwLockWriteGuard<'_, T> {}
+// Safety: sending an `RwLockWriteGuard` to another thread gives that thread `&mut T`, requiring `T: Send`.
+unsafe impl<T: ?Sized + Send> Send for RwLockWriteGuard<'_, T> {}
+// Safety: `&RwLockWriteGuard` derefs to `&T`, requiring `T: Sync`. The extra `T: Send` matches
+// `RwLock`'s `Sync` bound for consistency and isn't strictly required by the `Sync` impl alone.
 unsafe impl<T: ?Sized + Send + Sync> Sync for RwLockWriteGuard<'_, T> {}
 
+// Safety: `RwLockReadGuard` only ever hands out `&T`, so it is `Send` iff `T: Sync`
+// (other threads only ever observe `&T`, never own or mutate it).
 unsafe impl<T: ?Sized + Sync> Send for RwLockReadGuard<'_, T> {}
+// Safety: `&RwLockReadGuard` derefs to `&T`, so it is `Sync` iff `T: Sync`.
 unsafe impl<T: ?Sized + Sync> Sync for RwLockReadGuard<'_, T> {}
 
+// Safety: sending an `RwLockUpgradableGuard` to another thread gives that thread `&T` directly
+// (`T: Sync`) and the ability to upgrade to `&mut T` (`T: Send`). Both bounds are load-bearing here,
+// unlike `RwLockWriteGuard` where `Sync` is only required for symmetry.
 unsafe impl<T: ?Sized + Send + Sync> Send for RwLockUpgradableGuard<'_, T> {}
+// Safety: `&RwLockUpgradableGuard` derefs to `&T` (`T: Sync`), and because the guard can be upgraded
+// into a `RwLockWriteGuard` it inherits the upgrade requirement of `T: Send`.
 unsafe impl<T: ?Sized + Send + Sync> Sync for RwLockUpgradableGuard<'_, T> {}
 
 impl<T> RwLock<T> {
@@ -532,6 +546,11 @@ impl<'rwlock, T: ?Sized> RwLockUpgradableGuard<'rwlock, T> {
     ///     Err(upgradeable) => /* upgrade unsuccessful */ (),
     /// };
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)`, with the upgradable guard returned unchanged, if any other readers
+    /// are currently holding the lock.
     #[inline]
     pub fn try_upgrade(self) -> Result<RwLockWriteGuard<'rwlock, T>, Self> {
         self.try_upgrade_internal(true)
@@ -541,6 +560,14 @@ impl<'rwlock, T: ?Sized> RwLockUpgradableGuard<'rwlock, T> {
     ///
     /// Unlike [`RwLockUpgradableGuard::try_upgrade`], this function is allowed to spuriously fail even when upgrading
     /// would otherwise succeed, which can result in more efficient code on some platforms.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)`, with the upgradable guard returned unchanged, if either:
+    /// - other readers are currently holding the lock, or
+    /// - the underlying compare-exchange spuriously failed (allowed by this variant — see above).
+    ///
+    /// For the non-spurious variant, see [`Self::try_upgrade`].
     #[inline]
     pub fn try_upgrade_weak(self) -> Result<RwLockWriteGuard<'rwlock, T>, Self> {
         self.try_upgrade_internal(false)

@@ -11,6 +11,7 @@ _supertd := require("supertd")
 _reindeer := require("reindeer")
 _rust_project := require("rust-project")
 _cargo_deny := require("cargo-deny")
+_jq := require("jq")
 
 _docstring := "
 justfile for k23
@@ -25,9 +26,14 @@ _default:
 run target buck2_args="" *qemu_args="":
     {{ _buck2 }} run {{target}} {{buck2_args}} {{qemu_args}}
 
-# quick check for development
-@check targets="" *buck2_args:
-    {{ _buck2 }} build {{append("[check]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
+# quick check for development.
+# The prelude's [diag.json] action is infallible by design; gate on the
+# rendered diagnostics ourselves.
+check targets="" *buck2_args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$({{ _buck2 }} build {{append("[diag.json]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}} --show-simple-output | xargs {{ _jq }} -r 'select(.level=="error") | .rendered')
+    [ -z "$out" ] || { printf '%s' "$out" >&2; exit 1; }
 
 # One CI lane locally. Default is the host lane. With `platform=X` it's the
 # X lane: lint and check at X; unittests/miri/loom are host-only and get
@@ -43,8 +49,13 @@ lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck
 # ===== linting =====
 
 # run clippy on a crate or the entire workspace.
-@clippy targets="" *buck2_args:
-    {{ _buck2 }} build {{append("[clippy.txt]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
+# The prelude's [clippy.json] action is infallible by design; gate on the
+# rendered diagnostics ourselves.
+clippy targets="" *buck2_args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$({{ _buck2 }} build {{append("[clippy.json]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}} --show-simple-output | xargs {{ _jq }} -r 'select(.level=="error") | .rendered')
+    [ -z "$out" ] || { printf '%s' "$out" >&2; exit 1; }
 
 # check the workspace for typos
 @typos:

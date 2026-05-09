@@ -44,7 +44,7 @@ impl<R: gimli::Reader> ResUnit<R> {
     /// Returns the DWARF sections and the unit.
     ///
     /// Loads the DWO unit if necessary.
-    #[expect(clippy::type_complexity)]
+    #[expect(clippy::type_complexity, reason = "its fiinne, we're all adults here")]
     pub(crate) fn dwarf_and_unit<'unit, 'ctx: 'unit>(
         &'unit self,
         ctx: &'ctx Context<R>,
@@ -66,11 +66,8 @@ impl<R: gimli::Reader> ResUnit<R> {
             return complete(dwo);
         }
 
-        let dwo_id = match self.dw_unit.dwo_id {
-            None => {
-                return complete(self.dwo.get_or_init(|| Ok(None)));
-            }
-            Some(dwo_id) => dwo_id,
+        let Some(dwo_id) = self.dw_unit.dwo_id else {
+            return complete(self.dwo.get_or_init(|| Ok(None)));
         };
 
         let comp_dir = self.dw_unit.comp_dir.clone();
@@ -91,14 +88,12 @@ impl<R: gimli::Reader> ResUnit<R> {
         };
 
         let process_dwo = move |dwo_dwarf: Option<Arc<gimli::Dwarf<R>>>| {
-            let dwo_dwarf = match dwo_dwarf {
-                None => return Ok(None),
-                Some(dwo_dwarf) => dwo_dwarf,
+            let Some(dwo_dwarf) = dwo_dwarf else {
+                return Ok(None);
             };
             let mut dwo_units = dwo_dwarf.units();
-            let dwo_header = match dwo_units.next()? {
-                Some(dwo_header) => dwo_header,
-                None => return Ok(None),
+            let Some(dwo_header) = dwo_units.next()? else {
+                return Ok(None);
             };
 
             let mut dwo_unit = dwo_dwarf.unit(dwo_header)?;
@@ -120,16 +115,21 @@ impl<R: gimli::Reader> ResUnit<R> {
         )
     }
 
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF info fails.
     pub(crate) fn parse_lines(&self, sections: &gimli::Dwarf<R>) -> Result<Option<&Lines>, Error> {
         // NB: line information is always stored in the main debug file so this does not need
         // to handle DWOs.
-        let ilnp = match self.dw_unit.line_program {
-            Some(ref ilnp) => ilnp,
-            None => return Ok(None),
+        let Some(ref ilnp) = self.dw_unit.line_program else {
+            return Ok(None);
         };
         self.lines.borrow(self.unit_ref(sections), ilnp).map(Some)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF info fails.
     pub(crate) fn find_location(
         &self,
         probe: u64,
@@ -138,9 +138,12 @@ impl<R: gimli::Reader> ResUnit<R> {
         let Some(lines) = self.parse_lines(sections)? else {
             return Ok(None);
         };
-        lines.find_location(probe)
+        Ok(lines.find_location(probe))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF info fails.
     #[inline]
     pub(crate) fn find_location_range(
         &self,
@@ -151,10 +154,10 @@ impl<R: gimli::Reader> ResUnit<R> {
         let Some(lines) = self.parse_lines(sections)? else {
             return Ok(None);
         };
-        lines.find_location_range(probe_low, probe_high).map(Some)
+        Ok(Some(lines.find_location_range(probe_low, probe_high)))
     }
 
-    #[expect(clippy::type_complexity)]
+    #[expect(clippy::type_complexity, reason = "its fiinne, we're all adults here")]
     pub(crate) fn find_function_or_location<'unit, 'ctx: 'unit>(
         &'unit self,
         probe: u64,
@@ -204,9 +207,8 @@ impl<R: gimli::Reader> ResUnits<R> {
         let mut units = sections.units();
         while let Some(header) = units.next()? {
             let unit_id = res_units.len();
-            let offset = match header.offset().to_debug_info_offset(&header) {
-                Some(offset) => offset,
-                None => continue,
+            let Some(offset) = header.offset().to_debug_info_offset(&header) else {
+                continue;
             };
             // We mainly want compile units, but we may need to follow references to entries
             // within other units for function names.  We don't need anything from type units.
@@ -219,9 +221,8 @@ impl<R: gimli::Reader> ResUnits<R> {
                 }
                 _ => true,
             };
-            let dw_unit = match sections.unit(header) {
-                Ok(dw_unit) => dw_unit,
-                Err(_) => continue,
+            let Ok(dw_unit) = sections.unit(header) else {
+                continue;
             };
             let dw_unit_ref = gimli::UnitRef::new(sections, &dw_unit);
 
@@ -229,9 +230,8 @@ impl<R: gimli::Reader> ResUnits<R> {
             if need_unit_range {
                 let mut entries = dw_unit_ref.entries_raw(None)?;
 
-                let abbrev = match entries.read_abbreviation()? {
-                    Some(abbrev) => abbrev,
-                    None => continue,
+                let Some(abbrev) = entries.read_abbreviation()? else {
+                    continue;
                 };
 
                 let mut ranges = RangeAttributes::default();
@@ -325,7 +325,7 @@ impl<R: gimli::Reader> ResUnits<R> {
                             range,
                             unit_id,
                             min_begin: 0,
-                        })
+                        });
                     }
                 }
             }
@@ -434,15 +434,15 @@ impl<R: gimli::Reader> ResUnits<R> {
         probe_low: u64,
         probe_high: u64,
         sections: &'a gimli::Dwarf<R>,
-    ) -> Result<LocationRangeIter<'a, R>, Error> {
+    ) -> LocationRangeIter<'a, R> {
         let unit_iter = Box::new(self.find_range(probe_low, probe_high));
-        Ok(LocationRangeIter {
+        LocationRangeIter {
             unit_iter,
             iter: None,
             probe_low,
             probe_high,
             sections,
-        })
+        }
     }
 }
 
@@ -480,13 +480,11 @@ impl<R: gimli::Reader> SupUnits<R> {
         let mut sup_units = Vec::new();
         let mut units = sections.units();
         while let Some(header) = units.next()? {
-            let offset = match header.offset().to_debug_info_offset(&header) {
-                Some(offset) => offset,
-                None => continue,
+            let Some(offset) = header.offset().to_debug_info_offset(&header) else {
+                continue;
             };
-            let dw_unit = match sections.unit(header) {
-                Ok(dw_unit) => dw_unit,
-                Err(_) => continue,
+            let Ok(dw_unit) = sections.unit(header) else {
+                continue;
             };
             sup_units.push(SupUnit { dw_unit, offset });
         }

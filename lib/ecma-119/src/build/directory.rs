@@ -9,8 +9,8 @@
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, btree_map};
+use std::fs;
 use std::path::Path;
-use std::{fs, io};
 
 use crate::validate::{validate_dir_identifier, validate_file_identifier};
 
@@ -28,30 +28,46 @@ pub struct File<'a> {
 #[derive(Debug)]
 pub enum FileSource<'a> {
     /// Data already in memory.
-    InMemory(Cow<'a, [u8]>),
+    InMemory { len: u32, bytes: Cow<'a, [u8]> },
     /// Read from an external source at build time.
-    OnDisk { len: u64, reader: fs::File },
+    OnDisk { len: u32, reader: fs::File },
 }
 
 impl<'a> FileSource<'a> {
-    pub fn len(&self) -> usize {
+    pub fn len(&self) -> u32 {
         match self {
-            FileSource::InMemory(items) => items.len(),
-            FileSource::OnDisk { len, .. } => *len as usize,
+            FileSource::InMemory { len, .. } => *len,
+            FileSource::OnDisk { len, .. } => *len,
         }
     }
 }
 
 impl<'a> File<'a> {
-    pub fn from_bytes(bytes: impl Into<Cow<'a, [u8]>>) -> Self {
-        Self {
-            source: FileSource::InMemory(bytes.into()),
-        }
+    /// Create a `File` from a in-memory bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the file sie exceeds `u32::MAX` (ECMA-119 single-extent files are limited to 4 GiB - 1)
+    pub fn from_bytes(bytes: impl Into<Cow<'a, [u8]>>) -> anyhow::Result<Self> {
+        let bytes = bytes.into();
+        let len = u32::try_from(bytes.len())?;
+
+        Ok(Self {
+            source: FileSource::InMemory { len, bytes },
+        })
     }
 
-    pub fn from_path(path: impl AsRef<Path>) -> io::Result<Self> {
+    /// Create a `File` from a file on-disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the file cannot be opened
+    /// - when the file sie exceeds `u32::MAX` (ECMA-119 single-extent files are limited to 4 GiB - 1)
+    pub fn from_path(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let file = fs::File::open(path)?;
-        let len = file.metadata()?.len();
+        let len = u32::try_from(file.metadata()?.len())?;
 
         Ok(Self {
             source: FileSource::OnDisk { len, reader: file },
@@ -69,6 +85,13 @@ impl<'a> Directory<'a> {
         Self::default()
     }
 
+    /// Add a file to this directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when:
+    /// - the file name is malformed
+    /// - a directory or file with the name already exists in this directory
     pub fn add_file(
         &mut self,
         name: impl Into<Cow<'a, str>>,
@@ -76,14 +99,6 @@ impl<'a> Directory<'a> {
     ) -> anyhow::Result<&mut Self> {
         let name = name.into();
         validate_file_identifier(name.as_bytes())?;
-        // ECMA-119 single-extent files are limited to 4 GiB - 1 (the data_length
-        // field is 32-bit).
-        anyhow::ensure!(
-            file.source.len() <= u32::MAX as usize,
-            "file {name}: {} bytes exceeds ECMA-119 single-extent limit ({} bytes)",
-            file.source.len(),
-            u32::MAX,
-        );
 
         match self.entries.entry(name) {
             btree_map::Entry::Occupied(o) => {
@@ -96,6 +111,13 @@ impl<'a> Directory<'a> {
         }
     }
 
+    /// Add a subdirectory to this directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the directory name is malformed
+    /// - a directory or file with the name already exists in this directory
     pub fn add_subdir(
         &mut self,
         name: impl Into<Cow<'a, str>>,
