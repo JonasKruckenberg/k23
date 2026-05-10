@@ -155,7 +155,7 @@ _license_header_excl := if license_header_excluded == "" { "" } else { f" except
 # buckification (Cargo.toml/Cargo.lock + reindeer) or change toolchains/Buck
 # cells globally. Entries ending in `/` are treated as directory prefixes so
 # that any file under them (e.g. a new `.bzl` defining a toolchain) is caught.
-_pessimistic_paths := "Cargo.toml Cargo.lock third-party/Cargo.toml third-party/Cargo.lock flake.nix flake.lock rust-toolchain.toml .buckconfig PACKAGE build/toolchains/"
+_pessimistic_paths := "Cargo.toml Cargo.lock third-party/Cargo.toml third-party/Cargo.lock flake.nix flake.lock rust-toolchain.toml .buckconfig PACKAGE justfile build/toolchains/"
 
 # emit the jj summary between BASE and the working copy (raw, for --changes input)
 changed-targets-diff BASE:
