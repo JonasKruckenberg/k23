@@ -42,9 +42,14 @@
         pkgs:
         let
           rustToolchain = with pkgs; rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+
+          # libstdc++ (linux) / libc++ (darwin) shared by stdenv's cc.
+          # The cxx toolchain bakes its lib dir into binaries as -rpath
+          # so they can find it at runtime.
+          cxxRuntimeLib = pkgs.stdenv.cc.cc.lib;
         in
         {
-          inherit rustToolchain;
+          inherit rustToolchain cxxRuntimeLib;
           inherit (pkgs)
             bash
             python3

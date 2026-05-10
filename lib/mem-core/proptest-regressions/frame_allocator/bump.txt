@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 537ed2b2aa7832fa7c8ff74771777b44a28e548e5f67903c5b6547182ff1ceb1 # shrinks to region_layouts = [Layout { size: 16106127360, align: 1073741824 (1 << 30) }]
+cc 8f3434a3ce6aa17f4146c3d9a8a21e828aa79bab39b5648cf2b374a7c92f7833 # shrinks to region_layouts = [Layout { size: 16437112832, align: 4096 (1 << 12) }]
+cc 2bcda22e5ee7cd97b52cfdeaecedd6e452d4970ce4b20891c7cd8a5c7c1ee926 # shrinks to region_layouts = [Layout { size: 16106127360, align: 1073741824 (1 << 30) }], alignment_pot = 1
+cc 6a4342aa2d5cffdcc0bd31c1319378144e6d33b9a296db2459c762629d18abb8 # shrinks to region_layouts = [Layout { size: 16106127360, align: 1073741824 (1 << 30) }], alignment_pot = 1
+cc 10ca1c271098d01c256166957b5999f0fd6561a6d5393b49f619c23cb29ab34a # shrinks to region_layouts = [Layout { size: 16437112832, align: 4096 (1 << 12) }]
+cc bd5d0de834d9a837150f8830977d2dd3373d5392d732e931143d7faa4a595ad4 # shrinks to region_layouts = [Layout { size: 16106127360, align: 1073741824 (1 << 30) }], alignment_pot = 1

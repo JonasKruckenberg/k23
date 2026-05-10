@@ -18,10 +18,10 @@ pub const EXACT: Flag =
     Flag::new_bool("--exact").with_help("treat `--test-name` as an exact match");
 pub const FORMAT: Flag =
     Flag::new_string("--format").with_help("output format: `pretty`, `terse`, or `json`");
-pub const TEST_NAME: Flag =
-    Flag::new_string("--test-name").with_help("substring filter applied to test idents");
+pub const FILTER: Flag =
+    Flag::new_string("--filter").with_help("substring filter applied to test idents");
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Arguments<'a> {
     pub test_name: Option<&'a str>,
     pub list: bool,
@@ -31,7 +31,7 @@ pub struct Arguments<'a> {
     pub format: FormatSetting,
 }
 
-#[derive(Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 pub enum FormatSetting {
     #[default]
     Pretty,
@@ -62,7 +62,7 @@ impl<'a> Arguments<'a> {
                         "invalid output format \"{fmt}\". Expected one of \"pretty\", \"terse\", or \"json\"."
                     ),
                 };
-            } else if let Some(v) = TEST_NAME.consume(tok, &mut tokens) {
+            } else if let Some(v) = FILTER.consume(tok, &mut tokens) {
                 args.test_name = Some(v);
             }
         }

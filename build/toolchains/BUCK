@@ -40,7 +40,14 @@ flake.package(
 flake.package(
     name = "lld",
     package = "lld_20",
-    binaries = ["lld"],
+    binaries = ["ld.lld", "ld64.lld"],
+    path = "root//:flake",
+)
+
+flake.package(
+    name = "cxx_runtime_lib",
+    package = "cxxRuntimeLib",
+    output = "lib",
     path = "root//:flake",
 )
 
@@ -198,8 +205,16 @@ clang_toolchain(
     name = "cxx",
     clang = ":clang",
     linker = select({
-        "prelude//os:none": ":lld[lld]",
-        "DEFAULT": None,
+        "prelude//os:macos": ":lld[ld64.lld]",
+        "DEFAULT": ":lld[ld.lld]",
+    }),
+    linker_dispatch = select({
+        "prelude//os:none": "direct",
+        "DEFAULT": "driver",
+    }),
+    cxx_runtime_lib = select({
+        "prelude//os:none": None,
+        "DEFAULT": ":cxx_runtime_lib",
     }),
     c_flags = select({
         "constraints//:opt-level[0]": ["-O0"],

@@ -141,10 +141,19 @@ impl Flag {
         rest: &mut I,
     ) -> Option<&'a str> {
         let after = tok.strip_prefix(self.name)?;
+
         if after.is_empty() {
-            rest.next()
+            match self.kind {
+                // a bool flag should not be followed by more input
+                FlagKind::Bool => Some(""),
+                _ => rest.next(),
+            }
         } else {
-            after.strip_prefix('=')
+            match self.kind {
+                // a bool flag should not be followed by more input
+                FlagKind::Bool => None,
+                _ => after.strip_prefix('='),
+            }
         }
     }
 }
