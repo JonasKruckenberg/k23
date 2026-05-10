@@ -83,9 +83,9 @@ impl Conclusion {
     }
 }
 
-pub async fn run_tests(global: &'static state::Global) -> Conclusion {
+pub async fn run_tests(global: &'static state::Global) -> crate::Result<Conclusion> {
     let raw = crate::bootargs::read_raw(&global.device_tree).unwrap_or("");
-    let args = Arguments::parse(raw);
+    let args = Arguments::parse(raw)?;
 
     let tests = if let Some(test_name) = args.test_name {
         let tests: Vec<_> = all_tests()
@@ -104,7 +104,7 @@ pub async fn run_tests(global: &'static state::Global) -> Conclusion {
     // If `--list` is specified, just print the list and return.
     if args.list {
         printer.print_list(tests, args.ignored);
-        return Conclusion::empty();
+        return Ok(Conclusion::empty());
     }
 
     // Print number of tests
@@ -149,7 +149,7 @@ pub async fn run_tests(global: &'static state::Global) -> Conclusion {
 
     printer.print_summary(&conclusion);
 
-    Arc::into_inner(conclusion).unwrap()
+    Ok(Arc::into_inner(conclusion).unwrap())
 }
 
 pub fn all_tests() -> &'static [Test] {

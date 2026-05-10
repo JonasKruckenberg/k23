@@ -228,7 +228,7 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
             writeln!(
                 f,
                 "note: Some details are omitted, \
-             run with `backtrace=full` bootarg for a verbose backtrace."
+             run with `--backtrace=full` bootarg for a verbose backtrace."
             )?;
         }
         if self.symbolize_ctx.is_none() {
@@ -264,7 +264,7 @@ impl fmt::Display for UnknownBacktraceStyleError {
 
 impl core::error::Error for UnknownBacktraceStyleError {}
 
-/// Fixed frame used to clean the backtrace with `backtrace=short`.
+/// Fixed frame used to clean the backtrace with `--backtrace=short`.
 #[inline(never)]
 pub fn __rust_begin_short_backtrace<F, T>(f: F) -> T
 where
@@ -278,7 +278,7 @@ where
     result
 }
 
-/// Fixed frame used to clean the backtrace with `backtrace=short`.
+/// Fixed frame used to clean the backtrace with `--backtrace=short`.
 #[inline(never)]
 pub fn __rust_end_short_backtrace<F, T>(f: F) -> T
 where

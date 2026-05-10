@@ -15,6 +15,7 @@
 #![feature(allocator_api)]
 extern crate alloc;
 
+pub mod block_on;
 mod error;
 pub mod executor;
 pub mod loom;

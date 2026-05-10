@@ -19,7 +19,7 @@ use mem_core::PhysicalAddress;
 use static_assertions::assert_impl_all;
 
 use crate::arch;
-use crate::mem::frame_alloc::FRAME_ALLOC;
+use crate::mem::frame_alloc::CPU_LOCAL_CACHE;
 
 /// Soft limit on the amount of references that may be made to a `Frame`.
 const MAX_REFCOUNT: usize = isize::MAX as usize;
@@ -198,10 +198,7 @@ impl Frame {
     fn drop_slow(&mut self) {
         // TODO if we ever add more fields to FrameInfo we should reset them here
 
-        let alloc = FRAME_ALLOC
-            .get()
-            .expect("cannot access FRAME_ALLOC before it is initialized");
-        let mut cpu_local_cache = alloc.cpu_local_cache.get().unwrap().borrow_mut();
+        let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();
         cpu_local_cache.free_list.push_back(self.ptr);
     }
 }
@@ -231,13 +228,28 @@ impl fmt::Pointer for Frame {
 // === FrameInfo ===
 
 impl FrameInfo {
-    /// Private constructor for use in `frame_alloc/arena.rs`
-    pub(crate) fn new(addr: PhysicalAddress) -> Self {
+    /// Private constructor for use in `frame_alloc/arena.rs`.
+    pub(crate) fn new_wired(addr: PhysicalAddress) -> Self {
+        Self {
+            links: list::Links::default(),
+            addr,
+            refcount: AtomicUsize::new(1),
+        }
+    }
+
+    /// Private constructor for use in `frame_alloc/arena.rs`.
+    pub(crate) fn new_free(addr: PhysicalAddress) -> Self {
         Self {
             links: list::Links::default(),
             addr,
             refcount: AtomicUsize::new(0),
         }
+    }
+
+    /// Private accessor used in `frame_alloc/arena.rs` to mark the frame
+    /// that was previously "wired" as free before we push it into the buddy allocator freelist
+    pub(crate) fn mark_as_free_for_freelist(&self) {
+        self.refcount.store(0, Ordering::Release)
     }
 
     /// The physical address of this frame.

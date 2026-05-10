@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Skill",
+      "Agent",
+      "WebFetch",
+      "WebSearch",
+      "Bash(jj diff *)",
+      "Bash(jj log *)",
+      "Bash(jj show *)",
+      "Bash(jj file show *)",
+      "Bash(jj status)",
+      "Bash(jj op log *)",
+      "Bash(just check)",
+      "Bash(just lint)",
+      "Bash(just clippy)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh api *)",
+      "Bash(jq *)"
+    ],
+    "deny": [
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Bash(jj commit *)",
+      "Bash(jj squash *)",
+      "Bash(jj abandon *)",
+      "Bash(jj rebase *)",
+      "Bash(jj new *)",
+      "Bash(jj git *)",
+      "Bash(git *)"
+    ]
+  }
+}

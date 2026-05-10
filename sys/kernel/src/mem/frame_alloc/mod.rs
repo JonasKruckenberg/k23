@@ -7,7 +7,6 @@
 
 mod arena;
 mod frame;
-pub mod frame_list;
 
 use alloc::vec::Vec;
 use core::alloc::Layout;
@@ -19,7 +18,7 @@ use core::{cmp, fmt, iter, slice};
 
 use arena::{Arena, select_arenas};
 use cordyceps::list::List;
-use cpu_local::collection::CpuLocal;
+use cpu_local::cpu_local;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
 use mem_core::PhysicalAddress;
@@ -27,9 +26,14 @@ use spin::{Mutex, OnceLock};
 
 use crate::arch;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
-use crate::mem::frame_alloc::frame_list::FrameList;
+
+cpu_local! {
+    /// Per-cpu cache of frames to speed up allocation.
+    static CPU_LOCAL_CACHE: RefCell<CpuLocalFrameCache> = const { RefCell::new(CpuLocalFrameCache { free_list: List::new() }) };
+}
 
 pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
+
 pub fn init(
     boot_alloc: BootstrapAllocator,
     fdt_region: Range<PhysicalAddress>,
@@ -42,8 +46,6 @@ pub struct FrameAllocator {
     /// Global list of arenas that can be allocated from.
     global: Mutex<GlobalFrameAllocator>,
     max_alignment: usize,
-    /// Per-cpu cache of frames to speed up allocation.
-    cpu_local_cache: CpuLocal<RefCell<CpuLocalFrameCache>>,
     /// Number of frames - across all cpus - that are in cpu-local caches.
     /// This value must only ever be treated as a hint and should only be used to
     /// produce more accurate frame usage statistics.
@@ -97,13 +99,12 @@ impl FrameAllocator {
             global: Mutex::new(GlobalFrameAllocator { arenas }),
             max_alignment,
             frames_in_caches_hint: AtomicUsize::new(0),
-            cpu_local_cache: CpuLocal::new(),
         }
     }
 
     /// Allocate a single [`Frame`].
     pub fn alloc_one(&self) -> Result<Frame, AllocError> {
-        let mut cpu_local_cache = self.cpu_local_cache.get_or_default().borrow_mut();
+        let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();
         let frame = cpu_local_cache
             .allocate_one()
             .or_else(|| {
@@ -139,51 +140,47 @@ impl FrameAllocator {
     }
 
     /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`.
-    pub fn alloc_contiguous(&self, layout: Layout) -> Result<FrameList, AllocError> {
-        // try to allocate from the per-cpu cache first
-        let mut cpu_local_cache = self.cpu_local_cache.get_or_default().borrow_mut();
-        let frames = cpu_local_cache
+    pub fn alloc_contiguous(&self, layout: Layout) -> Result<List<FrameInfo>, AllocError> {
+        // Fast path: try to satisfy from the per-cpu cache. The borrow must be
+        // released before the slow path runs, otherwise the slow path's re-borrow
+        // panics with "RefCell already borrowed" — non-reentrant by design.
+        if let Some(frames) = CPU_LOCAL_CACHE.borrow_mut().allocate_contiguous(layout) {
+            return Ok(frames);
+        }
+
+        tracing::trace!(
+            "CPU-local cache exhausted, refilling {} frames...",
+            layout.size() / arch::PAGE_SIZE
+        );
+        let mut refill = self
+            .global
+            .lock()
             .allocate_contiguous(layout)
-            .or_else(|| {
-                let mut global_alloc = self.global.lock();
-
-                tracing::trace!(
-                    "CPU-local cache exhausted, refilling {} frames...",
-                    layout.size() / arch::PAGE_SIZE
-                );
-                let mut frames = global_alloc.allocate_contiguous(layout)?;
-                cpu_local_cache.free_list.append(&mut frames);
-
-                tracing::trace!("retrying allocation...");
-                // If this fails then we failed to pull enough frames from the global allocator
-                // which means we're fully out of frames
-                cpu_local_cache.allocate_contiguous(layout)
-            })
             .ok_or(AllocError)?;
 
-        let frames = FrameList::from_iter(frames.into_iter().map(|info| {
-            // Safety: we just allocated the frame
-            unsafe { Frame::from_free_info(info) }
-        }));
+        let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();
+        cpu_local_cache.free_list.append(&mut refill);
 
-        #[cfg(debug_assertions)]
-        frames.assert_valid("FrameAllocator::allocate_contiguous after allocation");
-
-        Ok(frames)
+        tracing::trace!("retrying allocation...");
+        // If this fails then we failed to pull enough frames from the global allocator
+        // which means we're fully out of frames.
+        cpu_local_cache
+            .allocate_contiguous(layout)
+            .ok_or(AllocError)
     }
 
     /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`
     /// and ensuring the backing physical memory is zero initialized.
-    pub fn alloc_contiguous_zeroed(&self, layout: Layout) -> Result<FrameList, AllocError> {
+    pub fn alloc_contiguous_zeroed(&self, layout: Layout) -> Result<List<FrameInfo>, AllocError> {
         let frames = self.alloc_contiguous(layout)?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = arch::phys_to_virt(frames.first().unwrap().addr());
+        let virt = arch::phys_to_virt(frames.iter().next().unwrap().addr());
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated
         unsafe {
-            slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.size()).fill(0);
+            slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.len()).fill(0);
         }
 
         Ok(frames)
@@ -226,55 +223,49 @@ impl CpuLocalFrameCache {
     }
 
     fn allocate_contiguous(&mut self, layout: Layout) -> Option<List<FrameInfo>> {
-        let frames = layout.size() / arch::PAGE_SIZE;
-
-        // short-circuit if the cache doesn't even have enough pages
-        if self.free_list.len() < frames {
+        let frames_needed = layout.size() / arch::PAGE_SIZE;
+        if frames_needed == 0 || self.free_list.len() < frames_needed {
             return None;
         }
+        let start = self.find_contiguous_run(frames_needed, layout.align())?;
 
-        let mut index = 0;
-        let mut base = self.free_list.iter();
-        'outer: while let Some(base_frame) = base.next() {
-            let address_alignment = base_frame.addr().get() & (!base_frame.addr().get() + 1);
+        let mut split = self.free_list.split_off(start);
+        let mut rest = split.split_off(frames_needed);
+        self.free_list.append(&mut rest);
+        Some(split)
+    }
 
-            if address_alignment >= layout.align() {
-                let mut prev_addr = base_frame.addr();
+    /// Locate the index of a window of `frames_needed` cache entries that is
+    /// contiguous in physical memory and starts on an `align`-aligned address.
+    ///
+    /// The cache is in insertion order, not address order, so we walk it once and
+    /// grow a candidate run whenever the next entry sits exactly one page above the
+    /// previous one. `wrapping_sub` is required for the contiguity test:
+    /// `offset_from_unsigned` panics on out-of-order pairs, and historically that
+    /// panic fired under the talc lock and deadlocked the kernel.
+    fn find_contiguous_run(&self, frames_needed: usize, align: usize) -> Option<usize> {
+        let mut start = 0;
+        let mut run = 0;
+        let mut prev: Option<PhysicalAddress> = None;
+        for (i, frame) in self.free_list.iter().enumerate() {
+            let addr = frame.addr();
+            let extends_run =
+                prev.is_some_and(|p| addr.get().wrapping_sub(p.get()) == arch::PAGE_SIZE);
+            prev = Some(addr);
 
-                let mut c = 0;
-                for frame in base.by_ref() {
-                    // we found a contiguous block
-                    if c == frames {
-                        break 'outer;
-                    }
-
-                    if frame.addr().offset_from_unsigned(prev_addr) > arch::PAGE_SIZE {
-                        // frames aren't contiguous, so let's try the next one
-                        tracing::trace!("frames not contiguous, trying next");
-                        continue 'outer;
-                    }
-
-                    c += 1;
-                    prev_addr = frame.addr();
-                }
+            if run > 0 && extends_run {
+                run += 1;
+            } else if addr.is_aligned_to(align) {
+                (start, run) = (i, 1);
+            } else {
+                run = 0;
             }
 
-            tracing::trace!("base frame not aligned, trying next");
-            // the base wasn't aligned, try the next one
-            index += 1;
+            if run == frames_needed {
+                return Some(start);
+            }
         }
-
-        tracing::trace!("found contiguous block at index {index}");
-
-        // split the cache first at the start of the contiguous block. This will return the contiguous block
-        // plus everything after it
-        let mut split = self.free_list.split_off(index);
-        // the split the contiguous block after the number of frames we need
-        // and return the rest back to the cache
-        let mut rest = split.split_off(frames);
-        self.free_list.append(&mut rest);
-
-        Some(split)
+        None
     }
 }
 

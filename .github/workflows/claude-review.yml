@@ -1,0 +1,122 @@
+name: Claude Review
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  claude:
+    if: |
+      ((github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude /review')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude /review')))
+      && (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read # Required for Claude to read CI results on PRs
+    env:
+      PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: refs/pull/${{ github.event.issue.number || github.event.pull_request.number }}/head
+
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
+
+      - name: Export nix devshell env to subprocesses
+        run: |
+          nix print-dev-env .#ci > "$RUNNER_TEMP/devshell.env.sh"
+          echo "BASH_ENV=$RUNNER_TEMP/devshell.env.sh" >> "$GITHUB_ENV"
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: "@claude /review"
+
+          settings: .github/claude-review-settings.json
+          prompt: |
+            DO NOT run `just preflight` as suggested by the review skill, instead query
+            the CI status checks via `gh api`. Both run the equivalent checks by the CI checks are more performant.
+
+            After running /review per .claude/skills/review/SKILL.md, publish the review
+            as ONE GitHub PR review with line-anchored, resolvable inline comments via
+            `gh api`. Do NOT post the review as an issue comment or PR comment.
+
+            The PR number is in $PR_NUMBER. Always pass it explicitly to `gh` —
+            never rely on `gh` inferring the PR from the current branch.
+
+            1. PR context:
+                 gh pr view "$PR_NUMBER" --json number,headRefOid,baseRefName,url
+               headRefOid is the review's `commit_id`.
+
+            2. Diff anchoring (inline comments on lines outside the diff are rejected
+               with HTTP 422):
+                 gh pr diff "$PR_NUMBER"
+               Parse the unified diff to learn which (path, line, side) tuples are
+               commentable. RIGHT = added/context lines on the new file; LEFT =
+               removed/context lines on the old file.
+
+            3. Map each finding with a concrete file:line into one comment object:
+                 single line  -> {path, line, side:"RIGHT", body}
+                 range a-b    -> {path, start_line:a, line:b, start_side:"RIGHT", side:"RIGHT", body}
+                 deleted line -> side:"LEFT" (and start_side:"LEFT" for a range)
+               The comment `body` begins with a severity tag (**Blocker** / **Major** /
+               **Minor** / **Nit**), then the rule, concrete trigger, citation, and fix
+               per SKILL.md. Keep [Fix this →] deeplinks if generated.
+
+               Use markdown formatting to structure the review comments, make them easier to read
+               (paths and code snippets in inline-code, use bold/italic where appropriate, etc)
+
+            4. Findings whose line is NOT in the diff: do not drop them. Fold each into
+               the review body under `## Out-of-diff findings`, prefixed with `**<path>**`.
+
+            5. Review body holds only what doesn't anchor to a line — verdict
+               out-of-diff findings, Notes:
+                 **Verdict**: <Ready | Needs Attention | Needs Work>
+
+                 (optional) ## **Out-of-diff findings**:
+                 (optional) ## **Notes**:
+
+              Use markdown formatting to structure the review comments, make them easier to read
+              (paths and code snippets in inline-code, use bold/italic where appropriate, etc)
+
+            6. Map verdict -> event:
+                 Ready           -> APPROVE
+                 Needs Attention -> COMMENT
+                 Needs Work      -> REQUEST_CHANGES
+               If unsure, prefer COMMENT (does not block automerge).
+
+            7. Submit ONE review. Build the JSON with jq (finding bodies contain
+               backticks, quotes, and newlines — never shell-interpolate them):
+                 jq -n --arg sha "$SHA" --arg body "$BODY" --arg event "$EVENT" \
+                       --argjson comments "$COMMENTS_JSON" \
+                       '{commit_id:$sha, body:$body, event:$event, comments:$comments}' \
+                   | gh api -X POST "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" --input -
+
+            8. On 422 "line must be part of the diff": move the offending comment into
+               `## Out-of-diff findings` in the body and resubmit. Do not retry the same
+               payload.
+
+            9. Print the returned review URL. Do NOT also post an issue comment — that
+               produces duplicate notifications.
+
+            Re-running /review creates a second review; prior reviews remain visible.
+            Do not delete or amend prior reviews; the PR history is the audit trail.
