@@ -72,8 +72,7 @@ pub struct WastContextInner {
 }
 
 impl WastContext {
-    pub fn new_default() -> crate::Result<Self> {
-        let engine = Engine::default();
+    pub fn new_default(engine: Engine) -> crate::Result<Self> {
         let mut linker = Linker::new(&engine);
         let store = Store::new(&engine, &PlaceholderAllocatorDontUse, ());
 
