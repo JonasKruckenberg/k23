@@ -422,7 +422,7 @@ mod tests {
     /// 0x200. Pin the struct's size and field offsets so the asm offsets and
     /// the Rust layout cannot drift apart.
     #[test::test]
-    fn check_registers_offsets() {
+    async fn check_registers_offsets() {
         assert!(core::mem::offset_of!(unwind::Registers, gp) == 0x000);
         #[cfg(target_feature = "d")]
         {
@@ -432,7 +432,6 @@ mod tests {
         #[cfg(not(target_feature = "d"))]
         assert!(core::mem::size_of::<unwind::Registers>() == 0x100);
     }
-
 
     /// Both per-CPU trap invariants the trap-handler epilogue (and the
     /// kernel-exception unwind path) must restore before returning.
