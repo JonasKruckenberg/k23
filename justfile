@@ -150,11 +150,12 @@ _license_header_excl := if license_header_excluded == "" { "" } else { f" except
 
 # ===== changed-targets (powered by buck2-change-detector) =====
 #
-# Files that, if changed, are too coarse for the detector to reason about and
+# Paths that, if changed, are too coarse for the detector to reason about and
 # force a full-suite run instead. Most of these either drive third-party
 # buckification (Cargo.toml/Cargo.lock + reindeer) or change toolchains/Buck
-# cells globally.
-_pessimistic_paths := "Cargo.toml Cargo.lock third-party/Cargo.toml third-party/Cargo.lock flake.nix flake.lock rust-toolchain.toml .buckconfig PACKAGE"
+# cells globally. Entries ending in `/` are treated as directory prefixes so
+# that any file under them (e.g. a new `.bzl` defining a toolchain) is caught.
+_pessimistic_paths := "Cargo.toml Cargo.lock third-party/Cargo.toml third-party/Cargo.lock flake.nix flake.lock rust-toolchain.toml .buckconfig PACKAGE build/toolchains/"
 
 # emit the jj summary between BASE and the working copy (raw, for --changes input)
 changed-targets-diff BASE:
@@ -164,12 +165,17 @@ changed-targets-diff BASE:
 changed-targets CHANGES BASE_JSONL UNIVERSE='root//...':
     #!/usr/bin/env bash
     set -euo pipefail
-    for p in {{_pessimistic_paths}}; do
-        if awk -v p="$p" '$2 == p { found=1; exit } END { exit !found }' {{CHANGES}}; then
-            echo __ALL__
-            exit 0
-        fi
-    done
+    if awk -v paths="{{_pessimistic_paths}}" '
+        BEGIN { n = split(paths, p, " ") }
+        {
+            for (i = 1; i <= n; i++)
+                if (p[i] ~ /\/$/ ? index($2, p[i]) == 1 : $2 == p[i]) { found=1; exit }
+        }
+        END { exit !found }
+    ' {{CHANGES}}; then
+        echo __ALL__
+        exit 0
+    fi
     {{ _supertd }} audit cell > cells.json
     {{ _supertd }} audit config > config.json
     {{ _supertd }} btd \
