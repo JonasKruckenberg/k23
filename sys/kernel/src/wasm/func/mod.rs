@@ -30,7 +30,7 @@ use crate::wasm::vm::{
     ExportedFunction, VMArrayCallHostFuncContext, VMFuncRef, VMFunctionImport, VMOpaqueContext,
     VMVal, VmPtr,
 };
-use crate::wasm::{Module, Store, MAX_WASM_STACK};
+use crate::wasm::{MAX_WASM_STACK, Module, Store};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Func(pub(super) Stored<FuncData>);
