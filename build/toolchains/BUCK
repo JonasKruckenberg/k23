@@ -45,6 +45,13 @@ flake.package(
 )
 
 flake.package(
+    name = "cxx_runtime_lib",
+    package = "cxxRuntimeLib",
+    output = "lib",
+    path = "root//:flake",
+)
+
+flake.package(
     name = "mdbook",
     binary = "mdbook",
     package = "mdbook",
@@ -204,6 +211,10 @@ clang_toolchain(
     linker_dispatch = select({
         "prelude//os:none": "direct",
         "DEFAULT": "driver",
+    }),
+    cxx_runtime_lib = select({
+        "prelude//os:none": None,
+        "DEFAULT": ":cxx_runtime_lib",
     }),
     c_flags = select({
         "constraints//:opt-level[0]": ["-O0"],
