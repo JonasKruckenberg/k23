@@ -49,6 +49,13 @@ def _clang_toolchain(ctx: AnalysisContext) -> list[Provider]:
         additional_linker_flags = [
             cmd_args(ctx.attrs.linker[RunInfo].args, format = "--ld-path={}"),
         ]
+
+        # --ld-path bypasses clang's bintools-wrapper, so bake an rpath to
+        # the C++ runtime ourselves.
+        if ctx.attrs.cxx_runtime_lib:
+            additional_linker_flags.append(
+                cmd_args(ctx.attrs.cxx_runtime_lib[DefaultInfo].default_outputs[0], format = "-Wl,-rpath,{}/lib"),
+            )
     else:
         # Invoke the linker directly. Use this for freestanding targets whose
         # rustc target spec sets linker-flavor=gnu-lld (raw lld flags only).
@@ -146,6 +153,7 @@ clang_toolchain = rule(
         "clang": attrs.exec_dep(),
         "linker": attrs.exec_dep(),
         "linker_dispatch": attrs.enum(["direct", "driver"]),
+        "cxx_runtime_lib": attrs.option(attrs.dep(), default = None),
         "_target_os_type": buck.target_os_type_arg(),
     },
     doc = """
