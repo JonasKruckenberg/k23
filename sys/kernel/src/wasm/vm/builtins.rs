@@ -7,13 +7,13 @@
 
 use core::ptr::NonNull;
 
-use crate::wasm::TrapKind;
 use crate::wasm::indices::{DataIndex, ElemIndex, MemoryIndex, TableIndex};
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::trap_handler::HostResultHasUnwindSentinel;
 use crate::wasm::vm::instance::Instance;
 use crate::wasm::vm::table::{TableElement, TableElementType};
 use crate::wasm::vm::{Table, VMFuncRef};
+use crate::wasm::TrapKind;
 
 /// A helper structure to represent the return value of a memory or table growth
 /// call.
@@ -249,7 +249,7 @@ fn memory_atomic_wait64(
 }
 
 fn raise(_store: &mut StoreOpaque, _instance: &mut Instance) {
-    tracing::debug!("{_store:?} {_instance:?}");
+    tracing::trace!("{_store:?} {_instance:?}");
 
     unsafe { crate::wasm::trap_handler::raise_preexisting_trap() }
 }
