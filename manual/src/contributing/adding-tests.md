@@ -16,13 +16,21 @@ fn foo() {
 You declare them in the crate's BUCK file with the `rust_test` rule:
 
 ```starlark
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 rust_test(
     name = "mycrate_unittests",
     srcs = glob(["**/*.rs"]),
     deps = [...],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
 ```
+
+`target_compatible_with` marks the test as host-only so cross-arch preflight
+lanes (`just platform=//platforms:riscv64 …`) skip it via
+`--skip-incompatible-targets` instead of trying to compile a `std`-using
+test for a kernel target.
 
 Lastly, don't forget to add the test to the crates' `tests` array! The test runner will not pick up on your tests
 otherwise!
@@ -98,11 +106,10 @@ rust_benchmark(
         "//third-party:criterion",
     ],
     visibility = ["PUBLIC"],
-    target_compatible_with = [host_configuration.cpu, host_configuration.os],
 )
 ```
 
-The `rust_benchmark` rule sets compiler flags automatically (`opt-level[3]`, `debuginfo[line-tables-only]`, `strip[debuginfo]`) and makes the benchmark visible to the build system. Run it with `just benchmark //lib/mycrate:mycrate_benchmarks`.
+The `rust_benchmark` rule sets compiler flags automatically (`opt-level[3]`, `debuginfo[line-tables-only]`, `strip[debuginfo]`), marks the benchmark host-only via `target_compatible_with`, and makes it visible to the build system. Run it with `just benchmark //lib/mycrate:mycrate_benchmarks`.
 
 Benchmarks produce a `bench/` directory in the project root holding baselines and reports.
 
@@ -110,21 +117,21 @@ See `lib/range-tree/benches/comparisons.rs` and `sys/async/benches/spawn.rs` for
 
 ## Wasm tests
 
-Wasm tests exercise the kernel's [WebAssembly] engine end-to-end. They are all written in the [wast] language — a superset of the WebAssembly text format that adds assertions like `assert_return` and `assert_trap` for declaring expected outcomes. There are two sources of `.wast` files: small handwritten regression fixtures under `tests/*.wast`, and the upstream [WebAssembly spec testsuite][spec-testsuite] under `tests/testsuite/` (a git submodule).
+Wasm tests exercise the kernel's [WebAssembly] engine end-to-end. They are all written in the [wast] language — a superset of the WebAssembly text format that adds assertions like `assert_return` and `assert_trap` for declaring expected outcomes. `.wast` fixtures live under `tests/`; the `//:wast_tests` filegroup ships them into the kernel test binary under `wast/`.
 
-Wasm tests are registered through the `wast_tests!` macro in `sys/kernel/src/tests/spectest.rs`:
+Wasm tests are registered through the `wast_tests!` macro defined in `sys/kernel/src/tests/wast.rs` and invoked from `spectest.rs` / `smoke.rs`:
 
 ```rust
 wast_tests!(
-    fib "../../../tests/fib.wast",
-    trap "../../../tests/trap.wast",
-    // address "../../../tests/testsuite/address.wast",
+    fib "../../wast/tests/fib.wast",
+    trap "../../wast/tests/trap.wast",
     // ...
 );
 ```
 
-Each entry pairs a test name with a path to a `.wast` file. The macro generates a kernel test for each entry, so adding a new test is a matter of dropping the file into `tests/` and listing it in the macro. 
-Run them via the kernel test harness with `just run //sys:k23-qemu-riscv64`.
+Each entry pairs a test name with a path to a `.wast` file. The macro generates a kernel test for each entry; adding a new test is a matter of dropping the file into `tests/` and listing it in the macro. The paths above are rewritten by the kernel BUCK's `mapped_srcs = {"//:wast_tests": "wast"}`, so they're relative to that mapped location, not to the source tree.
+
+Run them via the kernel test harness — `just selftests` boots `//sys:k23-qemu-riscv64-tests` under QEMU.
 
 See `tests/fib.wast` and `tests/trap.wast` for complete examples.
 
@@ -136,4 +143,3 @@ See `tests/fib.wast` and `tests/trap.wast` for complete examples.
 [criterion]: https://github.com/bheisler/criterion.rs
 [WebAssembly]: https://webassembly.org/
 [wast]: https://webassembly.github.io/spec/core/text/index.html
-[spec-testsuite]: https://github.com/WebAssembly/testsuite

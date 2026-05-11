@@ -27,7 +27,8 @@ k23/
 │                    (range-tree, wavltree, cpu-local, spin, fdt, …)
 ├── third-party/     reindeer-generated BUCK rules; the one source of truth
 │                    for every non-first-party dep
-├── tests/           wasm spec testsuite + handwritten .wast fixtures
+├── tests/           handwritten .wast fixtures consumed by the kernel test
+│                    harness (//:wast_tests)
 ├── platforms/       target platforms (riscv64, aarch64, x86_64) bundling
 │                    constraint values
 ├── manual/          the mdbook you are reading (//manual:manual)
@@ -46,7 +47,8 @@ Everything that defines *how* k23 is built (as opposed to *what* gets built) liv
 ```text
 build/
 ├── BUCK               declares kcfg options, target JSON, and the named
-│                      transitions (loader, kernel, rust_bootstrap, fuzz)
+│                      transitions (loader, kernel, kernel-tests,
+│                      loader-tests, rust_bootstrap)
 ├── constraints/       constraint enums (opt-level, debuginfo, strip,
 │                      rust-std, env, sanitizer)
 ├── toolchains/        toolchain rules (rust, cxx, qemu, mdbook, python, …)
@@ -56,7 +58,10 @@ build/
 ├── kcfg.bzl           typed buckconfig wrapper + kcfg_docs rule that
 │                      auto-generates the config reference in this manual
 ├── qemu.bzl           qemu_binary — wraps a kernel ELF into a QEMU command
+├── split_debuginfo.bzl  rule that splits a rust_binary into stripped binary
+│                        + debuginfo artifact
 ├── bench.bzl          rust_benchmark macro (criterion)
+├── loom.bzl           rust_loom_test macro
 └── fuzz.bzl           rust_fuzz macro (libfuzzer + persistent corpus)
 ```
 
