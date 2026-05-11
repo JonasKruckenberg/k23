@@ -35,6 +35,7 @@ flake.package(
     ],
     package = "clang_20",
     path = "root//:flake",
+    visibility = ["PUBLIC"],
 )
 
 flake.package(
@@ -42,6 +43,15 @@ flake.package(
     package = "lld_20",
     binaries = ["ld.lld", "ld64.lld"],
     path = "root//:flake",
+)
+
+# Target-agnostic, unlike the GNU bintools clang_20's cc-wrapper pulls in.
+flake.package(
+    name = "llvm_bintools",
+    package = "llvmBintools_20",
+    binaries = ["llvm-objcopy", "llvm-strip"],
+    path = "root//:flake",
+    visibility = ["PUBLIC"],
 )
 
 flake.package(

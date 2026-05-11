@@ -186,6 +186,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         maybe_tls_alloc.as_ref().map(|alloc| alloc.template.clone()),
         self_regions.executable.start..self_regions.read_write.end,
         kernel.phys_range(),
+        kernel.debuginfo_phys_range(),
         fdt_phys,
         minfo.hart_mask,
         rng_seed,

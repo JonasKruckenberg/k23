@@ -34,8 +34,8 @@ struct BacktraceInfo {
     /// but the kernel is located at some address in the higher half. This offset is used to convert
     /// between the two.
     kernel_virt_base: u64,
-    /// The memory of our own ELF
-    elf: &'static [u8],
+    /// The kernel's debuginfo ELF.
+    debuginfo: &'static [u8],
     /// The actual state required for converting addresses into symbols. This is *very* heavy to
     /// compute though, so we only construct it lazily in [`BacktraceInfo::symbolize_context`].
     symbolize_context: OnceLock<SymbolizeContext<'static>>,
@@ -66,14 +66,17 @@ impl BacktraceInfo {
     fn new(boot_info: &'static BootInfo, backtrace_style: BacktraceStyle) -> Self {
         BacktraceInfo {
             kernel_virt_base: boot_info.kernel_virt.start.get() as u64,
+            // The kernel itself is always stripped with  DWARF and `.symtab` info
+            // living in a separate debuginfo ELF that the loader points us at.
+            //
             // Safety: we have to trust the loaders BootInfo here
-            elf: unsafe {
+            debuginfo: unsafe {
                 let base = boot_info
                     .physical_address_offset
-                    .add(boot_info.kernel_phys.start.get())
+                    .add(boot_info.kernel_debuginfo_phys.start.get())
                     .as_ptr();
 
-                slice::from_raw_parts(base, boot_info.kernel_phys.len())
+                slice::from_raw_parts(base, boot_info.kernel_debuginfo_phys.len())
             },
             symbolize_context: OnceLock::new(),
             backtrace_style,
@@ -84,8 +87,8 @@ impl BacktraceInfo {
         self.symbolize_context.get_or_init(|| {
             tracing::debug!("Setting up symbolize context...");
 
-            let elf = xmas_elf::ElfFile::new(self.elf).unwrap();
-            SymbolizeContext::new(elf, self.kernel_virt_base).unwrap()
+            let debuginfo = xmas_elf::ElfFile::new(self.debuginfo).unwrap();
+            SymbolizeContext::new(debuginfo, self.kernel_virt_base).unwrap()
         })
     }
 }
