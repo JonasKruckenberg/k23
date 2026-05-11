@@ -203,7 +203,7 @@ impl DeviceTree {
 
         let root = unflatten_root(&fdt, &mut b)?;
         let mut stack: [Option<DeviceId>; 16] = [None; 16];
-        stack[0] = Some(root_id);
+        stack[0] = Some(root);
 
         let mut iter = fdt.nodes()?;
         while let Some((depth, node)) = iter.next()? {
@@ -264,6 +264,7 @@ impl DeviceTree {
 ///
 /// Holds the immutable per-node data inline as borrowed slices and stores
 /// parent/child/sibling links as IDs that resolve through a [`DeviceTree`].
+#[derive(Copy, Clone)]
 pub struct Device<'arena> {
     /// The name of this device (node name + optional unit address).
     pub name: NodeName<'arena>,
@@ -276,13 +277,6 @@ pub struct Device<'arena> {
     parent: Option<DeviceId>,
     first_child: Option<DeviceId>,
     next_sibling: Option<DeviceId>,
-}
-
-impl Copy for Device<'_> {}
-impl Clone for Device<'_> {
-    fn clone(&self) -> Self {
-        *self
-    }
 }
 
 impl fmt::Debug for Device<'_> {
