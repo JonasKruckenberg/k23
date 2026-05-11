@@ -1,7 +1,7 @@
 ---
 name: review
 description: Code review tailored to the k23 microkernel. Checks unsafe soundness, panic/alloc discipline on critical paths, RISC-V atomic ordering, async cancellation, MMIO volatility, FFI/ABI, and Wasm sandbox boundaries. Runs `just preflight` in the background and folds the result into the review. Trigger when the user asks to review a change, branch, or diff in this repo.
-argument-hint: "[optional: path, crate, or jj revset; defaults to working copy + branch vs main]"
+argument-hint: "[optional: path, crate, or git revision range; defaults to working copy + branch vs main]"
 allowed-tools: Read, Grep, Glob, Bash, Agent, WebFetch, WebSearch
 ---
 
@@ -18,14 +18,14 @@ Review the current branch (working copy + commits since `main`) for issues that 
 
 ## Scope
 
-- **Default**: `jj diff --from main --to @` (uncommitted + branch vs main).
-- **With argument**: scope to that path, crate (e.g., `sys/kernel`), or jj revset.
-- This repo uses **jj**, not git. Use `jj diff`, `jj log`, `jj file show -r <rev>`. Never `git stash`.
+- **Default**: `git diff main` (uncommitted + committed-on-branch vs main).
+- **With argument**: scope to that path, crate (e.g., `sys/kernel`), or git revision range.
+- Use `git diff`, `git log`, `git show <rev>:<path>` to inspect changes. The repo is jj-managed but git-colocated, and review tooling runs in both local and CI contexts — git works in both, jj does not work on CI runners.
 
 ## Workflow
 
 1. **Always run commands from inside the nix devshell!**
-2. **Capture the diff** — `jj diff --from main --to @ --stat` for the file list, then `jj diff --from main --to @` for content. Honor the argument if given.
+2. **Capture the diff** — `git diff --stat main` for the file list, then `git diff main` for content. Honor the argument if given.
 3. **Kick off preflight in the background early** — `just preflight` (run_in_background=true). It runs clippy + check-fmt + typos + unittests + miri + loom + selftests + buck2-audit + cargo-deny + license-header. Don't block on it.
 4. **Read every changed file in full**, not just hunks. Diffs hide invariants. Pull callers via Grep when an unsafe API or signature changes.
 5. **Parallel specialist passes** — for non-trivial diffs, fan out subagents (general-purpose, read-only). One per concern. Pick the 2–5 axes the diff actually touches; don't run all of them.
@@ -46,7 +46,7 @@ Review the current branch (working copy + commits since `main`) for issues that 
 - **BUCK / build hygiene** — Cargo.toml drift, license headers, reindeer regen
 - **Documentation & comments** — public API docs, *and* internal comments explaining osdev/compiler concepts to non-expert contributors
 - **Manual book** — user-visible changes ship a `manual/src/` update in the same change
-- **Change hygiene (jj)** — scope, description, accidental files
+- **Change hygiene** — scope, description, accidental files
 - **Tests** — loom for concurrency, miri-clean unsafe, selftests for kernel paths
 
 ## Repo-calibrated rules
@@ -219,18 +219,18 @@ User-visible changes need a `manual/src/` update in the **same** change. "User-v
 
 Missing book updates → Major if the change is documented nowhere; Minor if commit messages describe it but the book doesn't.
 
-### Change hygiene (jj)
+### Change hygiene
 
 A reviewable change is well-scoped *and* well-described. Check the change as a unit, not just the code in it.
 
-- **Description**: `jj log -r @ -T description` produces something a reviewer can read in 30 seconds and know what to expect.
-  - First line is a concise subject (≤ 70 chars), prefixed with the affected component per existing repo style: `kernel:`, `kasync:`, `loader:`, `build:`, `lib/<crate>:`, `chore:`, `doc:`, `refactor:`, `fix:`. (Cite recent commits via `jj log` to confirm the convention.)
+- **Description**: `git log -1 --format=%B` for the tip commit; `git log main..HEAD --format=%B` for the series. Each message should let a reviewer read it in 30 seconds and know what to expect.
+  - First line is a concise subject (≤ 70 chars), prefixed with the affected component per existing repo style: `kernel:`, `kasync:`, `loader:`, `build:`, `lib/<crate>:`, `chore:`, `doc:`, `refactor:`, `fix:`. (Cite recent commits via `git log` to confirm the convention.)
   - Body, when present, explains *why*, not *what* — the diff already shows what.
   - Empty or placeholder descriptions (`fixes`, `wip`, `(no description set)`) → Major. The change is unreviewable.
-- **Scope**: one change does one thing. Refactor + behavior change + dep bump in one revision → split via `jj split`. Mixed-purpose changes are Minor; Major if a behavior change is hidden inside what looks like a refactor.
-- **No accidental files**: stray `.DS_Store`, debug `dbg!`/`println!` calls, commented-out code, `TODO: remove before merge`, generated artifacts not under `third-party/`, IDE config files → finding. Run `jj diff --name-only` and scan.
+- **Scope**: one change does one thing. Refactor + behavior change + dep bump in one commit → split. Mixed-purpose changes are Minor; Major if a behavior change is hidden inside what looks like a refactor.
+- **No accidental files**: stray `.DS_Store`, debug `dbg!`/`println!` calls, commented-out code, `TODO: remove before merge`, generated artifacts not under `third-party/`, IDE config files → finding. Run `git diff --name-only main` and scan.
 - **Test coverage moves with the change**: a behavior change without a test (selftest, unit, loom, miri) is Minor; concurrency change without loom is Major (already covered).
-- **Sequential changes** in a stack should each be independently buildable and pass `just check`. If only the tip builds, the stack isn't reviewable per change — Minor finding.
+- **Sequential commits** in a series should each be independently buildable and pass `just check`. If only the tip builds, the series isn't reviewable per commit — Minor finding.
 
 ### Style — mostly hands-off
 
@@ -285,5 +285,4 @@ Every finding **cites a source**: `file:line`, spec section, RFC, doc URL, Rusto
 - **Don't speculate without a citation** — if you can't point to a spec, RFC, repo file:line, doc URL, or established rule, the observation is a question for **Notes**, not a Finding.
 - **Don't review files outside the diff** unless they call into changed unsafe APIs or have a direct invariant link.
 - **Don't summarize what the diff does** — the author wrote it. Lead with the verdict.
-- **Don't run `git` commands** — this repo is jj.
 - **Don't soften disagreement.** If the design is wrong, say so directly with the citation. Junior contributors deserve a clear "this is wrong" more than they deserve a comfortable "have you considered".
