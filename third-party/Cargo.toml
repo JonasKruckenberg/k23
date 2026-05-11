@@ -22,7 +22,7 @@ xmas-elf = "0.10.0"
 rustc-demangle = "0.1"
 cordyceps = "0.3.4"
 mycelium-bitfield = "0.1.5"
-bumpalo = "3.17.0"
+bumpalo = { version = "3.17.0", features = ["collections"] }
 pin-project = "1.1.10"
 rand = { version = "0.9.2", default-features = false }
 rand_chacha = { version = "0.9.0", default-features = false }
@@ -39,7 +39,6 @@ libtest-mimic = "0.8.1"
 
 # kernel dependencies
 talc = { version = "4.4.2", default-features = false, features = ["lock_api", "counters"] }
-ouroboros = "0.18.5"
 zerocopy = { version = "0.8", default-features = false, features = ["derive"] }
 
 # cranelift dependencies
