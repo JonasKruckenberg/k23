@@ -112,11 +112,13 @@ configuration_transition(
     visibility = ["PUBLIC"],
 )
 
+# Sanitizer / opt / debuginfo overlay for fuzz binaries. Applied via
+# incoming_transition (not the rule's `modifiers` attr) so the toolchain's
+# `select(constraints//:sanitizer[address])` actually picks up the link flag
+# that pulls libstdc++/libc++ in on Linux.
 configuration_transition(
     name = "fuzz",
     constraint_values = [
-        "constraints//:env[host]",
-        "constraints//:rust-std[prebuilt]",
         "constraints//:sanitizer[address]",
         "constraints//:opt-level[3]",
         "constraints//:debuginfo[full]",

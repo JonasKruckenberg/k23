@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 _DEFAULT_MODIFIERS = [
     "constraints//:opt-level[3]",
 ]
@@ -29,6 +31,7 @@ def rust_loom_test(
         crate = crate,
         deps = deps,
         rustc_flags = ["--cfg=loom"] + rustc_flags,
+        target_compatible_with = [host_configuration.os, host_configuration.cpu],
         modifiers = _DEFAULT_MODIFIERS + modifiers,
         labels = ["loom"] + labels,
         env = merged_env,

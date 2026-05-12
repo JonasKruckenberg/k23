@@ -45,6 +45,7 @@ rust_test(
     crate = "kasync",
     deps = _DEPS + _TEST_DEPS,
     features = ["counters"],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
 
@@ -64,6 +65,7 @@ rust_library(
     crate = "kasync",
     features = ["__bench"],
     deps = _DEPS,
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
 

@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 rust_library(
     name = "fdt",
     srcs = glob(["src/**/*.rs"]),
@@ -14,5 +16,6 @@ rust_test(
     deps = [
         "//third-party:fallible-iterator",
     ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )

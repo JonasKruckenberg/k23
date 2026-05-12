@@ -1,3 +1,4 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
 load("@prelude//test:inject_test_run_info.bzl", "inject_test_run_info")
 
 # Wrapper invoked by `buck2 run` / `buck2 test` for any rust_fuzz target.
@@ -103,6 +104,7 @@ def rust_fuzz(name, srcs, crate_root, deps = [], visibility = None, max_total_ti
         rustc_flags = [
             "--cfg=fuzzing"
         ],
+        target_compatible_with = [host_configuration.os, host_configuration.cpu],
         incoming_transition = "root//build:fuzz",
         visibility = visibility,
         **kwargs
