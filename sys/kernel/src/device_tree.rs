@@ -225,31 +225,43 @@ impl DeviceTree {
     }
 
     /// The root device tree node.
+    #[inline]
     pub fn root(&self) -> Device<'_> {
         self.arena.device(self.root)
     }
 
     /// Matches the root device tree `compatible` string against the given list.
+    #[inline]
     pub fn is_compatible<'b>(&self, compats: impl IntoIterator<Item = &'b str>) -> bool {
         self.root().is_compatible(compats)
     }
 
     /// Iterator over all top-level devices in the tree.
+    #[inline]
     pub fn children(&self) -> Children<'_> {
         Children::new(self, self.root().first_child)
     }
 
     /// Iterator over all nodes in the tree in depth-first order.
+    #[inline]
     pub fn descendants(&self) -> Descendants<'_> {
         Descendants::new(self.children())
     }
 
     /// Iterator over all top-level properties in the tree.
+    #[inline]
     pub fn properties(&self) -> Properties<'_> {
         Properties::new(self, self.root().properties)
     }
 
+    /// Returns the top-level property with the given name.
+    #[inline]
+    pub fn property(&self, name: &str) -> Option<Property<'_>> {
+        self.root().property(self, name)
+    }
+
     /// Returns the device with the given path.
+    #[inline]
     pub fn find_by_path(&self, path: &str) -> Option<Device<'_>> {
         self.root().find_by_path(self, path)
     }
@@ -395,6 +407,7 @@ impl<'arena> Device<'arena> {
 }
 
 /// A property of a device.
+#[derive(Copy, Clone)]
 pub struct Property<'arena> {
     /// The property name.
     pub name: &'arena str,
@@ -402,13 +415,6 @@ pub struct Property<'arena> {
     pub raw: &'arena [u8],
 
     next: Option<PropertyId>,
-}
-
-impl Copy for Property<'_> {}
-impl Clone for Property<'_> {
-    fn clone(&self) -> Self {
-        *self
-    }
 }
 
 impl fmt::Debug for Property<'_> {
