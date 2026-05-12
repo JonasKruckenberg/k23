@@ -1,7 +1,9 @@
 set unstable
 
 platform := ""
-_platform_args := if platform != "" { f"--target-platforms {{platform}}" } else { "" }
+# --skip-incompatible-targets drops riscv-only and host-only targets that
+# don't match the active platform instead of erroring out.
+_platform_args := "--skip-incompatible-targets" + if platform != "" { f" --target-platforms {{platform}}" } else { "" }
 
 _buck2 := require("buck2")
 _typos := require("typos")
@@ -27,8 +29,13 @@ run target buck2_args="" *qemu_args="":
 @check targets="" *buck2_args:
     {{ _buck2 }} build {{append("[check]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
 
-# run all lints and tests on a crate or the entire workspace.
-preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args) (selftests buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
+# One CI lane locally. Default is the host lane. With `platform=X` it's the
+# X lane: lint and check at X; unittests/miri/loom are host-only and get
+# skipped via --skip-incompatible-targets. selftests always boots the riscv64
+# qemu image.
+preflight targets="" *buck2_args: (lint targets buck2_args) (check targets buck2_args) (_host_tests targets buck2_args) (selftests buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
+
+_host_tests targets="" *buck2_args: (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args)
 
 # run linters on a crate or the entire workspace.
 lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
@@ -205,7 +212,10 @@ _default_query := "'//...' except '//third-party/...'"
 _targets_query(targets) := if targets == "" { _default_query } else { f"set({{targets}})" }
 
 # Refinements: each takes a query expression and returns a more specific one.
-_q_buildables(q) := f"kind(rust_binary, {{q}}) + kind(rust_library, {{q}})"
+# Proc-macros are routed via their `rust_proc_macro_alias`, which exec-configures
+# the underlying `rust_library`. Building the underlying directly would fail
+# under non-host --target-platforms.
+_q_buildables(q) := f"kind(rust_binary, {{q}}) + (kind(rust_library, {{q}}) except attrfilter(proc_macro, True, {{q}})) + kind(rust_proc_macro_alias, {{q}})"
 _q_tests(q)      := f"kind(rust_test, {{q}}) + kind(rust_test, testsof({{q}}))"
 _q_unit_tests(q) := f"nattrfilter(labels, loom, ({{_q_tests(q)}}))"
 _q_loom_tests(q) := f"attrfilter(labels, loom, ({{_q_tests(q)}}))"
