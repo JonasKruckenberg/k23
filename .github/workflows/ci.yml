@@ -40,6 +40,17 @@ jobs:
     uses: ./.github/workflows/_changed-targets.yml
 
   check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: riscv64
+            platform: "//platforms:riscv64"
+          - name: aarch64
+            platform: "//platforms:aarch64"
+          - name: x86_64
+            platform: "//platforms:x86_64"
+    name: check (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [changed-targets]
     if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
@@ -62,13 +73,25 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: buck-out
-          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
           restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: ./.github/workflows/run-filtered.sh check '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
+      - run: ./.github/workflows/run-filtered.sh check '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}' platform=${{ matrix.platform }}
 
   clippy:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: riscv64
+            platform: "//platforms:riscv64"
+          - name: aarch64
+            platform: "//platforms:aarch64"
+          - name: x86_64
+            platform: "//platforms:x86_64"
+    name: clippy (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [changed-targets]
     if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
@@ -91,11 +114,12 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: buck-out
-          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
           restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: ./.github/workflows/run-filtered.sh clippy '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
+      - run: ./.github/workflows/run-filtered.sh clippy '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}' platform=${{ matrix.platform }}
 
   unittests:
     runs-on: ubuntu-latest
@@ -185,18 +209,41 @@ jobs:
       - run: ./.github/workflows/run-filtered.sh loom '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
   selftests:
+    # Matrix scaffolding for per-arch qemu_test targets; aarch64/x86_64 entries
+    # land once those qemu_test targets exist.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: riscv64
+    name: selftests (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [changed-targets]
     if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: impacted-targets
+      - uses: actions/cache@v4
+        with:
+          path: buck-out
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
+            buck2-${{ runner.os }}-${{ github.job }}-
+            buck2-${{ runner.os }}-
       - run: ./.github/workflows/run-filtered.sh selftests '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
   cargo-deny:
