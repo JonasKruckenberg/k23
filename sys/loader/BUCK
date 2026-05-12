@@ -38,6 +38,7 @@ rust_binary(
         "KERNEL": "$(location //sys/kernel:kernel)",
         "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel[debuginfo])"
     },
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     rustc_flags = _RUSTC_FLAGS,
     deps = _DEPS,
     incoming_transition = "//build:loader",
@@ -54,6 +55,7 @@ rust_binary(
         "KERNEL": "$(location //sys/kernel:kernel-tests)",
         "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel-tests[debuginfo])"
     },
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     rustc_flags = _RUSTC_FLAGS,
     deps = _DEPS,
     incoming_transition = "//build:loader-tests",

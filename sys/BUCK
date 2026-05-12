@@ -6,7 +6,8 @@ k23_image(
     loader = "//sys/loader:loader",
     kernel = "//sys/kernel:kernel",
     kernel_debuginfo = "//sys/kernel:kernel[debuginfo]",
-    platform = "//platforms:riscv64"
+    platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
 )
 
 # Test variant: same image shape, but the loader embeds the test kernel.
@@ -15,17 +16,20 @@ k23_image(
     loader = "//sys/loader:loader-tests",
     kernel = "//sys/kernel:kernel-tests",
     kernel_debuginfo = "//sys/kernel:kernel-tests[debuginfo]",
-    platform = "//platforms:riscv64"
+    platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
 )
 
 qemu_binary(
     name = "k23-qemu-riscv64",
     binary = ":k23-riscv64",
-    default_target_platform = "//platforms:riscv64"
+    default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
 )
 
 qemu_test(
     name = "k23-qemu-riscv64-tests",
     binary = ":k23-tests-riscv64",
     default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
 )

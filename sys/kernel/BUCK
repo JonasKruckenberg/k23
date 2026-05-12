@@ -62,6 +62,7 @@ rust_binary(
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/main.rs",
     default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     incoming_transition = "//build:kernel",
     deps = _DEPS,
 )
@@ -70,6 +71,7 @@ split_debuginfo(
     name = "kernel",
     binary = ":kernel-unstripped",
     default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     visibility = ["PUBLIC"],
 )
 
@@ -80,6 +82,7 @@ rust_binary(
     mapped_srcs = {"//:wast_tests": "wast"},
     crate_root = "src/main.rs",
     default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     incoming_transition = "//build:kernel-tests",
     rustc_flags = ["--cfg=test"],
     deps = _DEPS,
