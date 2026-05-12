@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 rust_library(
     name = "cpu-local",
     srcs = glob(["src/**/*.rs"]),
@@ -14,5 +16,6 @@ rust_test(
     deps = [
         "//lib/util:util",
     ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )

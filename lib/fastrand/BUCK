@@ -1,3 +1,4 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//build:bench.bzl", "rust_benchmark")
 
 rust_library(
@@ -10,6 +11,7 @@ rust_library(
 rust_test(
     name = "fastrand_unittests",
     srcs = glob(["src/**/*.rs"]),
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
 

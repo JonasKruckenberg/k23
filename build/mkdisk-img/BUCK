@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 # Builds a UEFI-bootable ISO-9660 disk image with an embedded FAT ESP.
 rust_binary(
     name = "mkdisk-img",
@@ -11,5 +13,6 @@ rust_binary(
         "//third-party:clap",
         "//third-party:fatfs",
     ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
