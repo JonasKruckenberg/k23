@@ -55,7 +55,7 @@ pub struct Registers {
 
 impl fmt::Debug for Registers {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut fmt = fmt.debug_struct("Context");
+        let mut fmt = fmt.debug_struct("Registers");
         for i in 0..=31u16 {
             fmt.field(
                 RiscV::register_name(Register(i)).unwrap(),
@@ -262,7 +262,8 @@ macro_rules! restore {
 /// # Safety
 ///
 /// This function will restore whatever values are in the given `Context` into the machine registers
-/// **without** performing any sort of validation.
+/// **without** performing any sort of validation. The caller must ensure at least:
+/// 1. `SP` `regs.gp[2]` is a valid, correctly-aligned, writable stack address.
 pub unsafe fn restore_context(ctx: &Registers) -> ! {
     // Safety: inline assembly
     unsafe {
