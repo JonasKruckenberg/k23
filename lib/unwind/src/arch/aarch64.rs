@@ -66,15 +66,15 @@ impl fmt::Debug for Registers {
         let mut fmt = fmt.debug_struct("Registers");
         for i in 0..=30 {
             fmt.field(
-                AArch64::register_name(Register(i as _)).unwrap(),
-                &self.gp[i],
+                AArch64::register_name(Register(i)).unwrap(),
+                &self.gp[i as usize],
             );
         }
         fmt.field("sp", &self.sp);
         for i in 0..=31 {
             fmt.field(
-                AArch64::register_name(Register((i + 64) as _)).unwrap(),
-                &self.fp[i],
+                AArch64::register_name(Register((i + 64))).unwrap(),
+                &self.fp[i as usize],
             );
         }
         fmt.finish()
@@ -221,7 +221,8 @@ macro_rules! restore {
 /// # Safety
 ///
 /// This function will restore whatever values are in the given `Context` into the machine registers
-/// **without** performing any sort of validation.
+/// **without** performing any sort of validation. The caller must ensure at least:
+/// 1. `SP` `regs.sp` is a valid, correctly-aligned, writable stack address.
 pub unsafe fn restore_context(ctx: &Registers) -> ! {
     // Safety: inline assembly
     unsafe {
