@@ -61,8 +61,15 @@ jobs:
             as ONE GitHub PR review with line-anchored, resolvable inline comments via
             `gh api`. Do NOT post the review as an issue comment or PR comment.
 
-            The PR number is in $PR_NUMBER. Always pass it explicitly to `gh` —
-            never rely on `gh` inferring the PR from the current branch.
+            The PR number is in the `PR_NUMBER` env var, and the repo slug
+            (`owner/repo`) is in the runner-provided `GITHUB_REPOSITORY` env var.
+            Use `$PR_NUMBER` and `$GITHUB_REPOSITORY` directly in every `gh` command
+            below — always pass the PR number explicitly to `gh`, never rely on
+            `gh` inferring it from the current branch. The only blessed way to
+            verify `PR_NUMBER` is `printenv PR_NUMBER` (allow-listed); do not
+            attempt other forms of expansion or echo — they are denied and waste
+            turns. `GITHUB_REPOSITORY` is set by the Actions runner and does not
+            need verification.
 
             1. PR context:
                  gh pr view "$PR_NUMBER" --json number,headRefOid,baseRefName,url
@@ -131,12 +138,12 @@ jobs:
                visible only to the bot, so this leaves no public artifact:
 
                  REVIEW_ID=$(gh api -X POST \
-                   "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" \
+                   "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
                    --input /tmp/review.json --jq '.id')
 
                Read it back and confirm the body contains real line breaks:
 
-                 gh api "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews/$REVIEW_ID" \
+                 gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID" \
                         --jq '.body'
 
                If the output shows literal `\n` instead of line breaks, the
@@ -144,7 +151,7 @@ jobs:
                submit:
 
                  gh api -X DELETE \
-                   "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews/$REVIEW_ID"
+                   "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID"
 
                Never use a "test" or empty review as a debug probe. The PR is
                not a sandbox; pending reviews are.
@@ -152,7 +159,7 @@ jobs:
             9. Submit the verified pending review:
 
                  gh api -X POST \
-                   "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews/$REVIEW_ID/events" \
+                   "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID/events" \
                    -f event="$EVENT"
 
             10. On 422 "line must be part of the diff" when creating the

@@ -18,12 +18,14 @@
       "Bash(gh pr view *)",
       "Bash(gh pr diff *)",
       "Bash(gh api *)",
-      "Bash(jq *)"
+      "Bash(jq *)",
+      "Bash(printenv PR_NUMBER)"
     ],
     "deny": [
       "Edit",
       "Write",
       "NotebookEdit",
+      "AskUserQuestion",
       "Bash(git commit *)",
       "Bash(git push *)",
       "Bash(git reset *)",
