@@ -1,6 +1,24 @@
+# The loader binary.
+#
+# riscv64 has no upstream UEFI target. We compile for
+# `riscv64gc-unknown-none-elf`, drive lld in GNU flavor via a linker script to
+# produce a position-independent ELF shared object, then `//build/riscv-elf2efi`
+# converts it to PE so UEFI can load it.
+
+load(":defs.bzl", "elf_to_efi")
+
+_RISCV64_LINK_FLAGS = [
+    "-Clink-arg=-shared",
+    "-Clink-arg=-Bsymbolic",
+    "-Clink-arg=--entry=efi_main",
+    "-Clink-arg=-zmax-page-size=0x1000",
+    "-Clink-arg=-znocombreloc",
+    "-Clink-arg=-znorelro",
+]
+
 export_file(
-    name = "loader-linker-script",
-    src = "riscv64-qemu.ld",
+    name = "linker-script-riscv64",
+    src = "linkers/riscv64-unknown-uefi.ld",
 )
 
 _DEPS = [
@@ -12,6 +30,7 @@ _DEPS = [
     "//lib/mem-core:mem-core",
     "//lib/arrayvec:arrayvec",
     # third-party dependencies
+    "//third-party:uefi",
     "//third-party:log",
     "//third-party:cfg-if",
     "//third-party:rand_chacha",
@@ -24,40 +43,30 @@ _DEPS = [
     "DEFAULT": [],
 })
 
-_RUSTC_FLAGS = [
+_RUSTC_FLAGS = _RISCV64_LINK_FLAGS + [
     "-Clink-arg=-T",
-    "-Clink-arg=$(location :loader-linker-script)",
+    "-Clink-arg=$(location :linker-script-riscv64)",
 ]
 
 rust_binary(
-    name = "loader",
+    name = "_loader_raw",
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/main.rs",
-    default_target_platform = "//platforms:riscv64",
-    env = {
-        "KERNEL": "$(location //sys/kernel:kernel)",
-        "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel[debuginfo])"
-    },
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     rustc_flags = _RUSTC_FLAGS,
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     deps = _DEPS,
     incoming_transition = "//build:loader",
     visibility = ["PUBLIC"],
 )
 
-# Loader variant that embeds the test kernel; consumed by `:k23-tests-riscv64`.
-rust_binary(
-    name = "loader-tests",
-    srcs = glob(["src/**/*.rs"]),
-    crate_root = "src/main.rs",
-    default_target_platform = "//platforms:riscv64",
-    env = {
-        "KERNEL": "$(location //sys/kernel:kernel-tests)",
-        "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel-tests[debuginfo])"
-    },
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
-    rustc_flags = _RUSTC_FLAGS,
-    deps = _DEPS,
-    incoming_transition = "//build:loader-tests",
+elf_to_efi(
+    name = "_loader_efi",
+    src = ":_loader_raw",
+    visibility = [":loader"],
+)
+
+alias(
+    name = "loader",
+    actual = ":_loader_efi",
     visibility = ["PUBLIC"],
 )
