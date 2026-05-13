@@ -46,7 +46,7 @@ impl Printer {
                 // `print_single_outcome` prints one character.
             }
             FormatSetting::Json => {
-                tracing::info!(r#"{{ "type": "test", "event": "started", "name": "{ident}" }}"#,)
+                tracing::info!(r#"{{ "type": "test", "event": "started", "name": "{ident}" }}"#,);
             }
         }
     }
@@ -139,7 +139,7 @@ impl Printer {
                     conclusion.num_ignored.load(Ordering::Acquire),
                     conclusion.num_measured.load(Ordering::Acquire),
                     conclusion.num_filtered_out.load(Ordering::Acquire),
-                )
+                );
             }
         }
     }

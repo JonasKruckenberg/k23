@@ -38,10 +38,20 @@ pub trait Park {
     /// Block the current thread until [`unpark`](Self::unpark) is called, or
     /// until a previously-issued `unpark` token is consumed. Spurious
     /// returns are permitted; [`block_on`] re-checks state before re-parking.
+    ///
+    /// # Errors
+    ///
+    /// Return `Self::Error` when parking the thread fails.
+    /// The returned error should contain more information about the reason.
     fn park(&self) -> Result<(), Self::Error>;
 
     /// Wake the thread that owns this `Park`, even if it is not currently
     /// parked. Calls that precede a matching `park` must be remembered.
+    ///
+    /// # Errors
+    ///
+    /// Return `Self::Error` when unparking the target thread fails.
+    /// The returned error should contain more information about the reason.
     fn unpark(&self) -> Result<(), Self::Error>;
 }
 
@@ -153,6 +163,11 @@ impl<P: Park + Sync + 'static> Notify<P> {
 ///
 /// Caller must not nest `block_on` calls on the same `notify`: the inner
 /// `drain()` would swallow the outer's pending wake.
+///
+/// # Errors
+///
+/// Returns `P::Error` when blocking the current thread fails.
+/// The returned error contains more information about the reason.
 // NB: we require the static lifetime here so we can safely turn this into a ptr in `waker_ref`.
 // instead of forcing callers into an `Arc` allocation they can now simply use `cpu_local!`
 pub fn block_on<P: Park + Sync + 'static, F: Future>(

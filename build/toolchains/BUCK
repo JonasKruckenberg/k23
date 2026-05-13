@@ -3,6 +3,7 @@ load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
 load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
 load(":flake.bzl", "flake")
+load(":lints.bzl", "ALLOW", "DENY")
 load(":rust.bzl", "rust_toolchain")
 load(":cxx.bzl", "clang_toolchain")
 load(":qemu.bzl", "qemu_toolchain")
@@ -164,6 +165,8 @@ rust_toolchain(
         "DEFAULT": None
     }),
     rust_target_path = "@root//build:targets",
+    deny_lints = DENY,
+    allow_lints = ALLOW,
     rustc_flags = [
         "-Zunstable-options",
     ] + select({

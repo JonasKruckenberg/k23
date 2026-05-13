@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use anyhow::{Context, bail};
 use clap::Parser;
 use object::read::elf::{FileHeader, Rela, SectionHeader, SectionTable};
+use object::write::pe::SectionRange;
 use object::{Endianness, ReadRef, SectionIndex, elf, pe};
 
 #[derive(Parser, Debug)]
@@ -40,6 +41,9 @@ fn main() -> anyhow::Result<()> {
     let input = fs::File::open(&args.input)
         .with_context(|| format!("Failed to open file '{}'", args.input.display()))?;
 
+    // Safety: yes the file *could* be modified while we hold it, BUT: doing that is something
+    // the user has to deliberately do (stupid) and will at-worst result in a corrupted output.
+    // Re-running the build will fix this, so not a big deal.
     let in_data = unsafe {
         memmap2::Mmap::map(&input)
             .with_context(|| format!("Failed to map file '{}'", args.input.display()))?
@@ -64,7 +68,7 @@ fn main() -> anyhow::Result<()> {
 // UEFI requires PE section alignment of at least 4 KiB (the firmware uses it to
 // apply page-level protection). Individual ELF section sh_addralign values are
 // typically smaller, so we pin the PE section/file alignment to a page.
-const PE_ALIGNMENT: u64 = 0x1000;
+const PE_ALIGNMENT: u32 = 0x1000;
 
 struct SectionLayout {
     text_start: u32,
@@ -92,7 +96,7 @@ fn scan_layout<Elf: FileHeader<Endian = Endianness>>(
         if !is_alloc(in_section, endian) {
             continue;
         }
-        assert!(in_section.sh_addralign(endian).into() <= PE_ALIGNMENT);
+        assert!(in_section.sh_addralign(endian).into() <= u64::from(PE_ALIGNMENT));
         let start: u32 = in_section.sh_addr(endian).into().try_into()?;
         let size: u32 = in_section.sh_size(endian).into().try_into()?;
         let end: u32 = start
@@ -159,7 +163,7 @@ fn collect_relocations<Elf: FileHeader<Endian = Endianness>>(
         // Static rela sections have sh_info pointing at the target section.
         // Dynamic rela sections (.rela.dyn, .rela.plt) are SHF_ALLOC and
         // target virtual addresses across the whole image.
-        let dynamic = (in_section.sh_flags(endian).into() as u32) & elf::SHF_ALLOC != 0;
+        let dynamic = in_section.sh_flags(endian).into() & u64::from(elf::SHF_ALLOC) != 0;
         let (info_addr, info_data): (u64, &[u8]) = if dynamic {
             (0, &[])
         } else {
@@ -207,7 +211,13 @@ fn collect_relocations<Elf: FileHeader<Endian = Endianness>>(
                             .context("R_RISCV_PCREL_LO12_I: instruction read out of bounds")?
                             .get(endian);
                         assert_eq!(instruction & 0x707f, 0x3003);
-                        addr = addr.wrapping_add(((instruction & 0xfff0_0000) as i32 >> 20) as u32);
+                        #[expect(
+                            clippy::cast_sign_loss,
+                            clippy::cast_possible_wrap,
+                            reason = "sign-extending RISC-V 12-bit immediate; bit pattern preserved"
+                        )]
+                        let imm = ((instruction & 0xfff0_0000_u32) as i32 >> 20_i32) as u32;
+                        addr = addr.wrapping_add(imm);
                         got_addresses.push(addr);
                     }
                 }
@@ -272,8 +282,8 @@ fn copy_file<Elf: FileHeader<Endian = Endianness>>(in_data: &[u8]) -> anyhow::Re
     let mut out_data = Vec::new();
     let mut writer = object::write::pe::Writer::new(
         in_elf.is_type_64(),
-        PE_ALIGNMENT as u32,
-        PE_ALIGNMENT as u32,
+        PE_ALIGNMENT,
+        PE_ALIGNMENT,
         &mut out_data,
     );
 
@@ -295,7 +305,7 @@ fn copy_file<Elf: FileHeader<Endian = Endianness>>(in_data: &[u8]) -> anyhow::Re
     writer.reserve_virtual_until(layout.text_start);
     let text_range = writer.reserve_text_section(layout.text_end - layout.text_start);
     assert_eq!(text_range.virtual_address, layout.text_start);
-    let mut data_range = Default::default();
+    let mut data_range = SectionRange::default();
     if layout.have_data {
         writer.reserve_virtual_until(layout.data_start);
         data_range = writer.reserve_data_section(
@@ -331,7 +341,12 @@ fn copy_file<Elf: FileHeader<Endian = Endianness>>(in_data: &[u8]) -> anyhow::Re
                 if slot + 8 > bytes.len() {
                     continue;
                 }
-                bytes[slot..slot + 8].copy_from_slice(&(addend as u64).to_le_bytes());
+                #[expect(
+                    clippy::cast_sign_loss,
+                    reason = "writing the 64-bit bit-pattern of the signed addend"
+                )]
+                let addend_bits = addend as u64;
+                bytes[slot..slot + 8].copy_from_slice(&addend_bits.to_le_bytes());
             } else {
                 if slot + 4 > bytes.len() {
                     continue;
@@ -427,21 +442,21 @@ fn is_runtime_section<S: SectionHeader>(s: &S, endian: S::Endian) -> bool {
 }
 
 fn is_text<S: SectionHeader>(s: &S, endian: S::Endian) -> bool {
-    let flags = s.sh_flags(endian).into() as u32;
+    let flags = s.sh_flags(endian).into();
     is_runtime_section(s, endian)
-        && flags & elf::SHF_ALLOC != 0
-        && (flags & elf::SHF_EXECINSTR != 0 || flags & elf::SHF_WRITE == 0)
+        && flags & u64::from(elf::SHF_ALLOC) != 0
+        && (flags & u64::from(elf::SHF_EXECINSTR) != 0 || flags & u64::from(elf::SHF_WRITE) == 0)
 }
 
 fn is_data<S: SectionHeader>(s: &S, endian: S::Endian) -> bool {
-    let flags = s.sh_flags(endian).into() as u32;
+    let flags = s.sh_flags(endian).into();
     is_runtime_section(s, endian)
-        && flags & elf::SHF_ALLOC != 0
-        && flags & elf::SHF_EXECINSTR == 0
-        && flags & elf::SHF_WRITE != 0
+        && flags & u64::from(elf::SHF_ALLOC) != 0
+        && flags & u64::from(elf::SHF_EXECINSTR) == 0
+        && flags & u64::from(elf::SHF_WRITE) != 0
 }
 
 fn is_alloc<S: SectionHeader>(s: &S, endian: S::Endian) -> bool {
-    let flags = s.sh_flags(endian).into() as u32;
-    is_runtime_section(s, endian) && flags & elf::SHF_ALLOC != 0
+    let flags = s.sh_flags(endian).into();
+    is_runtime_section(s, endian) && flags & u64::from(elf::SHF_ALLOC) != 0
 }

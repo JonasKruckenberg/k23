@@ -11,6 +11,7 @@ use quote::{format_ident, quote};
 use syn::{Attribute, Error, ItemFn, Path, parse_macro_input, parse_quote};
 
 #[proc_macro_attribute]
+#[expect(clippy::missing_panics_doc, reason = "internal assertion")]
 pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
     let mut func = parse_macro_input!(item as ItemFn);
 

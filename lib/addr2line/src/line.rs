@@ -79,9 +79,17 @@ impl Lines {
             // Convert line and column to u32 to save a little memory.
             // We'll handle the special case of line 0 later,
             // and return left edge as column 0 in the public API.
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "intentional, packing line number into u32 to save memory"
+            )]
             let line = row.line().map(NonZeroU64::get).unwrap_or(0) as u32;
             let column = match row.column() {
                 gimli::ColumnType::LeftEdge => 0,
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "intentional, packing column number into u32 to save memory"
+                )]
                 gimli::ColumnType::Column(x) => x.get() as u32,
             };
 
@@ -122,7 +130,8 @@ impl Lines {
     }
 
     pub(crate) fn file(&self, index: u64) -> Option<&str> {
-        self.files.get(index as usize).map(String::as_str)
+        let index = usize::try_from(index).ok()?;
+        self.files.get(index).map(String::as_str)
     }
 
     pub(crate) fn ranges(&self) -> impl Iterator<Item = gimli::Range> + '_ {
@@ -133,7 +142,10 @@ impl Lines {
     }
 
     fn row_location(&self, row: &LineRow) -> Location<'_> {
-        let file = self.files.get(row.file_index as usize).map(String::as_str);
+        let file = usize::try_from(row.file_index)
+            .ok()
+            .and_then(|i| self.files.get(i))
+            .map(String::as_str);
         Location {
             file,
             line: if row.line != 0 { Some(row.line) } else { None },
@@ -146,7 +158,7 @@ impl Lines {
         }
     }
 
-    pub(crate) fn find_location(&self, probe: u64) -> Result<Option<Location<'_>>, Error> {
+    pub(crate) fn find_location(&self, probe: u64) -> Option<Location<'_>> {
         let seq_idx = self.sequences.binary_search_by(|sequence| {
             if probe < sequence.start {
                 Ordering::Greater
@@ -156,10 +168,7 @@ impl Lines {
                 Ordering::Equal
             }
         });
-        let seq_idx = match seq_idx {
-            Ok(x) => x,
-            Err(_) => return Ok(None),
-        };
+        let Ok(seq_idx) = seq_idx else { return None };
         let sequence = &self.sequences[seq_idx];
 
         let idx = sequence
@@ -167,17 +176,17 @@ impl Lines {
             .binary_search_by(|row| row.address.cmp(&probe));
         let idx = match idx {
             Ok(x) => x,
-            Err(0) => return Ok(None),
+            Err(0) => return None,
             Err(x) => x - 1,
         };
-        Ok(Some(self.row_location(&sequence.rows[idx])))
+        Some(self.row_location(&sequence.rows[idx]))
     }
 
     pub(crate) fn find_location_range(
         &self,
         probe_low: u64,
         probe_high: u64,
-    ) -> Result<LineLocationRangeIter<'_>, Error> {
+    ) -> LineLocationRangeIter<'_> {
         // Find index for probe_low.
         let seq_idx = self.sequences.binary_search_by(|sequence| {
             if probe_low < sequence.start {
@@ -204,12 +213,12 @@ impl Lines {
             0
         };
 
-        Ok(LineLocationRangeIter {
+        LineLocationRangeIter {
             lines: self,
             seq_idx,
             row_idx,
             probe_high,
-        })
+        }
     }
 }
 

@@ -29,6 +29,7 @@ pub struct ImageBuilder<'a> {
 }
 
 impl<'a> ImageBuilder<'a> {
+    #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
     pub fn new() -> Self {
         Self {
             pvd: {
@@ -46,31 +47,67 @@ impl<'a> ImageBuilder<'a> {
         }
     }
 
+    /// Sets this image's "System Identifier".
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the identifier is malformed
     pub fn system_id(&mut self, s: &str) -> anyhow::Result<&mut Self> {
         self.pvd.system_id = AStr::from_str(s)?;
         Ok(self)
     }
 
+    /// Sets this image's "Volume Identifier".
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the identifier is malformed
     pub fn volume_id(&mut self, s: &str) -> anyhow::Result<&mut Self> {
         self.pvd.volume_id = DStr::from_str(s)?;
         Ok(self)
     }
 
+    /// Sets this image's "Volume Set Identifier".
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the identifier is malformed
     pub fn volume_set_id(&mut self, s: &str) -> anyhow::Result<&mut Self> {
         self.pvd.volume_set_id = DStr::from_str(s)?;
         Ok(self)
     }
 
+    /// Sets this image's "Publisher Identifier".
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the identifier is malformed
     pub fn publisher_id(&mut self, s: &str) -> anyhow::Result<&mut Self> {
         self.pvd.publisher_id = AStr::from_str(s)?;
         Ok(self)
     }
 
+    /// Sets this image's "Data Preparer Identifier".
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the identifier is malformed
     pub fn data_preparer_id(&mut self, s: &str) -> anyhow::Result<&mut Self> {
         self.pvd.data_preparer_id = AStr::from_str(s)?;
         Ok(self)
     }
 
+    /// Sets this image's "Application Identifier".
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - the identifier is malformed
     pub fn application_id(&mut self, s: &str) -> anyhow::Result<&mut Self> {
         self.pvd.application_id = AStr::from_str(s)?;
         Ok(self)
@@ -90,6 +127,13 @@ impl<'a> ImageBuilder<'a> {
         self
     }
 
+    /// Finish building the image and emit it to the provided writer.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when
+    /// - building the image fails
+    /// - writing the image to disk fails
     pub fn finish(self, writer: impl io::Write + io::Seek) -> io::Result<()> {
         let mut layout = Layout::flatten(self.root);
         let mut boot = self.boot;

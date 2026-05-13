@@ -22,7 +22,6 @@
 
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
-#[allow(unused_imports)]
 #[macro_use]
 extern crate alloc;
 
@@ -80,7 +79,11 @@ impl<R: gimli::Reader> Context<R> {
     /// Construct a new `Context` from DWARF sections.
     ///
     /// This method does not support using a supplementary object file.
-    #[expect(clippy::too_many_arguments)]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF info fails.
+    #[expect(clippy::too_many_arguments, reason = "a builder would be worse")]
     pub fn from_sections(
         debug_abbrev: gimli::DebugAbbrev<R>,
         debug_addr: gimli::DebugAddr<R>,
@@ -122,12 +125,20 @@ impl<R: gimli::Reader> Context<R> {
     }
 
     /// Construct a new `Context` from an existing [`gimli::Dwarf`] object.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF info fails.
     #[inline]
     pub fn from_dwarf(sections: gimli::Dwarf<R>) -> Result<Context<R>, Error> {
         Self::from_arc_dwarf(Arc::new(sections))
     }
 
     /// Construct a new `Context` from an existing [`gimli::Dwarf`] object.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF info fails.
     #[inline]
     pub fn from_arc_dwarf(sections: Arc<gimli::Dwarf<R>>) -> Result<Context<R>, Error> {
         let units = ResUnits::parse(&sections)?;
@@ -146,6 +157,10 @@ impl<R: gimli::Reader> Context<R> {
 
 impl<R: gimli::Reader> Context<R> {
     /// Find the source file and line corresponding to the given virtual memory address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF info fails.
     pub fn find_location(&self, probe: u64) -> Result<Option<Location<'_>>, Error> {
         for unit in self.units.find(probe) {
             if let Some(location) = unit.find_location(probe, &self.sections)? {
@@ -157,13 +172,18 @@ impl<R: gimli::Reader> Context<R> {
 
     /// Return source file and lines for a range of addresses. For each location it also
     /// returns the address and size of the range of the underlying instructions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF info fails.
     pub fn find_location_range(
         &self,
         probe_low: u64,
         probe_high: u64,
     ) -> Result<LocationRangeIter<'_, R>, Error> {
-        self.units
-            .find_location_range(probe_low, probe_high, &self.sections)
+        Ok(self
+            .units
+            .find_location_range(probe_low, probe_high, &self.sections))
     }
 
     /// Return an iterator for the function frames corresponding to the given virtual
@@ -260,7 +280,7 @@ impl<R: gimli::Reader> RangeAttributes<R> {
         let mut add_range = |range: gimli::Range| {
             if range.begin < range.end {
                 f(range);
-                added_any = true
+                added_any = true;
             }
         };
         if let Some(ranges_offset) = self.ranges_offset {

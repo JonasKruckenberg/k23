@@ -224,7 +224,7 @@ macro_rules! restore {
 /// **without** performing any sort of validation. The caller must ensure at least:
 /// 1. `SP` `regs.sp` is a valid, correctly-aligned, writable stack address.
 pub unsafe fn restore_context(ctx: &Registers) -> ! {
-    // Safety: inline assembly
+    // Safety: ensured by caller
     unsafe {
         cfg_if! {
             if #[cfg(target_feature = "neon")] {

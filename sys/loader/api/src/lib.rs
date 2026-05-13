@@ -6,7 +6,11 @@
 // copied, modified, or distributed except according to those terms.
 
 #![no_std]
-#![allow(clippy::doc_markdown, clippy::module_name_repetitions)]
+#![allow(
+    clippy::doc_markdown,
+    clippy::module_name_repetitions,
+    reason = "stylistic noise"
+)]
 
 mod config;
 mod info;

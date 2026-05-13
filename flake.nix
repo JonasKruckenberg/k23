@@ -227,6 +227,7 @@
             just
             cargo-deny
             typos
+            jq
           ];
 
           # Extra tooling for jobs that exercise the kernel on-target.

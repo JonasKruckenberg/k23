@@ -79,16 +79,16 @@ impl WastContext {
 
         linker.func_wrap("spectest", "print", || {})?;
         linker.func_wrap("spectest", "print_i32", move |val: i32| {
-            tracing::debug!("{val}: i32")
+            tracing::debug!("{val}: i32");
         })?;
         linker.func_wrap("spectest", "print_i64", move |val: i64| {
-            tracing::debug!("{val}: i64")
+            tracing::debug!("{val}: i64");
         })?;
         linker.func_wrap("spectest", "print_f32", move |val: f32| {
-            tracing::debug!("{val}: f32")
+            tracing::debug!("{val}: f32");
         })?;
         linker.func_wrap("spectest", "print_f64", move |val: f64| {
-            tracing::debug!("{val}: f64")
+            tracing::debug!("{val}: f64");
         })?;
         linker.func_wrap("spectest", "print_i32_f32", move |i: i32, f: f32| {
             tracing::debug!("{i}: i32");
@@ -396,14 +396,7 @@ impl WastContext {
             bail!("expected {} results found {}", results.len(), values.len());
         }
         for (v, e) in values.iter().zip(results) {
-            let e = match e {
-                WastRet::Core(core) => core,
-                // WastRet::Component(_) => {
-                //     bail!("expected component value found core value")
-                // }
-                _ => unreachable!(),
-            };
-
+            let WastRet::Core(e) = e else { unreachable!() };
             let inner = self.inner_mut();
             match_val(&mut inner.store, v, e)?;
         }
@@ -512,7 +505,7 @@ pub fn match_val(store: &Store<()>, actual: &Val, expected: &WastRetCore) -> any
 
         // Note that these float comparisons are comparing bits, not float
         // values, so we're testing for bit-for-bit equivalence
-        (Val::F32(a), WastRetCore::F32(b)) => match_f32(*a, b),
+        (Val::F32(a), WastRetCore::F32(b)) => match_f32(*a, *b),
         (Val::F64(a), WastRetCore::F64(b)) => match_f64(*a, b),
         (Val::V128(a), WastRetCore::V128(b)) => match_v128(*a, b),
 
@@ -587,7 +580,7 @@ where
     }
 }
 
-pub fn match_f32(actual: u32, expected: &NanPattern<F32>) -> anyhow::Result<()> {
+pub fn match_f32(actual: u32, expected: NanPattern<F32>) -> anyhow::Result<()> {
     match expected {
         // Check if an f32 (as u32 bits to avoid possible quieting when moving values in registers, e.g.
         // https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
@@ -814,13 +807,21 @@ fn match_v128(actual: u128, expected: &V128Pattern) -> anyhow::Result<()> {
         }
         V128Pattern::F32x4(expected) => {
             for (i, expected) in expected.iter().enumerate() {
+                #[expect(
+                    clippy::cast_sign_loss,
+                    reason = "reinterpreting f32 bit pattern via the signed lane accessor"
+                )]
                 let a = extract_lane_as_i32(actual, i) as u32;
-                match_f32(a, expected).with_context(|| format!("difference in lane {i}"))?;
+                match_f32(a, *expected).with_context(|| format!("difference in lane {i}"))?;
             }
             Ok(())
         }
         V128Pattern::F64x2(expected) => {
             for (i, expected) in expected.iter().enumerate() {
+                #[expect(
+                    clippy::cast_sign_loss,
+                    reason = "reinterpreting f64 bit pattern via the signed lane accessor"
+                )]
                 let a = extract_lane_as_i64(actual, i) as u64;
                 match_f64(a, expected).with_context(|| format!("difference in lane {i}"))?;
             }
@@ -829,18 +830,34 @@ fn match_v128(actual: u128, expected: &V128Pattern) -> anyhow::Result<()> {
     }
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "extracting low bits of a v128 lane"
+)]
 fn extract_lane_as_i8(bytes: u128, lane: usize) -> i8 {
     (bytes >> (lane * 8)) as i8
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "extracting low bits of a v128 lane"
+)]
 fn extract_lane_as_i16(bytes: u128, lane: usize) -> i16 {
     (bytes >> (lane * 16)) as i16
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "extracting low bits of a v128 lane"
+)]
 fn extract_lane_as_i32(bytes: u128, lane: usize) -> i32 {
     (bytes >> (lane * 32)) as i32
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "extracting low bits of a v128 lane"
+)]
 fn extract_lane_as_i64(bytes: u128, lane: usize) -> i64 {
     (bytes >> (lane * 64)) as i64
 }

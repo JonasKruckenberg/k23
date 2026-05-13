@@ -47,7 +47,11 @@ pub struct BootInfo {
 
     pub rng_seed: [u8; 32],
 }
+// Safety: `BootInfo` is handed off from the loader to the kernel, which then has exclusive
+// ownership. Pointers inside `MemoryRegions` are not aliased when the loader is gone.
 unsafe impl Send for BootInfo {}
+// Safety: `BootInfo` is handed off from the loader to the kernel, which then has exclusive
+// ownership. Pointers inside `MemoryRegions` are not aliased when the loader is gone.
 unsafe impl Sync for BootInfo {}
 
 impl BootInfo {
@@ -58,12 +62,12 @@ impl BootInfo {
         Self {
             memory_regions,
             cpu_mask: 0,
-            physical_address_offset: Default::default(),
-            physical_memory_map: Default::default(),
+            physical_address_offset: VirtualAddress::default(),
+            physical_memory_map: Range::default(),
             tls_template: None,
-            kernel_virt: Default::default(),
-            kernel_phys: Default::default(),
-            kernel_debuginfo_phys: Default::default(),
+            kernel_virt: Range::default(),
+            kernel_phys: Range::default(),
+            kernel_debuginfo_phys: Range::default(),
             rng_seed: [0; 32],
         }
     }
@@ -74,7 +78,8 @@ impl BootInfo {
 ///
 /// This type implements the [`Deref`][core::ops::Deref] and [`DerefMut`][core::ops::DerefMut]
 /// traits, so it can be used like a `&mut [MemoryRegion]` slice. It also implements [`From`]
-/// and [`Into`] for easy conversions from and to `&'static mut [MemoryRegion]`.
+/// and [`Into`] for easy conversions from and to `&'static mut [MemoryRegion]`. This is the
+/// ONLY way to construct it: `(ptr, len)` must always describe a valid `&'static mut [MemoryRegion]`.
 #[derive(Debug)]
 #[repr(C)]
 pub struct MemoryRegions {
@@ -86,12 +91,14 @@ impl Deref for MemoryRegions {
     type Target = [MemoryRegion];
 
     fn deref(&self) -> &Self::Target {
+        // Safety: see invariant on `MemoryRegions`.
         unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
 }
 
 impl DerefMut for MemoryRegions {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // Safety: see invariant on `MemoryRegions`.
         unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 }
@@ -107,6 +114,8 @@ impl From<&'static mut [MemoryRegion]> for MemoryRegions {
 
 impl From<MemoryRegions> for &'static mut [MemoryRegion] {
     fn from(regions: MemoryRegions) -> &'static mut [MemoryRegion] {
+        // Safety: `MemoryRegions` is created from `&'static mut [MemoryRegion]`
+        // we can therefore always reconstitute the original type from its parts.
         unsafe { slice::from_raw_parts_mut(regions.ptr, regions.len) }
     }
 }

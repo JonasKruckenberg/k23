@@ -52,5 +52,8 @@ crate::loom::thread_local! {
 }
 
 pub fn block_on<F: Future>(f: F) -> F::Output {
-    NOTIFY.with(|notify| crate::block_on::block_on(*notify, f).unwrap())
+    NOTIFY.with(|notify| {
+        // Safety: `StdPark::Error` is infallible
+        unsafe { crate::block_on::block_on(*notify, f).unwrap_unchecked() }
+    })
 }

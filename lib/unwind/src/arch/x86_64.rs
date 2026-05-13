@@ -127,6 +127,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()),
 /// 1. `RSP` `regs.gp[7]` is a valid, correctly-aligned, writable stack address.
 /// 2. `RA` `regs.ra` is a valid, correctly-aligned, code pointer.
 pub unsafe fn restore_context(regs: &Registers) -> ! {
+    // Safety: ensured by caller
     unsafe {
         core::arch::asm!(
             "
