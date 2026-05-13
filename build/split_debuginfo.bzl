@@ -11,7 +11,7 @@ def _split_debuginfo_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.run(
         cmd_args(
             ctx.attrs._objcopy[RunInfo],
-            "--strip-debug",
+            "--strip-unneeded",
             cmd_args(debug, format = "--add-gnu-debuglink={}"),
             src,
             stripped.as_output(),
