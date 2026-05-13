@@ -114,5 +114,6 @@ def rust_fuzz(name, srcs, crate_root, deps = [], visibility = None, max_total_ti
         binary = ":" + bin_name,
         labels = ["fuzz"],
         max_total_time = max_total_time,
+        target_compatible_with = [host_configuration.os, host_configuration.cpu],
         visibility = visibility,
     )

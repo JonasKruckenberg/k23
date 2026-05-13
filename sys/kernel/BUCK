@@ -92,5 +92,6 @@ split_debuginfo(
     name = "kernel-tests",
     binary = ":kernel-tests-unstripped",
     default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     visibility = ["PUBLIC"],
 )

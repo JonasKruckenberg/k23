@@ -61,15 +61,11 @@ clippy targets="" *buck2_args:
 @typos:
     {{ _typos }}
 
-# regenerate third-party/BUCK from third-party/Cargo.toml via reindeer
-@buckify:
-    {{ _reindeer }} buckify
-
 # Generate rust-project.json so rust-analyzer can index the workspace.
 # rust-analyzer auto-loads rust-project.json from the repo root.
 # Re-run after adding/removing crates or changing BUCK deps.
-@rust-project:
-    {{ _rust_project }} develop --pretty --prefer-rustup-managed-toolchain 'root//sys/...' 'root//lib/...'
+rust-project arch="riscv64":
+    {{ _rust_project }} develop --pretty --prefer-rustup-managed-toolchain '--rustc-target={{ _rustc_target(arch) }}' '--mode=--target-platforms=//platforms:{{arch}}' 'root//sys/...' 'root//lib/...'
 
 # ===== testing =====
 
@@ -133,8 +129,8 @@ benchmark targets="" *buck2_args:
 # audit the buck2 graph: cell config plus visibility/providers for top-level kernel targets.
 @buck2-audit:
     {{ _buck2 }} audit cell
-    {{ _buck2 }} audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
     {{ _buck2 }} audit providers //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+# {{ _buck2 }} audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
 
 # run cargo-deny against the third-party Cargo workspace.
 @cargo-deny:
@@ -206,6 +202,8 @@ changed-targets CHANGES BASE_JSONL UNIVERSE='root//...':
       | sort -u \
       | tr '\n' ' '
     echo
+
+_rustc_target(arch) := if arch == "riscv64" { "riscv64gc-unknown-none-elf" } else if arch == "aarch64" { "aarch64-unknown-none" } else { "x86_64-unknown-none" }
 
 # ===== query helpers =====
 #

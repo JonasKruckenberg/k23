@@ -75,22 +75,22 @@
               targets = {
                 "aarch64-darwin" = {
                   target = "aarch64-apple-darwin";
-                  hash = "sha256:706233d79d0906ad15c29be2b5fa50584050a4f65b59cadfae9a5b651fa2a3d5";
+                  hash = "sha256:9b20f66428c05fb629d25772ba27fb04220f6d12fc5dc02bf54ce0d12e6ae621";
                 };
                 "x86_64-darwin" = {
                   target = "x86_64-apple-darwin";
-                  hash = "sha256:e55bbab3b1727e12273cbac9b5b6658cf2422f9fefc38ae2421830c04864b80b";
+                  hash = "sha256:3c7ede0cf051750c8661b727de6cc91e2f7f7a65ca9192169cb7c75732ebb27d";
                 };
                 "aarch64-linux" = {
                   target = "aarch64-unknown-linux-gnu";
-                  hash = "sha256:90e8023cad2e9eb1a3fd315cd17b3147d8979931cdebdca9c57718d5f5b02d69";
+                  hash = "sha256:3afdf92d17ceb62d7b1c57ebcac6565da20f7ab44c2b8c5cfd154f4fa6b4fd73";
                 };
                 "x86_64-linux" = {
                   target = "x86_64-unknown-linux-gnu";
-                  hash = "sha256:f8d9e5d6f9576e2ff6e61bff802a297b5fb472be364364cdbe78adbcdb13cad6";
+                  hash = "sha256:1e6dc1dd5a96b901b5ee5aa29870a024245b11f955a6b6709eb8c75d08bfe416";
                 };
               };
-              info = targets.${pkgs.system};
+              info = targets.${pkgs.stdenv.hostPlatform.system};
             in
             pkgs.stdenvNoCC.mkDerivation {
               pname = "buck2";
@@ -122,22 +122,22 @@
               targets = {
                 "aarch64-darwin" = {
                   target = "aarch64-apple-darwin";
-                  hash = "sha256:9d5a8edb6d21a953e04da323548dc37292d1d43ca7aa35b6db2a20b417b8f5e4";
+                  hash = "sha256:f8b90609511127d5797d22040411b26fe6142312f51dce893436412bcd46b50c";
                 };
                 "x86_64-darwin" = {
                   target = "x86_64-apple-darwin";
-                  hash = "sha256:3eaa7a204eb2a4d6b43dc1e8473ba3777bbab0040b9ee4dfaa88f59f4891e5fb";
+                  hash = "sha256:5668d9a17a4ed05f832a35a2405bc97d8b0fd98d8421e2ecd470f54aa3d17d99";
                 };
                 "aarch64-linux" = {
                   target = "aarch64-unknown-linux-gnu";
-                  hash = "sha256:5faf8f1cddd16510b5473a6ecd666894905050cfeb7dec013cf70cf06d24dd06";
+                  hash = "sha256:925b78d24d3e32ceff8ca9424bc5c53e747e19110bc928e3c0e539de2827611d";
                 };
                 "x86_64-linux" = {
                   target = "x86_64-unknown-linux-gnu";
-                  hash = "sha256:69a801375a159454d737a0a24accb62bdb5f0c668b4b4220a4364eaba809daaf";
+                  hash = "sha256:244c061acbb805c8563c647bc9e9b98d963e1ce13aa759e399d4d3fa08366ed4";
                 };
               };
-              info = targets.${pkgs.system};
+              info = targets.${pkgs.stdenv.hostPlatform.system};
             in
             pkgs.stdenvNoCC.mkDerivation {
               pname = "rust-project";
@@ -184,7 +184,7 @@
                   hash = "sha256:ed7617a0e5d45d929f34a40a88f03040bdc24b1351a606d4cb8edf8da84c1820";
                 };
               };
-              info = targets.${pkgs.system};
+              info = targets.${pkgs.stdenv.hostPlatform.system};
             in
             pkgs.stdenvNoCC.mkDerivation {
               pname = "supertd";
@@ -228,6 +228,7 @@
             cargo-deny
             typos
             jq
+            zstd
           ];
 
           # Extra tooling for jobs that exercise the kernel on-target.
