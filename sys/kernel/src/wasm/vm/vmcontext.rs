@@ -15,7 +15,6 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 
-use cranelift_entity::Unsigned;
 use mem_core::VirtualAddress;
 use static_assertions::const_assert_eq;
 
@@ -190,7 +189,7 @@ impl VMVal {
         // `wasmtime` crate. Otherwise though all `VMVal` constructors are
         // otherwise constrained to guarantee that the initial 64-bits are
         // always initialized.
-        VMVal::u64(i.unsigned().into())
+        VMVal::u64(u64::from(i.cast_unsigned()))
     }
 
     /// Creates a WebAssembly `i64` value
@@ -275,13 +274,13 @@ impl VMVal {
     /// Gets the WebAssembly `i32` value
     #[inline]
     pub fn get_u32(&self) -> u32 {
-        self.get_i32().unsigned()
+        self.get_i32().cast_unsigned()
     }
 
     /// Gets the WebAssembly `i64` value
     #[inline]
     pub fn get_u64(&self) -> u64 {
-        self.get_i64().unsigned()
+        self.get_i64().cast_unsigned()
     }
 
     /// Gets the WebAssembly `f32` value

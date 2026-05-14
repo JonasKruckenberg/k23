@@ -49,6 +49,7 @@ impl BuiltinFunctions {
             name,
             signature,
             colocated: true,
+            patchable: false,
         });
         *cache = Some(f);
         f

@@ -8,7 +8,7 @@
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{InstBuilder, ValueLabel};
 use cranelift_entity::EntityRef;
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use wasmparser::{BinaryReader, FuncValidator, FunctionBody, OperatorsReader, WasmModuleResources};
 
 use crate::wasm::cranelift::code_translator::{bitcast_wasm_returns, translate_operator};
@@ -98,8 +98,7 @@ fn declare_wasm_parameters(
         // signature parameters. For example, a `vmctx` pointer.
         if env.is_wasm_parameter(i) {
             // This is a normal WebAssembly signature parameter, so create a local for it.
-            let local = Variable::new(next_local);
-            builder.declare_var(local, param_type.value_type);
+            let local = builder.declare_var(param_type.value_type);
             // This is checked by validation to not overflow
             next_local += 1;
 
@@ -189,8 +188,7 @@ fn declare_locals(
     };
 
     for _ in 0..count {
-        let local = Variable::new(*next_local);
-        builder.declare_var(local, ty);
+        let local = builder.declare_var(ty);
         if needs_stack_map {
             builder.declare_var_needs_stack_map(local);
         }

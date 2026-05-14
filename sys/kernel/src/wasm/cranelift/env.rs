@@ -7,9 +7,7 @@
 
 #![expect(unused, reason = "this module has a number of method stubs")]
 
-use alloc::vec;
 use alloc::vec::Vec;
-use core::cmp;
 use core::mem::offset_of;
 
 use cranelift_codegen::cursor::FuncCursor;
@@ -19,8 +17,7 @@ use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::types::{I32, I64};
 use cranelift_codegen::ir::{
     ArgumentPurpose, ExtFuncData, ExternalName, FuncRef, Function, GlobalValue, GlobalValueData,
-    Inst, InstBuilder, MemFlags, MemoryType, SigRef, Signature, TrapCode, Type, UserExternalName,
-    Value,
+    Inst, InstBuilder, MemFlagsData, SigRef, Signature, TrapCode, Type, UserExternalName, Value,
 };
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_frontend::FunctionBuilder;
@@ -52,7 +49,6 @@ use crate::wasm::vm::{
 /// A smallvec that holds the IR values for a struct's fields.
 pub type StructFieldsVec = SmallVec<[Value; 4]>;
 
-#[expect(clippy::struct_excessive_bools, reason = "TODO replace with bitflags")]
 pub struct TranslationEnvironment<'module_env> {
     isa: &'module_env dyn TargetIsa,
     module: &'module_env TranslatedModule,
@@ -64,17 +60,12 @@ pub struct TranslationEnvironment<'module_env> {
 
     /// The Cranelift global holding the vmctx address.
     vmctx: Option<GlobalValue>,
-    /// The PCC memory type describing the vmctx layout, if we're
-    /// using PCC.
-    pcc_vmctx_memtype: Option<MemoryType>,
 
     /// Whether to force relaxed simd instructions to be deterministic.
     relaxed_simd_deterministic: bool,
     /// Whether to use the heap access spectre mitigation.
     heap_access_spectre_mitigation: bool,
     table_access_spectre_mitigation: bool,
-    /// Whether to use proof-carrying code to verify lowerings.
-    proof_carrying_code: bool,
 }
 
 impl<'module_env> TranslationEnvironment<'module_env> {
@@ -93,37 +84,16 @@ impl<'module_env> TranslationEnvironment<'module_env> {
             builtin_functions,
 
             vmctx: None,
-            pcc_vmctx_memtype: None,
 
             relaxed_simd_deterministic: false,
             heap_access_spectre_mitigation: true,
             table_access_spectre_mitigation: true,
-            proof_carrying_code: true,
         }
     }
 
     fn vmctx(&mut self, func: &mut Function) -> GlobalValue {
         self.vmctx.unwrap_or_else(|| {
             let vmctx = func.create_global_value(GlobalValueData::VMContext);
-
-            if self.isa.flags().enable_pcc() {
-                // Create a placeholder memtype for the vmctx; we'll
-                // add fields to it as we lazily create HeapData
-                // structs and global values.
-                let vmctx_memtype = func.create_memory_type(ir::MemoryTypeData::Struct {
-                    size: 0,
-                    fields: vec![],
-                });
-
-                self.pcc_vmctx_memtype = Some(vmctx_memtype);
-                func.global_value_facts[vmctx] = Some(ir::Fact::Mem {
-                    ty: vmctx_memtype,
-                    min_offset: 0,
-                    max_offset: 0,
-                    nullable: false,
-                });
-            }
-
             self.vmctx = Some(vmctx);
             vmctx
         })
@@ -151,82 +121,19 @@ impl<'module_env> TranslationEnvironment<'module_env> {
                 base: vmctx,
                 offset: Offset32::new(i32::try_from(from_offset).unwrap()),
                 global_type: self.pointer_type(),
-                flags: MemFlags::trusted().with_readonly(),
+                flags: MemFlagsData::trusted().with_readonly(),
             });
             (global, 0)
         }
     }
 
-    /// Proof-carrying code: create a memtype describing an empty
-    /// runtime struct (to be updated later).
-    fn create_empty_struct_memtype(&self, func: &mut Function) -> MemoryType {
-        func.create_memory_type(ir::MemoryTypeData::Struct {
-            size: 0,
-            fields: vec![],
-        })
-    }
-    fn add_field_to_memtype(
-        &self,
-        func: &mut Function,
-        memtype: MemoryType,
-        offset: u32,
-        pointee: MemoryType,
-        readonly: bool,
-    ) {
-        let ptr_size = self.pointer_type().bytes();
-        match &mut func.memory_types[memtype] {
-            ir::MemoryTypeData::Struct { size, fields } => {
-                *size = cmp::max(*size, u64::from(offset + ptr_size));
-                fields.push(ir::MemoryTypeField {
-                    ty: self.pointer_type(),
-                    offset: offset.into(),
-                    readonly,
-                    fact: Some(ir::Fact::Mem {
-                        ty: pointee,
-                        min_offset: 0,
-                        max_offset: 0,
-                        nullable: false,
-                    }),
-                });
-
-                // Sort fields by offset -- we need to do this now
-                // because we may create an arbitrary number of
-                // memtypes for imported memories and we don't
-                // otherwise track them.
-                fields.sort_by_key(|f| f.offset);
-            }
-            _ => panic!("Cannot add field to non-struct memtype"),
-        }
-    }
-    /// Generate a load that loads a pointer from the given address. If using pcc will add
-    /// a field to memype struct and  a new memtype for the pointee.
-    fn load_pointer_with_memtypes(
-        &self,
-        func: &mut Function,
-        value: GlobalValue,
-        offset: u32,
-        readonly: bool,
-        memtype: Option<MemoryType>,
-    ) -> (GlobalValue, Option<MemoryType>) {
-        let pointee = func.create_global_value(ir::GlobalValueData::Load {
+    fn load_pointer(&self, func: &mut Function, value: GlobalValue, offset: u32) -> GlobalValue {
+        func.create_global_value(ir::GlobalValueData::Load {
             base: value,
             offset: Offset32::new(i32::try_from(offset).unwrap()),
             global_type: self.pointer_type(),
-            flags: MemFlags::trusted().with_readonly(),
-        });
-
-        let mt = memtype.map(|mt| {
-            let pointee_mt = self.create_empty_struct_memtype(func);
-            self.add_field_to_memtype(func, mt, offset, pointee_mt, readonly);
-            func.global_value_facts[pointee] = Some(ir::Fact::Mem {
-                ty: pointee_mt,
-                min_offset: 0,
-                max_offset: 0,
-                nullable: false,
-            });
-            pointee_mt
-        });
-        (pointee, mt)
+            flags: MemFlagsData::trusted().with_readonly(),
+        })
     }
 
     fn memory(&self, memory_index: MemoryIndex) -> &Memory {
@@ -329,6 +236,7 @@ impl TranslationEnvironment<'_> {
             name,
             signature,
             colocated: self.module.defined_func_index(index).is_some(),
+            patchable: false,
         })
     }
 
@@ -361,7 +269,7 @@ impl TranslationEnvironment<'_> {
                 base: vmctx,
                 offset: Offset32::new(i32::try_from(from_offset).unwrap()),
                 global_type: pointer_type,
-                flags: MemFlags::trusted().with_readonly(),
+                flags: MemFlagsData::trusted().with_readonly(),
             });
             let base_offset = u32_offset_of!(VMTableDefinition, base);
 
@@ -372,7 +280,7 @@ impl TranslationEnvironment<'_> {
             base,
             offset: Offset32::from(base_offset as i32),
             global_type: pointer_type,
-            flags: MemFlags::trusted().with_checked().with_readonly(),
+            flags: MemFlagsData::trusted().with_readonly(),
         });
 
         let element_size = if table.element_type.is_vmgcref_type() {
@@ -400,83 +308,32 @@ impl TranslationEnvironment<'_> {
         let plan = &self.module.memories[index];
         let vmctx = self.vmctx(func);
 
-        let (base, base_offset, ptr_memtype) = match self.module.defined_memory_index(index) {
+        let (base, base_offset) = match self.module.defined_memory_index(index) {
             Some(_) if plan.shared => todo!("shared memory"),
             Some(def_index) => {
                 let owned_index = self.module.owned_memory_index(def_index);
                 let base_offset = self.vmshape.vmctx_vmmemory_definition(owned_index)
                     + u32_offset_of!(VMMemoryDefinition, base);
 
-                (vmctx, base_offset, self.pcc_vmctx_memtype)
+                (vmctx, base_offset)
             }
             None => {
                 let from_offset = self.vmshape.vmctx_vmmemory_import(index)
                     + u32_offset_of!(VMMemoryImport, from);
 
                 // load the pointer to the memory from our VMMemoryImport
-                let (memory, def_mt) = self.load_pointer_with_memtypes(
-                    func,
-                    vmctx,
-                    from_offset,
-                    true,
-                    self.pcc_vmctx_memtype,
-                );
+                let memory = self.load_pointer(func, vmctx, from_offset);
                 let base_offset = u32_offset_of!(VMMemoryDefinition, base);
-                (memory, base_offset, def_mt)
+                (memory, base_offset)
             }
-        };
-
-        let (base_fact, memory_type) = if let Some(ptr_memtype) = ptr_memtype {
-            // Create a memtype representing the untyped memory region.
-            let data_mt = func.create_memory_type(ir::MemoryTypeData::Memory {
-                // Since we have one memory per address space, the maximum value this can be is u64::MAX
-                // TODO this isn't correct I think
-                size: plan.max_size_based_on_index_type(),
-            });
-            // This fact applies to any pointer to the start of the memory.
-            let base_fact = ir::Fact::Mem {
-                ty: data_mt,
-                min_offset: 0,
-                max_offset: 0,
-                nullable: false,
-            };
-            // Create a field in the vmctx for the base pointer.
-            match &mut func.memory_types[ptr_memtype] {
-                ir::MemoryTypeData::Struct { size, fields } => {
-                    let offset = u64::from(base_offset);
-                    fields.push(ir::MemoryTypeField {
-                        offset,
-                        ty: self.isa.pointer_type(),
-                        // Read-only field from the PoV of PCC checks:
-                        // don't allow stores to this field. (Even if
-                        // it is a dynamic memory whose base can
-                        // change, that update happens inside the
-                        // runtime, not in generated code.)
-                        readonly: true,
-                        fact: Some(base_fact.clone()),
-                    });
-                    *size = cmp::max(
-                        *size,
-                        offset.saturating_add(u64::from(self.isa.pointer_type().bytes())),
-                    );
-                }
-                _ => {
-                    panic!("Bad memtype");
-                }
-            }
-            // Apply a fact to the base pointer.
-            (Some(base_fact), Some(data_mt))
-        } else {
-            (None, None)
         };
 
         let heap_base = func.create_global_value(GlobalValueData::Load {
             base,
             offset: Offset32::new(base_offset as i32),
             global_type: self.pointer_type(),
-            flags: MemFlags::trusted().with_checked().with_readonly(),
+            flags: MemFlagsData::trusted().with_readonly(),
         });
-        func.global_value_facts[heap_base] = base_fact;
 
         let min_size = plan.minimum_byte_size().unwrap_or_else(|_| {
             // The only valid Wasm memory size that won't fit in a 64-bit
@@ -491,7 +348,6 @@ impl TranslationEnvironment<'_> {
 
         CraneliftMemory {
             base_gv: heap_base,
-            memory_type,
             min_size,
             max_size,
             bound: plan.max_size_based_on_index_type(),
@@ -535,9 +391,6 @@ impl TranslationEnvironment<'_> {
     pub fn table_access_spectre_mitigation(&self) -> bool {
         self.table_access_spectre_mitigation
     }
-    pub fn proof_carrying_code(&self) -> bool {
-        self.proof_carrying_code
-    }
 
     /// Get the Cranelift integer type to use for native pointers.
     ///
@@ -572,7 +425,7 @@ impl TranslationEnvironment<'_> {
         self.target_isa().triple().architecture == target_lexicon::Architecture::X86_64
     }
     pub fn use_x86_blendv_for_relaxed_laneselect(&self, ty: Type) -> bool {
-        self.target_isa().has_x86_blendv_lowering(ty)
+        self.target_isa().has_blendv_lowering(ty)
     }
     pub fn use_x86_pshufb_for_relaxed_swizzle(&self) -> bool {
         self.target_isa().has_x86_pshufb_lowering()
@@ -824,7 +677,7 @@ impl TranslationEnvironment<'_> {
                     let offset = i32::try_from(self.vmshape.vmctx_vmmemory_pointer(def_index))?;
                     let vmmemory_ptr =
                         pos.ins()
-                            .load(pointer_type, MemFlags::trusted(), base, offset);
+                            .load(pointer_type, MemFlagsData::trusted(), base, offset);
                     let vmmemory_definition_offset =
                         i64::from(u32_offset_of!(VMMemoryDefinition, current_length));
                     let vmmemory_definition_ptr =
@@ -837,7 +690,7 @@ impl TranslationEnvironment<'_> {
                     // bounds-checked version of this is implemented.
                     pos.ins().atomic_load(
                         pointer_type,
-                        ir::MemFlags::trusted(),
+                        MemFlagsData::trusted(),
                         vmmemory_definition_ptr,
                     )
                 } else {
@@ -847,7 +700,7 @@ impl TranslationEnvironment<'_> {
                             + u32_offset_of!(VMMemoryDefinition, current_length),
                     )?;
                     pos.ins()
-                        .load(pointer_type, ir::MemFlags::trusted(), base, offset)
+                        .load(pointer_type, MemFlagsData::trusted(), base, offset)
                 }
             }
             None => {
@@ -855,9 +708,9 @@ impl TranslationEnvironment<'_> {
                     self.vmshape.vmctx_vmmemory_import(memory_index)
                         + u32_offset_of!(VMMemoryImport, from),
                 )?;
-                let vmmemory_ptr = pos
-                    .ins()
-                    .load(pointer_type, MemFlags::trusted(), base, offset);
+                let vmmemory_ptr =
+                    pos.ins()
+                        .load(pointer_type, MemFlagsData::trusted(), base, offset);
 
                 if is_shared {
                     let vmmemory_definition_offset =
@@ -866,13 +719,13 @@ impl TranslationEnvironment<'_> {
                         pos.ins().iadd_imm(vmmemory_ptr, vmmemory_definition_offset);
                     pos.ins().atomic_load(
                         pointer_type,
-                        MemFlags::trusted(),
+                        MemFlagsData::trusted(),
                         vmmemory_definition_ptr,
                     )
                 } else {
                     pos.ins().load(
                         pointer_type,
-                        MemFlags::trusted(),
+                        MemFlagsData::trusted(),
                         vmmemory_ptr,
                         u32_offset_of!(VMMemoryDefinition, current_length) as i32,
                     )
@@ -1508,7 +1361,7 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             let vmctx = self.env.vmctx(self.builder.func);
             let base = self.builder.ins().global_value(pointer_type, vmctx);
 
-            let mem_flags = MemFlags::trusted().with_readonly();
+            let mem_flags = MemFlagsData::trusted().with_readonly();
 
             // Load the callee address.
             let body_offset = i32::try_from(
@@ -1625,7 +1478,7 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             // This is the old "funcref" (ref null func) type. This means inserting code
             // for a runtime signature check.
             WasmHeapTypeInner::Func => {
-                let mem_flags = MemFlags::trusted().with_readonly();
+                let mem_flags = MemFlagsData::trusted().with_readonly();
 
                 // load the expected type id from the `VMContext` `type_ids` array
                 let expected_type_id = {
@@ -1676,7 +1529,7 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
                         // To check for a null pointer we just try to load its type index,
                         // if that fails because of a null pointer we fail with the correct code
                         // otherwise we fall through to the `TRAP_BAD_SIGNATURE` below.
-                        let mem_flags = MemFlags::trusted().with_readonly();
+                        let mem_flags = MemFlagsData::trusted().with_readonly();
                         self.builder.ins().load(
                             sig_id_type,
                             mem_flags.with_trap_code(Some(TRAP_INDIRECT_CALL_TO_NULL)),
@@ -1723,7 +1576,7 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
         // Note that this trap if `callee` is null, and it is the callers responsibility to
         // check whether `callee` is either already known to non-null or ay trap.
         // Therefore the `Option<TrapCode>`.
-        let mem_flags = MemFlags::trusted().with_readonly();
+        let mem_flags = MemFlagsData::trusted().with_readonly();
         let func_addr = self.builder.ins().load(
             pointer_type,
             mem_flags.with_trap_code(callee_load_trap_code),

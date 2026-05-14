@@ -18,7 +18,7 @@ pub use compiler::CraneliftCompiler;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::immediates::Imm64;
-use cranelift_codegen::ir::{InstBuilder, MemFlags};
+use cranelift_codegen::ir::{InstBuilder, MemFlagsData};
 use cranelift_frontend::FunctionBuilder;
 
 use crate::wasm::trap::TRAP_TABLE_OUT_OF_BOUNDS;
@@ -58,7 +58,7 @@ impl CraneliftTable {
         mut index: ir::Value,
         pointer_type: ir::Type,
         spectre_mitigations_enabled: bool,
-    ) -> (ir::Value, MemFlags) {
+    ) -> (ir::Value, MemFlagsData) {
         let index_ty = builder.func.dfg.value_type(index);
 
         // Start with the bounds check. Trap if `index + 1 > bound`.
@@ -94,7 +94,7 @@ impl CraneliftTable {
         // add both together to get the element address
         let element_addr = builder.ins().iadd(base, offset);
 
-        let base_flags = MemFlags::new()
+        let base_flags = MemFlagsData::new()
             .with_aligned()
             .with_alias_region(Some(ir::AliasRegion::Table));
 
