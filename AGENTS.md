@@ -57,9 +57,9 @@ After adding/removing a crate, run `just rust-project` so rust-analyzer picks up
 
 ## Unsafe discipline
 
-1. **Every `unsafe { }` block carries a `// SAFETY:` comment** stating the invariant relied on. One terse line — accuracy over verbosity.
+1. **Every `unsafe { }` block carries a `// Safety:` comment** stating the invariant relied on. One terse line — accuracy over verbosity.
 2. **Every `unsafe fn` has a `# Safety` doc section** listing caller obligations.
-3. **A `SAFETY` comment relying on a critical invariant below cites it by number** — e.g. `// SAFETY: per invariant 4 (trap frame layout)`.
+3. **A `Safety` comment relying on a critical invariant below cites it by number** — e.g. `// Safety: per invariant 4 (trap frame layout)`.
 4. Inside `unsafe fn`, wrap unsafe ops in explicit inner `unsafe { }` blocks (Rust 2024).
 5. Manual `Send` / `Sync` impls justify themselves against interior state (raw ptrs, `Cell`, MMIO).
 6. `slice::from_raw_parts`, `get_unchecked`, raw-ptr deref: only after explicit length/alignment validation. Never on user-controlled sizes without a bound check.
