@@ -46,13 +46,13 @@ impl<'a> Arguments<'a> {
         let mut tokens = raw.split_ascii_whitespace();
 
         while let Some(tok) = tokens.next() {
-            if let Some(_) = LIST.consume(tok, &mut tokens) {
+            if LIST.consume(tok, &mut tokens).is_some() {
                 args.list = true;
-            } else if let Some(_) = INCLUDE_IGNORED.consume(tok, &mut tokens) {
+            } else if INCLUDE_IGNORED.consume(tok, &mut tokens).is_some() {
                 args.include_ignored = true;
-            } else if let Some(_) = IGNORED.consume(tok, &mut tokens) {
+            } else if IGNORED.consume(tok, &mut tokens).is_some() {
                 args.ignored = true;
-            } else if let Some(_) = EXACT.consume(tok, &mut tokens) {
+            } else if EXACT.consume(tok, &mut tokens).is_some() {
                 args.exact = true;
             } else if let Some(v) = FORMAT.consume(tok, &mut tokens) {
                 args.format = match v {

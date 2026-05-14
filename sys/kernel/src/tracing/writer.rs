@@ -101,7 +101,7 @@ where
                 let offset = if let Some(last_ws) = line[..self.max_line_len - self.current_line]
                     .chars()
                     .rev()
-                    .position(|c| c.is_whitespace())
+                    .position(char::is_whitespace)
                 {
                     // found a nice whitespace to break on!
                     self.writer.write_str(&line[..last_ws])?;

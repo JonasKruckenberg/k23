@@ -291,7 +291,7 @@ impl TypeRegistry {
     pub fn borrow(&self, index: VMSharedTypeIndex) -> Option<Arc<WasmSubType>> {
         let id = shared_type_index_to_slab_id(index);
         let inner = self.0.read();
-        inner.types.get(id).and_then(|ty| ty.clone())
+        inner.types.get(id).and_then(Clone::clone)
     }
 
     pub fn register_module_types(
@@ -1138,15 +1138,15 @@ impl Drop for TypeRegistryInner {
             "type registry not empty: types slab is not empty: {types:#?}"
         );
         assert!(
-            type_to_rec_group.is_empty() || type_to_rec_group.values().all(|x| x.is_none()),
+            type_to_rec_group.is_empty() || type_to_rec_group.values().all(Option::is_none),
             "type registry not empty: type-to-rec-group map is not empty: {type_to_rec_group:#?}"
         );
         assert!(
-            type_to_supertypes.is_empty() || type_to_supertypes.values().all(|x| x.is_none()),
+            type_to_supertypes.is_empty() || type_to_supertypes.values().all(Option::is_none),
             "type registry not empty: type-to-supertypes map is not empty: {type_to_supertypes:#?}"
         );
         assert!(
-            type_to_trampoline.is_empty() || type_to_trampoline.values().all(|x| x.is_none()),
+            type_to_trampoline.is_empty() || type_to_trampoline.values().all(PackedOption::is_none),
             "type registry not empty: type-to-trampoline map is not empty: {type_to_trampoline:#?}"
         );
         assert!(

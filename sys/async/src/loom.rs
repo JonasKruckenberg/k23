@@ -32,7 +32,8 @@ cfg_if! {
 
         pub(crate) mod sync {
             pub use core::sync::*;
-            #[cfg(any(test, feature = "__bench"))]
+            #[cfg(any(test))]
+            #[allow(unused_imports, reason = "they are actually used by tests")]
             pub(crate) use std::sync::*;
         }
 

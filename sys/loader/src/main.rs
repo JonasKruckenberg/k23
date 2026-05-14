@@ -7,8 +7,6 @@
 
 #![no_std]
 #![no_main]
-#![feature(maybe_uninit_slice)]
-#![feature(alloc_layout_extra)]
 
 use core::ffi::c_void;
 use core::mem;
@@ -110,7 +108,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let rng = ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
         minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
     ));
-    let rng_seed = rng.as_ref().map(|rng| rng.get_seed()).unwrap_or_default();
+    let rng_seed = rng.as_ref().map(ChaCha20Rng::get_seed).unwrap_or_default();
 
     // Initialize the page allocator
     let mut page_alloc = page_alloc::init(rng);

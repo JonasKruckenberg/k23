@@ -97,7 +97,7 @@ impl<'a> SymbolName<'a> {
     pub fn as_raw_str(&self) -> &'a str {
         self.demangled
             .as_ref()
-            .map(|s| s.as_str())
+            .map(Demangle::as_str)
             .unwrap_or(self.raw)
     }
 }

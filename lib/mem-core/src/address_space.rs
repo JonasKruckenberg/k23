@@ -643,7 +643,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         frame_allocator: impl FrameAllocator,
         flush: &mut Flush,
     ) {
-        let entries: PageTableEntries<A> = page_table_entries_for(range.clone(), table.level());
+        let entries: PageTableEntries<A> = page_table_entries_for(range, table.level());
 
         for (entry_index, range) in entries {
             // Safety: `page_table_entries_for` only returns in-bounds indices.

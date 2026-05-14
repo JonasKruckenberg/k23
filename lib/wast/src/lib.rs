@@ -53,7 +53,7 @@
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs, rustdoc::broken_intra_doc_links)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
-#![feature(thread_local, never_type)]
+#![cfg_attr(feature = "wasm-module", feature(thread_local))]
 #![allow(edition_2024_expr_fragment_specifier)]
 #![allow(tail_expr_drop_order)]
 #![expect(
@@ -74,6 +74,7 @@
     clippy::checked_conversions,
     clippy::missing_panics_doc,
     clippy::trivially_copy_pass_by_ref,
+    clippy::redundant_closure_for_method_calls,
     reason = "3rd party crate"
 )]
 

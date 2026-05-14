@@ -203,8 +203,6 @@
 #![cfg_attr(not(test), no_std)]
 #![warn(missing_debug_implementations, missing_docs)]
 #![feature(thread_local)]
-#![feature(used_with_arg)]
-#![feature(never_type)]
 #![expect(clippy::uninlined_format_args, reason = "not worth the effort")]
 
 extern crate alloc;

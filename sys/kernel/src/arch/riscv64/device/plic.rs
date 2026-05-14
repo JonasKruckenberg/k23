@@ -85,10 +85,9 @@ impl Plic {
             .find_map(|dev| {
                 let interrupts = if let Some(interrupts) = dev.interrupts_extended(devtree) {
                     Either::Left(interrupts)
-                } else if let Some(interrupts) = dev.interrupts(devtree) {
-                    Either::Right(interrupts)
                 } else {
-                    return None;
+                    let interrupts = dev.interrupts(devtree)?;
+                    Either::Right(interrupts)
                 };
 
                 for (context, (parent, _)) in interrupts

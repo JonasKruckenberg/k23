@@ -45,7 +45,7 @@ impl EhInfo {
         &self,
         address: u64,
     ) -> gimli::Result<FrameDescriptionEntry<EndianSlice<'_, NativeEndian>, usize>> {
-        if let Some(table) = self.hdr.as_ref().and_then(|hdr| hdr.table()) {
+        if let Some(table) = self.hdr.as_ref().and_then(ParsedEhFrameHdr::table) {
             table.fde_for_address(
                 &self.eh_frame,
                 &self.bases,

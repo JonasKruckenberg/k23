@@ -171,7 +171,7 @@ impl Func {
         }
 
         // clean up and return the argument storage
-        values_vec.truncate(0);
+        values_vec.clear();
         store.return_wasm_vmval_storage(values_vec);
 
         Ok(())

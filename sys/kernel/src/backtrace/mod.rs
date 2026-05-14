@@ -143,7 +143,7 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
         let frames_omitted = iter.next()?.is_some();
 
         Ok(Self {
-            symbolize_ctx: BACKTRACE_INFO.get().map(|info| info.symbolize_context()),
+            symbolize_ctx: BACKTRACE_INFO.get().map(BacktraceInfo::symbolize_context),
             frames,
             frames_omitted,
             style: BACKTRACE_INFO

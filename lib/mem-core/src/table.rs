@@ -190,7 +190,7 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
 
         let mut stack: ArrayVec<Level<'_, _>, 5> = ArrayVec::from_iter([Level {
             table: self,
-            entries_iter: page_table_entries_for(range.clone(), &A::LEVELS[0]),
+            entries_iter: page_table_entries_for(range, &A::LEVELS[0]),
         }]);
 
         while let Some(mut frame) = stack.pop() {

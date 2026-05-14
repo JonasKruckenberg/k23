@@ -22,7 +22,7 @@
 
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
-#[macro_use]
+
 extern crate alloc;
 
 use alloc::sync::Arc;

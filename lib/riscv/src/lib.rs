@@ -9,10 +9,6 @@
 
 #![cfg_attr(not(test), no_std)]
 #![allow(edition_2024_expr_fragment_specifier, reason = "vetted usage")]
-// #![cfg_attr(
-//     not(any(target_arch = "riscv32", target_arch = "riscv64")),
-//     allow(unused)
-// )]
 
 mod error;
 pub mod extensions;
@@ -24,6 +20,7 @@ pub mod sbi;
 pub mod semihosting;
 pub mod trap;
 
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 use core::arch::asm;
 
 pub use error::Error;
@@ -34,14 +31,14 @@ pub type Result<T> = core::result::Result<T, Error>;
 ///
 /// This will use the semihosting interface, if available, to exit the program. Otherwise, it will
 /// enter a wfi loop.
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 pub fn exit(code: i32) -> ! {
     semihosting::exit(code);
 
     // fall back to a wfi loop if exiting using semihosting failed
-    // Safety: inline assembly
-    unsafe {
-        loop {
-            #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+    loop {
+        // Safety: inline assembly
+        unsafe {
             asm!("wfi");
         }
     }

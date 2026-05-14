@@ -147,6 +147,7 @@ fn run<
 
                 let index = vec.partition_point(|(range, _v)| range.last < last);
 
+                #[expect(clippy::if_same_then_else, reason = "style choice")]
                 if index != vec.len() && vec[index].0.start < last {
                     assert_eq!(res, Err(OverlapError));
                 } else if index != 0 && vec[index - 1].0.last > start {

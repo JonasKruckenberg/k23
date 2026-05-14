@@ -128,7 +128,7 @@ where
             .lock()
             .arenas
             .iter()
-            .map(|region| region.capacity())
+            .map(Arena::capacity)
             .collect()
     }
 
@@ -141,12 +141,7 @@ where
     /// Returns the number of allocated bytes of each physical memory region.
     #[inline]
     pub fn usages(&self) -> ArrayVec<usize, MAX_REGIONS> {
-        self.inner
-            .lock()
-            .arenas
-            .iter()
-            .map(|region| region.usage())
-            .collect()
+        self.inner.lock().arenas.iter().map(Arena::usage).collect()
     }
 }
 
@@ -281,11 +276,11 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
             "failed to allocate layout {layout:?} capacities={:#?} usages={:#?}",
             self.arenas
                 .iter()
-                .map(|arena| arena.capacity())
+                .map(Arena::capacity)
                 .collect::<ArrayVec<_, MAX_REGIONS>>(),
             self.arenas
                 .iter()
-                .map(|arena| arena.usage())
+                .map(Arena::usage)
                 .collect::<ArrayVec<_, MAX_REGIONS>>()
         );
 

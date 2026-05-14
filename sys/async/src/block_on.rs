@@ -189,7 +189,6 @@ pub fn block_on<P: Park + Sync + 'static, F: Future>(
 
 #[cfg(test)]
 mod tests {
-    use core::pin::Pin;
     use core::task::{Context, Poll, Waker};
     use std::convert::Infallible;
 

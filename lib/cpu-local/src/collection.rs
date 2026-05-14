@@ -10,7 +10,7 @@ use core::cell::UnsafeCell;
 use core::iter::FusedIterator;
 use core::panic::UnwindSafe;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
-use core::{fmt, mem, ptr, slice};
+use core::{fmt, mem, ptr};
 
 use util::CheckedMaybeUninit;
 
@@ -555,7 +555,7 @@ fn allocate_bucket<T>(size: usize) -> *mut Entry<T> {
 
 unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
     // Safety: we allocated the entry through `Box::new`
-    let _ = unsafe { Box::from_raw(slice::from_raw_parts_mut(bucket, size)) };
+    let _ = unsafe { Box::from_raw(ptr::slice_from_raw_parts_mut(bucket, size)) };
 }
 
 static NEXT_CPUID: AtomicUsize = const { AtomicUsize::new(0) };

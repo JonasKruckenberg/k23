@@ -77,7 +77,7 @@ impl PhysMap {
     #[expect(clippy::missing_panics_doc, reason = "internal assert")]
     #[inline]
     pub fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
-        let translation_offset = self.translation_offset.map_or(0, |off| off.get());
+        let translation_offset = self.translation_offset.map_or(0, NonZeroIsize::get);
 
         let virt = VirtualAddress::new(phys.wrapping_offset(translation_offset).get());
 
