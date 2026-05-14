@@ -397,7 +397,7 @@ impl Instance {
         // `Instance::alloc_layout` and therefore has the right-sized vmctx memory
         unsafe {
             instance.write(Instance {
-                module: module.clone(),
+                module,
                 memories,
                 tables,
                 dropped_elements,

@@ -36,9 +36,9 @@ impl<'a> ImageBuilder<'a> {
                 let mut pvd = PrimaryVolumeDescriptor::new_zeroed();
                 pvd.file_structure_version = 1;
 
-                let id = format!("K23 ECMA-119"); // FIXME pipe through version env!("CARGO_PKG_VERSION"));
+                let id = "K23 ECMA-119"; // FIXME pipe through version env!("CARGO_PKG_VERSION"));
                 pvd.data_preparer_id =
-                    AStr::from_str(&id).expect("data_preparer_id string is too long");
+                    AStr::from_str(id).expect("data_preparer_id string is too long");
 
                 pvd
             },

@@ -180,7 +180,7 @@ impl AddressSpace {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
-            range.clone().len()
+            range.len()
                 <= self
                     .max_range
                     .end()

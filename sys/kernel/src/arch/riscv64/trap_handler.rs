@@ -34,9 +34,15 @@ pub fn init() {
     tracing::trace!("setting sscratch to {:#x}", trap_stack_top);
     sscratch::set(trap_stack_top);
 
-    tracing::trace!("setting trap vec to {:#x}", default_trap_entry as usize);
-    // Safety: register access
-    unsafe { stvec::write(default_trap_entry as usize, stvec::Mode::Direct) };
+    #[expect(
+        function_casts_as_integer,
+        reason = "stvec takes the trap-handler address as an integer per the RISC-V privileged spec"
+    )]
+    {
+        tracing::trace!("setting trap vec to {:#x}", default_trap_entry as usize);
+        // Safety: register access
+        unsafe { stvec::write(default_trap_entry as usize, stvec::Mode::Direct) };
+    }
 }
 
 /// Top of this CPU's trap stack. `sscratch` must hold this value whenever

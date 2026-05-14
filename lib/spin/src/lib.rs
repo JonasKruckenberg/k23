@@ -7,11 +7,9 @@
 
 //! Synchronization primitives for use in k23.
 
-#![feature(cold_path)]
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(feature = "thread-local", feature(thread_local))]
 #![feature(dropck_eyepatch)]
-#![feature(negative_impls)]
 
 mod backoff;
 mod barrier;

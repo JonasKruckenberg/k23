@@ -30,8 +30,11 @@ pub fn abort() -> ! {
         } else if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
             riscv::exit(1);
         } else {
+            #[expect(
+                clippy::empty_loop,
+                reason = "this being an infinite waiting loop is the point here"
+            )]
             loop {}
-            // compile_error!("unsupported target architecture")
         }
     }
 }

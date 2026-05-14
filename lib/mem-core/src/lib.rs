@@ -6,11 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 #![cfg_attr(not(any(test, feature = "test_utils")), no_std)]
-// #![no_std]
 #![feature(step_trait)]
-#![feature(debug_closure_helpers)]
-#![feature(allocator_api)]
-#![feature(alloc_layout_extra)]
+#![cfg_attr(feature = "test_utils", feature(debug_closure_helpers))]
+
 extern crate core;
 
 mod address;

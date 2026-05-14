@@ -20,6 +20,10 @@ use crate::{Error, FrameIter, arch, raise_exception_phase2};
 extern "C" fn personality_stub() {}
 
 /// Ensure the ptr points to the expected personality routine stub.
+#[expect(
+    function_casts_as_integer,
+    reason = "identity-comparing the personality routine address against the .eh_frame-encoded pointer"
+)]
 pub fn ensure_rust_personality_routine(ptr: u64) -> crate::Result<()> {
     if ptr == personality_stub as usize as u64 {
         Ok(())

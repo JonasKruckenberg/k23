@@ -8,10 +8,12 @@
 #![no_std] // this is crate is fully incompatible with `std` due to clashing lang item definitions
 #![cfg(target_os = "none")]
 #![feature(panic_can_unwind)]
-#![expect(internal_features, reason = "")]
+#![expect(
+    internal_features,
+    reason = "uses `std_internals` and `formatting_options` to reimplement std::panic for `no_std`"
+)]
 #![feature(std_internals)]
 #![feature(formatting_options)]
-#![feature(never_type)]
 #![feature(thread_local)]
 
 extern crate alloc;

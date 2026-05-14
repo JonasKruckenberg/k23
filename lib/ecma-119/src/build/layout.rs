@@ -148,7 +148,7 @@ impl<'a> Layout<'a> {
                 continue;
             }
             file.lba = lba;
-            lba += sectors_for(u32::try_from(file.len).unwrap());
+            lba += sectors_for(file.len);
         }
 
         self.total_sectors = lba;
@@ -699,7 +699,7 @@ fn serialize_dir_extent(
                     &mut offset,
                     file.identifier.as_bytes(),
                     file.lba,
-                    u32::try_from(file.len).unwrap(),
+                    file.len,
                     false,
                 )?;
             }
@@ -712,8 +712,7 @@ fn serialize_dir_extent(
 /// Writes the El Torito boot catalog at the current writer position.
 ///
 /// Layout:
-///   1. `ValidationEntry`  — header_id=1, platform_id from `boot_config.validation_platform`,
-///                           16-bit word-sum checksum
+///   1. `ValidationEntry`  — header_id=1, platform_id from `boot_config.validation_platform`, 16-bit word-sum checksum
 ///   2. `InitialEntry`     — the default boot entry
 ///   3. For each section: `SectionHeaderEntry` + one `SectionEntry` per entry
 fn write_boot_catalog(w: &mut impl io::Write, boot_config: &BootConfig) -> io::Result<()> {

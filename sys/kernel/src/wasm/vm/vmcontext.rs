@@ -208,9 +208,8 @@ impl VMVal {
 
     /// Creates a WebAssembly `i64` value
     #[inline]
-    #[expect(clippy::cast_possible_wrap, reason = "wrapping is intentional")]
     pub fn u64(i: u64) -> VMVal {
-        VMVal::i64(i as i64)
+        VMVal::i64(i.cast_signed())
     }
 
     /// Creates a WebAssembly `f32` value
@@ -239,7 +238,7 @@ impl VMVal {
     #[inline]
     pub fn funcref(i: *mut c_void) -> VMVal {
         VMVal {
-            funcref: i.map_addr(|i| i.to_le()),
+            funcref: i.map_addr(usize::to_le),
         }
     }
 

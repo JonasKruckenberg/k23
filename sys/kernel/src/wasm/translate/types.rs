@@ -732,8 +732,16 @@ impl WasmFuncType {
         }
 
         Cow::Owned(Self {
-            params: self.params.iter().map(|p| p.trampoline_type()).collect(),
-            results: self.results.iter().map(|r| r.trampoline_type()).collect(),
+            params: self
+                .params
+                .iter()
+                .map(WasmValType::trampoline_type)
+                .collect(),
+            results: self
+                .results
+                .iter()
+                .map(WasmValType::trampoline_type)
+                .collect(),
         })
     }
 }

@@ -86,16 +86,20 @@ impl Conclusion {
 pub async fn run_tests(global: &'static state::Global) -> crate::Result<Conclusion> {
     let raw = crate::bootargs::read_raw(&global.device_tree).unwrap_or("");
     let args = Arguments::parse(raw)?;
+    let all_tests = all_tests().iter();
 
+    #[expect(
+        clippy::needless_collect,
+        reason = "we need the collect to ensure we have an ExactSizeIterator later."
+    )]
     let tests = if let Some(test_name) = args.test_name {
-        let tests: Vec<_> = all_tests()
-            .iter()
+        let tests: Vec<_> = all_tests
             .filter(|test| test.info.ident.contains(test_name))
             .collect();
 
         Either::Left(tests.into_iter())
     } else {
-        Either::Right(all_tests().into_iter())
+        Either::Right(all_tests)
     };
 
     // Create printer which is used for all output.

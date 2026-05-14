@@ -35,10 +35,6 @@ macro_rules! syscall {
 }
 
 #[inline(always)]
-#[expect(
-    clippy::used_underscore_binding,
-    reason = "compiler thinks nr and arg are unused otherwise"
-)]
 pub(crate) unsafe fn syscall_inner(_nr: usize, _arg: usize) -> usize {
     cfg_if::cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {

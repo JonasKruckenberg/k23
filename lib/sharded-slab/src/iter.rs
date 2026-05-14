@@ -19,7 +19,7 @@ impl<'a, T, C: cfg::Config> Iterator for UniqueIter<'a, T, C> {
         log::trace!("UniqueIter::next");
         loop {
             log::trace!("-> try next slot");
-            if let Some(item) = self.slots.as_mut().and_then(|slots| slots.next()) {
+            if let Some(item) = self.slots.as_mut().and_then(Iterator::next) {
                 log::trace!("-> found an item!");
                 return Some(item);
             }

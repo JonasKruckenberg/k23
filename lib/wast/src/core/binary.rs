@@ -267,7 +267,7 @@ impl Encoder<'_> {
             for func in list.iter() {
                 let hints = func.encode(&mut code_section, dwarf.as_deref_mut());
                 if !hints.is_empty() {
-                    branch_hints.function_hints(func_index, hints.into_iter());
+                    branch_hints.function_hints(func_index, hints);
                 }
                 func_index += 1;
             }

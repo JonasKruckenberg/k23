@@ -188,12 +188,12 @@ impl WastContext {
     }
 
     pub async fn run(&mut self, path: &str, wat: &str) -> crate::Result<()> {
-        let buf = ParseBuffer::new(&wat)?;
+        let buf = ParseBuffer::new(wat)?;
         let wast = parser::parse::<Wast>(&buf)?;
         for directive in wast.directives {
             let span = directive.span();
             let (line, col) = span.linecol_in(wat);
-            self.run_directive(directive, path, &wat)
+            self.run_directive(directive, path, wat)
                 .await
                 .with_context(|| format!("location ({path}:{line}:{col})"))?;
         }
@@ -356,7 +356,7 @@ impl WastContext {
             .collect::<anyhow::Result<Vec<_>>>()?;
 
         let inner = self.inner_mut();
-        let ty = func.ty(&mut inner.store);
+        let ty = func.ty(&inner.store);
         let this = self.0.clone();
 
         // FIXME the virtual memory subsystem trap handling code will look for a current task
@@ -370,7 +370,7 @@ impl WastContext {
 
         match func.call(&mut this.lock().store, &values, &mut results) {
             Ok(()) => Ok(Outcome::Ok(results)),
-            Err(e) => Ok(Outcome::Trap(e.into())),
+            Err(e) => Ok(Outcome::Trap(e)),
         }
         // })
         // .await
@@ -398,7 +398,7 @@ impl WastContext {
         for (v, e) in values.iter().zip(results) {
             let WastRet::Core(e) = e else { unreachable!() };
             let inner = self.inner_mut();
-            match_val(&mut inner.store, v, e)?;
+            match_val(&inner.store, v, e)?;
         }
 
         Ok(())
@@ -433,7 +433,7 @@ impl WastContext {
                 .instantiate(&mut inner.store, &mut inner.const_eval, &module)
             {
                 Ok(i) => Outcome::Ok(i),
-                Err(e) => Outcome::Trap(e.into()),
+                Err(e) => Outcome::Trap(e),
             },
         )
     }
@@ -455,7 +455,6 @@ impl WastContext {
             return inner
                 .linker
                 .get(&mut inner.store, module, name)
-                .clone()
                 .ok_or_else(|| anyhow!("no item named `{}::{}` found", module, name));
         }
 
@@ -489,6 +488,7 @@ fn wast_arg_to_val(arg: &WastArgCore) -> anyhow::Result<Val> {
     }
 }
 
+#[expect(clippy::only_used_in_recursion, reason = "used by later features")]
 pub fn match_val(store: &Store<()>, actual: &Val, expected: &WastRetCore) -> anyhow::Result<()> {
     match (actual, expected) {
         (_, WastRetCore::Either(expected)) => {

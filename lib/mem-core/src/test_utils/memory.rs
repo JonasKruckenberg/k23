@@ -150,12 +150,13 @@ unsafe fn host_dealloc(region: NonNull<[u8]>, _layout: Layout) {
 
 #[cfg(any(not(unix), miri))]
 fn host_alloc(layout: Layout) -> NonNull<[u8]> {
-    use std::alloc::Allocator;
-    std::alloc::System.allocate(layout).unwrap()
+    // Safety: guaranteed by Layout
+    let base = NonNull::new(unsafe { std::alloc::alloc(layout) }).unwrap();
+    NonNull::slice_from_raw_parts(base, layout.size())
 }
 
 #[cfg(any(not(unix), miri))]
 unsafe fn host_dealloc(region: NonNull<[u8]>, layout: Layout) {
-    use std::alloc::Allocator;
-    unsafe { std::alloc::System.deallocate(region.cast(), layout) }
+    // Safety: guaranteed by Layout and caller
+    unsafe { std::alloc::dealloc(region.as_ptr().cast::<u8>(), layout) }
 }

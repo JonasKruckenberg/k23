@@ -250,6 +250,10 @@ pub fn start_secondary_harts(boot_hart: usize, minfo: &MachineInfo) -> crate::Re
         }
 
         log::trace!("[{boot_hart}] starting hart {hartid}...");
+        #[expect(
+            function_casts_as_integer,
+            reason = "SBI HSM_HART_START takes the secondary hart's entry point as an integer"
+        )]
         riscv::sbi::hsm::hart_start(
             hartid,
             _start_secondary as usize,

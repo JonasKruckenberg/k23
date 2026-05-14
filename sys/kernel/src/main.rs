@@ -8,17 +8,11 @@
 #![no_std]
 #![no_main]
 #![feature(used_with_arg)]
-#![feature(thread_local, never_type)]
+#![feature(thread_local)]
 #![feature(debug_closure_helpers)]
-#![expect(internal_features, reason = "panic internals")]
-#![feature(std_internals, panic_can_unwind, formatting_options)]
-#![feature(step_trait)]
-#![feature(box_into_inner)]
-#![feature(iter_array_chunks)]
 #![feature(iter_next_chunk)]
 #![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
-#![feature(asm_unwind)]
 
 extern crate alloc;
 extern crate panic_unwind;
