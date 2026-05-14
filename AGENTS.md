@@ -53,6 +53,7 @@ After adding/removing a crate, run `just rust-project` so rust-analyzer picks up
 - **Logging:** `log` for early-boot code (loader, early kernel, crates used there); `tracing` for normal operation. Default to `log` when unsure.
 - **Docs:** every `pub` item has a doc comment. `# Errors` on public `fn`s returning `Result`; `# Panics` on those that can panic; `# Safety` on `pub unsafe fn`s (unsafe rule 2).
 - **Comments:** terse; explain non-obvious *why*, not *what*. Each comment stands on its own and describes the code as it is now — never reference removed behaviour ("used to…", "previously…"). Contributors aren't all osdev / RISC-V / compiler experts — explain low-level concepts and cite the spec section for hardware-derived constants.
+- **Lint suppression:** prefer `#[expect(lint, reason = "…")]` over `#[allow(lint, reason = "…")]`. `unfulfilled_lint_expectations` is in `DENY`, so an `expect` whose lint stops firing fails the build — forcing the suppression to be removed once the underlying issue is gone. `allow` rots silently. The `reason = "…"` field is mandatory (`clippy::allow_attributes_without_reason` is in `DENY`). Workspace lint policy lives in `build/toolchains/lints.bzl`.
 
 ## Unsafe discipline
 
