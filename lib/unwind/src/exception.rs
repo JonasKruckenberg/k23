@@ -59,7 +59,7 @@ impl Exception {
             // Safety: Caller ensures `exception` is a valid exception
             unsafe {
                 drop(Box::from_raw(exception.cast::<Exception>()));
-                tracing::error!("Rust panics must be rethrown");
+                log::error!("Rust panics must be rethrown");
                 abort();
             }
         }

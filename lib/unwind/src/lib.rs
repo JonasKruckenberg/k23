@@ -147,7 +147,7 @@ fn raise_exception_phase2(mut frames: FrameIter, exception: *mut Exception) -> R
         }
     }
 
-    tracing::trace!("reached end of stack without handler");
+    log::trace!("reached end of stack without handler");
     Err(Error::EndOfStack)
 }
 
@@ -207,7 +207,7 @@ where
         match unsafe { Exception::unwrap(exception.cast()) } {
             Ok(p) => data.p = ManuallyDrop::new(p),
             Err(err) => {
-                tracing::error!("Failed to catch exception: {err:?}");
+                log::error!("Failed to catch exception: {err:?}");
                 abort();
             }
         }
@@ -246,7 +246,7 @@ mod tests {
             .set_default();
 
         std::panic::set_hook(Box::new(|info| {
-            tracing::trace!("PANIC while unwinding {info}. Aborting...");
+            log::trace!("PANIC while unwinding {info}. Aborting...");
             std::process::exit(1);
         }));
 
