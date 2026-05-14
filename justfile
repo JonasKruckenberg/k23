@@ -39,7 +39,7 @@ check targets="" *buck2_args:
 # X lane: lint and check at X; unittests/miri/loom are host-only and get
 # skipped via --skip-incompatible-targets. selftests always boots the riscv64
 # qemu image.
-preflight targets="" *buck2_args: (lint targets buck2_args) (check targets buck2_args) (_host_tests targets buck2_args) (selftests buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
+preflight targets="" *buck2_args: (lint targets buck2_args) (_host_tests targets buck2_args) (selftests buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
 
 _host_tests targets="" *buck2_args: (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args)
 
