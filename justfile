@@ -218,7 +218,10 @@ _rustc_target(arch) := if arch == "riscv64" { "riscv64gc-unknown-none-elf" } els
 _default_query := "'//...' except '//third-party/...'"
 
 # Build a query expression from the recipe's `targets` argument.
-_targets_query(targets) := if targets == "" { _default_query } else { f"set({{targets}})" }
+# Third-party is filtered out in both branches: those targets only build under
+# the host exec config and break under non-host --target-platforms; they still
+# get built transitively as deps of first-party crates.
+_targets_query(targets) := if targets == "" { _default_query } else { f"(set({{targets}})) except '//third-party/...'" }
 
 # Refinements: each takes a query expression and returns a more specific one.
 # Proc-macros are routed via their `rust_proc_macro_alias`, which exec-configures
