@@ -20,6 +20,7 @@ pub enum Error {
     BadMagic,
     InvalidPropertyValue,
     InvalidCellSize,
+    InvalidPath,
 }
 
 impl From<core::str::Utf8Error> for Error {
@@ -56,6 +57,7 @@ impl fmt::Display for Error {
             Error::BadMagic => write!(f, "bad magic number"),
             Error::InvalidPropertyValue => write!(f, "invalid property value"),
             Error::InvalidCellSize => write!(f, "invalid cell size"),
+            Error::InvalidPath => write!(f, "invalid path"),
             Error::TryFromSlice(err) => write!(f, "failed to parse slice: {err}"),
         }
     }
