@@ -90,6 +90,12 @@ impl<'dt> Fdt<'dt> {
         let mut parser = Parser::new(data, StringsBlock(&[]), StructsBlock(&[]));
         let header = parser.parse_header()?;
 
+        if header.magic != DTB_MAGIC {
+            return Err(Error::BadMagic);
+        } else if data.len() < (header.total_size / 4) as usize {
+            return Err(Error::UnexpectedEof);
+        }
+
         let strings_end = (header.strings_offset + header.strings_size) as usize / 4;
         let structs_end = (header.structs_offset + header.structs_size) as usize / 4;
         if data.len() < strings_end || data.len() < structs_end {
@@ -120,12 +126,6 @@ impl<'dt> Fdt<'dt> {
             .get(reservations_start..reservations_end)
             .ok_or(Error::UnexpectedEof)?;
 
-        if header.magic != DTB_MAGIC {
-            return Err(Error::BadMagic);
-        } else if data.len() < (header.total_size / 4) as usize {
-            return Err(Error::UnexpectedEof);
-        }
-
         Ok(Self {
             data,
             header,
@@ -147,11 +147,14 @@ impl<'dt> Fdt<'dt> {
         // Safety: ensured by caller
         unsafe {
             let tmp_header = slice::from_raw_parts(ptr, size_of::<Header>());
-            let real_size = usize::try_from(
-                Parser::new(tmp_header, StringsBlock(&[]), StructsBlock(&[]))
-                    .parse_header()?
-                    .total_size,
-            )?;
+            let header =
+                Parser::new(tmp_header, StringsBlock(&[]), StructsBlock(&[])).parse_header()?;
+
+            if header.magic != DTB_MAGIC {
+                return Err(Error::BadMagic);
+            }
+
+            let real_size = usize::try_from(header.total_size)?;
 
             Self::new(slice::from_raw_parts(ptr, real_size))
         }
@@ -160,6 +163,13 @@ impl<'dt> Fdt<'dt> {
     pub fn as_slice(&self) -> &'dt [u8] {
         // SAFETY: it is always valid to cast a `u32` to 4 `u8`s
         unsafe { slice::from_raw_parts(self.data.as_ptr().cast::<u8>(), size_of_val(self.data)) }
+    }
+
+    /// Total size of the blob in bytes, as declared by the FDT header
+    /// (`totalsize`). This is the exact number of bytes that must be preserved
+    /// to relocate the blob.
+    pub fn total_size(&self) -> usize {
+        self.header.total_size as usize
     }
 
     /// Returns an iterator over all nodes in the tree.
@@ -177,8 +187,57 @@ impl<'dt> Fdt<'dt> {
         Ok(NodesIter { parser, depth: 0 })
     }
 
+    /// Find a node by its absolute path (e.g. `/chosen`, `/cpus/cpu@0`).
+    ///
+    /// Each segment matches a node's name; if the segment contains `@`, the
+    /// unit address must match too. Returns `Ok(None)` if no such node exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if walking the FDT fails or the path is empty / not
+    /// rooted at `/`.
+    pub fn find_node(&self, path: &str) -> Result<Option<Node<'dt>>, Error> {
+        let rest = path.strip_prefix('/').ok_or(Error::InvalidPath)?;
+        let mut segments = rest.split('/').filter(|s| !s.is_empty());
+        let mut want = segments.next().ok_or(Error::InvalidPath)?;
+
+        let mut nodes = self.nodes()?;
+        let mut target = 1;
+        while let Some((depth, node)) = nodes.next()? {
+            if depth < target {
+                return Ok(None);
+            }
+            if depth > target {
+                continue;
+            }
+            let name = node.name()?;
+            let matches = match want.split_once('@') {
+                Some((n, a)) => n == name.name && name.unit_address == Some(a),
+                None => want == name.name,
+            };
+            if !matches {
+                continue;
+            }
+            let Some(next) = segments.next() else {
+                return Ok(Some(node));
+            };
+            want = next;
+            target += 1;
+        }
+        Ok(None)
+    }
+
     pub fn properties(&self) -> PropertiesIter<'dt> {
         self.root.properties()
+    }
+
+    /// Find a property on this node by name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if walking the node's properties fails.
+    pub fn find_property(&self, name: &str) -> Result<Option<Property<'dt>>, Error> {
+        self.root.find_property(name)
     }
 
     #[must_use]
@@ -226,6 +285,15 @@ impl<'dt> Node<'dt> {
         PropertiesIter {
             parser: Parser::new(self.raw, self.strings, self.structs),
         }
+    }
+
+    /// Find a property on this node by name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if walking the node's properties fails.
+    pub fn find_property(&self, name: &str) -> Result<Option<Property<'dt>>, Error> {
+        self.properties().find(|p| Ok(p.name == name))
     }
 }
 
