@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::cmp;
-use core::num::NonZeroIsize;
 use core::range::Range;
 
 use crate::{PhysicalAddress, VirtualAddress};
@@ -16,20 +15,14 @@ use crate::{PhysicalAddress, VirtualAddress};
 /// zeroing frames of memory in the frame allocator).
 ///
 /// This region must be mapped so it is only accessible by the kernel.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PhysMap {
-    translation_offset: Option<NonZeroIsize>,
-    #[cfg(debug_assertions)]
-    range: Option<Range<u128>>,
+    translation_offset: isize,
+    range_phys: Range<PhysicalAddress>,
+    range_virt: Range<VirtualAddress>,
 }
 
 impl PhysMap {
-    pub const ABSENT: Self = Self {
-        translation_offset: None,
-        #[cfg(debug_assertions)]
-        range: None,
-    };
-
     /// Construct a new `PhysMap` from a chosen base address and the machines physical memory regions.
     /// The iterator over the memory regions must not be empty.
     ///
@@ -37,67 +30,142 @@ impl PhysMap {
     ///
     /// Panics if the iterator is empty.
     pub fn new(
-        physmap_start: VirtualAddress,
+        physmap_base: VirtualAddress,
         regions: impl IntoIterator<Item = Range<PhysicalAddress>>,
     ) -> Self {
-        let mut min_addr = PhysicalAddress::MAX;
-        let mut max_addr = PhysicalAddress::MIN;
+        let mut range_phys = Range::from(PhysicalAddress::MAX..PhysicalAddress::MIN);
 
         for region in regions {
-            min_addr = cmp::min(min_addr, region.start);
-            max_addr = cmp::max(max_addr, region.end);
+            range_phys.start = cmp::min(range_phys.start, region.start);
+            range_phys.end = cmp::max(range_phys.end, region.end);
         }
 
-        assert!(min_addr <= max_addr, "regions must not be empty");
+        assert!(!range_phys.is_empty(), "regions must not be empty");
 
         #[expect(
             clippy::cast_possible_wrap,
             reason = "this is expected to wrap when the physmap_start is lower than the lowest physical address (e.g. when it is in upper half of memory)"
         )]
-        let translation_offset =
-            NonZeroIsize::new(physmap_start.get().wrapping_sub(min_addr.get()) as isize)
-                .expect("identity-mapped physmap is not allowed");
+        let translation_offset = physmap_base.get().wrapping_sub(range_phys.start.get()) as isize;
 
-        #[cfg(debug_assertions)]
-        let range = {
-            let start = physmap_start.get() as u128;
-            let end = start + max_addr.offset_from_unsigned(min_addr) as u128;
+        let range_virt = {
+            let start =
+                VirtualAddress::new(range_phys.start.wrapping_offset(translation_offset).get());
+            let end = VirtualAddress::new(range_phys.end.wrapping_offset(translation_offset).get());
 
             Range::from(start..end)
         };
 
         Self {
-            translation_offset: Some(translation_offset),
-            #[cfg(debug_assertions)]
-            range: Some(range),
+            translation_offset,
+            range_phys,
+            range_virt,
+        }
+    }
+
+    /// Construct a new `PhysMap` that **identity maps** physical memory addresses to virtual addresses.
+    ///
+    /// The iterator over the memory regions must not be empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the iterator is empty.
+    pub fn new_identity(regions: impl IntoIterator<Item = Range<PhysicalAddress>>) -> Self {
+        let mut range_phys = Range::from(PhysicalAddress::MAX..PhysicalAddress::MIN);
+
+        for region in regions {
+            range_phys.start = cmp::min(range_phys.start, region.start);
+            range_phys.end = cmp::max(range_phys.end, region.end);
+        }
+
+        assert!(!range_phys.is_empty(), "regions must not be empty");
+
+        let range_virt = {
+            let start = VirtualAddress::new(range_phys.start.get());
+            let end = VirtualAddress::new(range_phys.end.get());
+
+            Range::from(start..end)
+        };
+
+        Self {
+            translation_offset: 0,
+            range_phys,
+            range_virt,
         }
     }
 
     /// Translates a `PhysicalAddress` to a `VirtualAddress` through this `PhysMap`.
-    #[expect(clippy::missing_panics_doc, reason = "internal assert")]
+    ///
+    /// # Panics
+    ///
+    /// Panics if `phys` is _outside_ the physical memory regions this physmap was created with.
     #[inline]
     pub fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
-        let translation_offset = self.translation_offset.map_or(0, NonZeroIsize::get);
+        debug_assert!(
+            self.range_phys.contains(&phys),
+            "invalid physical address. this is a bug! physmap={self:#x?},phys={phys:?}"
+        );
 
-        let virt = VirtualAddress::new(phys.wrapping_offset(translation_offset).get());
+        // Safety: we have checked the address to be within the physical range above
+        let virt = unsafe { self.phys_to_virt_internal(phys) };
 
-        #[cfg(debug_assertions)]
-        if let Some(range) = &self.range {
-            assert!(
-                range.start <= virt.get() as u128 && virt.get() as u128 <= range.end,
-                "physical address is not mapped in physical memory mapping. this is a bug! physmap={self:#x?},phys={phys:?},virt={virt}"
-            );
-        }
+        debug_assert!(
+            self.range_virt.contains(&virt),
+            "physical address is not mapped in physical memory mapping. this is a bug! physmap={self:#x?},phys={phys:?},virt={virt}"
+        );
 
         virt
     }
 
+    /// Translates a `Range<PhysicalAddress>` through this `PhysMap`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any address in `phys` range is _outside_ the physical memory regions this physmap was created with.
     #[inline]
     pub fn phys_to_virt_range(&self, phys: Range<PhysicalAddress>) -> Range<VirtualAddress> {
-        let start = self.phys_to_virt(phys.start);
-        let end = self.phys_to_virt(phys.end);
+        debug_assert!(
+            phys.start >= self.range_phys.start && phys.end <= self.range_phys.end,
+            "physical range out of bounds. this is a bug! physmap={self:#x?},phys={phys:?}"
+        );
 
-        Range::from(start..end)
+        let virt = {
+            // Safety: we checked the range bound to be within the physical range above
+            let start = unsafe { self.phys_to_virt_internal(phys.start) };
+            // Safety: we checked the range bound to be within the physical range above
+            let end = unsafe { self.phys_to_virt_internal(phys.end) };
+
+            Range::from(start..end)
+        };
+
+        debug_assert!(
+            virt.start >= self.range_virt.start && virt.end <= self.range_virt.end,
+            "physical address range not mapped in physical memory mapping. this is a bug! physmap={self:#x?},phys={phys:?},virt={virt:?}"
+        );
+
+        virt
+    }
+
+    /// Translates a `PhysicalAddress` to a `VirtualAddress` through this `PhysMap` _without_
+    /// doing bounds checking of the address.
+    ///
+    /// # Safety
+    ///
+    /// 1. The physical address must be contained within one of the physical memory regions this physmap was created with.
+    ///    Violating this yields a `VirtualAddress` not backed by any mapping; dereferencing it is undefined behavior.
+    #[inline]
+    unsafe fn phys_to_virt_internal(&self, phys: PhysicalAddress) -> VirtualAddress {
+        VirtualAddress::new(phys.wrapping_offset(self.translation_offset).get())
+    }
+
+    /// The virtual address range covered by this physmap.
+    pub fn range_virt(&self) -> Range<VirtualAddress> {
+        self.range_virt
+    }
+
+    /// The physical address range covered by this physmap.
+    pub fn range_phys(&self) -> Range<PhysicalAddress> {
+        self.range_phys
     }
 }
 
@@ -120,11 +188,11 @@ mod tests {
                 [Range::from_start_len(region_start, region_size)],
             );
 
-            prop_assert_eq!(map.translation_offset.unwrap().get(), base.get().wrapping_sub(region_start.get()) as isize);
+            prop_assert_eq!(map.translation_offset, base.get().wrapping_sub(region_start.get()) as isize);
             #[cfg(debug_assertions)]
             prop_assert_eq!(
-                map.range,
-                Some(Range::from(base.get() as u128..base.add(region_size).get() as u128))
+                map.range_virt(),
+                Range::from_start_len(base, region_size)
             )
         }
 
@@ -137,7 +205,7 @@ mod tests {
                 regions
             );
 
-            prop_assert_eq!(map.translation_offset.unwrap().get(), base.get().wrapping_sub(regions_start.get()) as isize);
+            prop_assert_eq!(map.translation_offset, base.get().wrapping_sub(regions_start.get()) as isize);
         }
 
         #[test]

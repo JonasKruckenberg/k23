@@ -73,7 +73,7 @@ impl<A: Arch> Machine<A> {
 
         let memory_regions: ArrayVec<_, _> = arch.machine().memory_regions().collect();
 
-        let active_physmap = PhysMap::ABSENT;
+        let active_physmap = PhysMap::new_identity(memory_regions.clone());
         let chosen_physmap = PhysMap::new(physmap_start, memory_regions.clone());
 
         let frame_allocator = BumpAllocator::new::<A>(memory_regions.clone());
