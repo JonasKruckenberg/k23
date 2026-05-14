@@ -9,15 +9,14 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use anyhow::bail;
-use cranelift_codegen::ir;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::types::{
     F32, F32X4, F64, F64X2, I8, I8X16, I16, I16X8, I32, I32X4, I64, I64X2,
 };
 use cranelift_codegen::ir::{
-    AtomicRmwOp, ConstantData, InstBuilder, JumpTableData, MemFlags, TrapCode, Type, Value,
-    ValueLabel,
+    self, AtomicRmwOp, BlockArg, ConstantData, InstBuilder, JumpTableData, MemFlagsData, TrapCode,
+    Type, Value, ValueLabel,
 };
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_frontend::{FunctionBuilder, Variable};
@@ -654,7 +653,7 @@ pub fn translate_operator(
                 CraneliftGlobal::Const(val) => val,
                 CraneliftGlobal::Memory { gv, offset, ty } => {
                     let addr = builder.ins().global_value(env.pointer_type(), gv);
-                    let mut flags = MemFlags::trusted();
+                    let mut flags = MemFlagsData::trusted();
                     // Put globals in the "table" abstract mem category as well.
                     flags.set_alias_region(Some(ir::AliasRegion::Table));
                     builder.ins().load(ty, flags, addr, offset)
@@ -671,7 +670,7 @@ pub fn translate_operator(
                 CraneliftGlobal::Const(_) => panic!("global #{global_index:?} is a constant"),
                 CraneliftGlobal::Memory { gv, offset, ty } => {
                     let addr = builder.ins().global_value(env.pointer_type(), gv);
-                    let mut flags = MemFlags::trusted();
+                    let mut flags = MemFlagsData::trusted();
                     // Put globals in the "table" abstract mem category as well.
                     flags.set_alias_region(Some(ir::AliasRegion::Table));
                     let mut val = state.pop1();
@@ -902,19 +901,19 @@ pub fn translate_operator(
         }
         Operator::F32ReinterpretI32 => {
             let val = state.pop1();
-            state.push1(builder.ins().bitcast(F32, MemFlags::new(), val));
+            state.push1(builder.ins().bitcast(F32, MemFlagsData::new(), val));
         }
         Operator::F64ReinterpretI64 => {
             let val = state.pop1();
-            state.push1(builder.ins().bitcast(F64, MemFlags::new(), val));
+            state.push1(builder.ins().bitcast(F64, MemFlagsData::new(), val));
         }
         Operator::I32ReinterpretF32 => {
             let val = state.pop1();
-            state.push1(builder.ins().bitcast(I32, MemFlags::new(), val));
+            state.push1(builder.ins().bitcast(I32, MemFlagsData::new(), val));
         }
         Operator::I64ReinterpretF64 => {
             let val = state.pop1();
-            state.push1(builder.ins().bitcast(I64, MemFlags::new(), val));
+            state.push1(builder.ins().bitcast(I64, MemFlagsData::new(), val));
         }
 
         // comparison operators
@@ -2306,7 +2305,7 @@ pub fn translate_operator(
                     // of the wasm `v128.bitselect` instruction.
                     builder.ins().bitselect(c, a, b)
                 } else {
-                    builder.ins().x86_blendv(c, a, b)
+                    builder.ins().blendv(c, a, b)
                 },
             );
         }
@@ -3190,7 +3189,7 @@ fn optionally_bitcast_vector(
     builder: &mut FunctionBuilder,
 ) -> Value {
     if builder.func.dfg.value_type(value) != needed_type {
-        let mut flags = MemFlags::new();
+        let mut flags = MemFlagsData::new();
         flags.set_endianness(ir::Endianness::Little);
         builder.ins().bitcast(needed_type, flags, value)
     } else {
@@ -3203,48 +3202,37 @@ fn is_non_canonical_v128(ty: Type) -> bool {
     matches!(ty, I64X2 | I32X4 | I16X8 | F32X4 | F64X2)
 }
 
-/// Cast to I8X16, any vector values in `values` that are of "non-canonical" type (meaning, not
-/// I8X16), and return them in a slice.  A pre-scan is made to determine whether any casts are
-/// actually necessary, and if not, the original slice is returned.  Otherwise the cast values
-/// are returned in a slice that belongs to the caller-supplied `SmallVec`.
-fn canonicalise_v128_values<'a>(
-    tmp_canonicalised: &'a mut SmallVec<[Value; 16]>,
+/// Append each value in `values` to `out` as a `BlockArg`, casting any 128-bit vector values
+/// of "non-canonical" type (meaning, not I8X16) to I8X16 first. Appends rather than overwrites
+/// so the same `out` buffer can be filled with multiple parameter lists back-to-back.
+fn canonicalise_v128_values(
+    out: &mut SmallVec<[BlockArg; 16]>,
     builder: &mut FunctionBuilder,
-    values: &'a [Value],
-) -> &'a [Value] {
-    debug_assert!(tmp_canonicalised.is_empty());
-    // First figure out if any of the parameters need to be cast.  Mostly they don't need to be.
-    let any_non_canonical = values
-        .iter()
-        .any(|v| is_non_canonical_v128(builder.func.dfg.value_type(*v)));
-    // Hopefully we take this exit most of the time, hence doing no mem allocation.
-    if !any_non_canonical {
-        return values;
+    values: &[Value],
+) {
+    for &v in values {
+        out.push(BlockArg::Value(
+            if is_non_canonical_v128(builder.func.dfg.value_type(v)) {
+                let mut flags = MemFlagsData::new();
+                flags.set_endianness(ir::Endianness::Little);
+                builder.ins().bitcast(I8X16, flags, v)
+            } else {
+                v
+            },
+        ));
     }
-    // Otherwise we'll have to cast, and push the resulting `Value`s into `canonicalised`.
-    for v in values {
-        tmp_canonicalised.push(if is_non_canonical_v128(builder.func.dfg.value_type(*v)) {
-            let mut flags = MemFlags::new();
-            flags.set_endianness(ir::Endianness::Little);
-            builder.ins().bitcast(I8X16, flags, *v)
-        } else {
-            *v
-        });
-    }
-    tmp_canonicalised.as_slice()
 }
 
 /// Generate a `jump` instruction, but first cast all 128-bit vector values to I8X16 if they
-/// don't have that type.  This is done in somewhat roundabout way so as to ensure that we
-/// almost never have to do any mem allocation.
+/// don't have that type.
 fn canonicalise_then_jump(
     builder: &mut FunctionBuilder,
     destination: ir::Block,
     params: &[Value],
 ) -> ir::Inst {
-    let mut tmp_canonicalised = SmallVec::<[Value; 16]>::new();
-    let canonicalised = canonicalise_v128_values(&mut tmp_canonicalised, builder, params);
-    builder.ins().jump(destination, canonicalised)
+    let mut args = SmallVec::<[BlockArg; 16]>::new();
+    canonicalise_v128_values(&mut args, builder, params);
+    builder.ins().jump(destination, &args)
 }
 
 /// The same but for a `brif` instruction.
@@ -3256,19 +3244,13 @@ fn canonicalise_brif(
     block_else: ir::Block,
     params_else: &[Value],
 ) -> ir::Inst {
-    let mut tmp_canonicalised_then = SmallVec::<[Value; 16]>::new();
-    let canonicalised_then =
-        canonicalise_v128_values(&mut tmp_canonicalised_then, builder, params_then);
-    let mut tmp_canonicalised_else = SmallVec::<[Value; 16]>::new();
-    let canonicalised_else =
-        canonicalise_v128_values(&mut tmp_canonicalised_else, builder, params_else);
-    builder.ins().brif(
-        cond,
-        block_then,
-        canonicalised_then,
-        block_else,
-        canonicalised_else,
-    )
+    let mut args = SmallVec::<[BlockArg; 16]>::new();
+    canonicalise_v128_values(&mut args, builder, params_then);
+    canonicalise_v128_values(&mut args, builder, params_else);
+    let (then_args, else_args) = args.split_at(params_then.len());
+    builder
+        .ins()
+        .brif(cond, block_then, then_args, block_else, else_args)
 }
 
 /// A helper for popping and bitcasting a single value; since SIMD values can lose their type by
@@ -3358,7 +3340,7 @@ pub fn bitcast_wasm_returns(
         env.is_wasm_return(&builder.func.signature, i)
     });
     for (t, arg) in changes {
-        let mut flags = MemFlags::new();
+        let mut flags = MemFlagsData::new();
         flags.set_endianness(ir::Endianness::Little);
         *arg = builder.ins().bitcast(t, flags, *arg);
     }
@@ -3376,7 +3358,7 @@ fn bitcast_wasm_params(
         env.is_wasm_parameter(i)
     });
     for (t, arg) in changes {
-        let mut flags = MemFlags::new();
+        let mut flags = MemFlagsData::new();
         flags.set_endianness(ir::Endianness::Little);
         *arg = builder.ins().bitcast(t, flags, *arg);
     }

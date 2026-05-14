@@ -15,7 +15,7 @@ use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{
-    Endianness, GlobalValueData, InstBuilder, MemFlags, Signature, Type, UserExternalName,
+    Endianness, GlobalValueData, InstBuilder, MemFlagsData, Signature, Type, UserExternalName,
     UserFuncName, Value,
 };
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
@@ -93,7 +93,7 @@ impl CraneliftCompiler {
         // Builtins are stored in an array in all `VMContext`s. First load the
         // base pointer of the array and then load the entry of the array that
         // corresponds to this builtin.
-        let mem_flags = ir::MemFlags::trusted().with_readonly();
+        let mem_flags = ir::MemFlagsData::trusted().with_readonly();
         let array_addr = builder.ins().load(
             pointer_type,
             mem_flags,
@@ -186,13 +186,13 @@ impl Compiler for CraneliftCompiler {
             base: vmctx,
             offset: Offset32::new(i32::from(StaticVMShape.vmctx_store_context())),
             global_type: isa.pointer_type(),
-            flags: MemFlags::trusted().with_readonly(),
+            flags: MemFlagsData::trusted().with_readonly(),
         });
         let stack_limit = context.func.create_global_value(ir::GlobalValueData::Load {
             base: store_context,
             offset: Offset32::new(u32_offset_of!(VMStoreContext, stack_limit) as i32),
             global_type: isa.pointer_type(),
-            flags: MemFlags::trusted(),
+            flags: MemFlagsData::trusted(),
         });
         context.func.stack_limit = Some(stack_limit);
 
@@ -255,12 +255,12 @@ impl Compiler for CraneliftCompiler {
         let fp = builder.ins().get_frame_pointer(pointer_type);
         let vm_store_context = builder.ins().load(
             pointer_type,
-            MemFlags::trusted(),
+            MemFlagsData::trusted(),
             vmctx,
             StaticVMShape.vmctx_store_context(),
         );
         builder.ins().store(
-            MemFlags::trusted(),
+            MemFlagsData::trusted(),
             fp,
             vm_store_context,
             Offset32::new(u32_offset_of!(VMStoreContext, last_wasm_entry_fp) as i32),
@@ -315,7 +315,7 @@ impl Compiler for CraneliftCompiler {
         // We are exiting Wasm, so save our PC and FP.
         let vm_store_context = builder.ins().load(
             pointer_type,
-            MemFlags::trusted(),
+            MemFlagsData::trusted(),
             caller_vmctx,
             StaticVMShape.vmctx_store_context(),
         );
@@ -333,7 +333,7 @@ impl Compiler for CraneliftCompiler {
         // Load the array call address from the `HostContext`
         let callee = builder.ins().load(
             pointer_type,
-            MemFlags::trusted(),
+            MemFlagsData::trusted(),
             callee_vmctx,
             i32::try_from(
                 u32_offset_of!(VMArrayCallHostFuncContext, func_ref)
@@ -381,7 +381,7 @@ impl Compiler for CraneliftCompiler {
         let host_sig = sigs.host_signature(index);
 
         let mut compiler = self.function_compiler();
-        let func = ir::Function::with_name_signature(UserFuncName::default(), wasm_sig.clone());
+        let func = ir::Function::with_name_signature(UserFuncName::default(), wasm_sig);
         let (mut builder, block0) = compiler.builder(func);
         let vmctx = builder.block_params(block0)[0];
 
@@ -391,7 +391,7 @@ impl Compiler for CraneliftCompiler {
         debug_assert_vmctx_kind(isa, &mut builder, vmctx, VMCONTEXT_MAGIC);
         let vm_store_context = builder.ins().load(
             pointer_type,
-            MemFlags::trusted(),
+            MemFlagsData::trusted(),
             vmctx,
             StaticVMShape.vmctx_store_context(),
         );
@@ -540,6 +540,7 @@ fn declare_and_call(
         name,
         signature,
         colocated: true,
+        patchable: false,
     });
     builder.ins().call(callee, args)
 }
@@ -556,12 +557,12 @@ fn save_last_wasm_exit_fp_and_pc(
     let trampoline_fp = builder.ins().get_frame_pointer(pointer_type);
     let wasm_fp = builder.ins().load(
         pointer_type,
-        MemFlags::trusted(),
+        MemFlagsData::trusted(),
         trampoline_fp,
         i32::try_from(arch::NEXT_OLDER_FP_FROM_FP_OFFSET).unwrap(),
     );
     builder.ins().store(
-        MemFlags::trusted(),
+        MemFlagsData::trusted(),
         wasm_fp,
         vm_store,
         u32_offset_of!(VMStoreContext, last_wasm_exit_fp) as i32,
@@ -569,7 +570,7 @@ fn save_last_wasm_exit_fp_and_pc(
     // Finally save the Wasm return address to the limits.
     let wasm_pc = builder.ins().get_return_address(pointer_type);
     builder.ins().store(
-        MemFlags::trusted(),
+        MemFlagsData::trusted(),
         wasm_pc,
         vm_store,
         u32_offset_of!(VMStoreContext, last_wasm_exit_pc) as i32,
@@ -625,7 +626,7 @@ fn load_values_from_array(
 
     // Note that this is little-endian like `store_values_to_array` above,
     // see notes there for more information.
-    let flags = MemFlags::new()
+    let flags = MemFlagsData::new()
         .with_notrap()
         .with_endianness(Endianness::Little);
 
@@ -659,7 +660,7 @@ fn store_values_to_array(
     debug_assert_eq!(types.len(), values.len());
     debug_assert_enough_capacity_for_length(builder, types.len(), values_vec_capacity);
 
-    let flags = MemFlags::new()
+    let flags = MemFlagsData::new()
         .with_notrap()
         .with_endianness(Endianness::Little);
 
@@ -698,7 +699,7 @@ fn debug_assert_vmctx_kind(
     if cfg!(debug_assertions) {
         let magic = builder.ins().load(
             ir::types::I32,
-            MemFlags::trusted().with_endianness(isa.endianness()),
+            MemFlagsData::trusted().with_endianness(isa.endianness()),
             vmctx,
             0i32,
         );
