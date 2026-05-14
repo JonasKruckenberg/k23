@@ -319,7 +319,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     /// After insertion the leaf position will be unchanged.
     #[inline]
     fn insert(&mut self, range: RangeInclusive<I>, value: V) {
-        let pivot = int_from_pivot(range.end);
+        let pivot = int_from_pivot(range.last);
         let (node, insert_pos) = self.stack[Height::LEAF];
 
         let prev_pivot = unsafe { node.pivot(insert_pos, &self.tree.leaf) };
@@ -518,7 +518,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     /// Panics if the cursor is pointing to the end of the tree.
     #[inline]
     fn replace(&mut self, range: RangeInclusive<I>, value: V) -> (RangeInclusive<I>, V) {
-        let pivot = int_from_pivot(range.end);
+        let pivot = int_from_pivot(range.last);
 
         let (node, pos) = self.stack[Height::LEAF];
         let old_pivot = unsafe { node.pivot(pos, &self.tree.leaf) };
@@ -547,7 +547,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
 
         let range = RangeInclusive {
             start: old_start,
-            end: old_pivot,
+            last: old_pivot,
         };
         (range, old_value)
     }
@@ -667,7 +667,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         #[cfg(debug_assertions)]
         self.assert_valid();
 
-        let range = RangeInclusive { start, end: pivot };
+        let range = RangeInclusive { start, last: pivot };
         (range, value)
     }
 
@@ -1055,7 +1055,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
 
             let range = RangeInclusive {
                 start: *start,
-                end: pivot,
+                last: pivot,
             };
             (range, value)
         })
@@ -1172,7 +1172,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
 
             let range = RangeInclusive {
                 start: *start,
-                end: pivot,
+                last: pivot,
             };
             (range, value)
         })
@@ -1189,7 +1189,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
 
             let range = RangeInclusive {
                 start: *start,
-                end: pivot,
+                last: pivot,
             };
             (range, value)
         })

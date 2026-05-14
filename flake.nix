@@ -210,6 +210,14 @@
                 install -Dm755 supertd "$out/bin/supertd"
               '';
             };
+          # Upstream reindeer's rlimit test fails on Darwin sandboxes
+          # where the soft RLIMIT_NOFILE starts above the hard limit.
+          reindeer = pkgs.reindeer.overrideAttrs (old: {
+            checkFlags = (old.checkFlags or [ ]) ++ [
+              "--skip=rlimit::tests::raise_does_not_lower_limit"
+            ];
+          });
+
           # Tools every current CI job needs. Anything outside this list
           # is interactive-only; keeping it small shrinks the closure that
           # cold CI runners have to fetch and realise.

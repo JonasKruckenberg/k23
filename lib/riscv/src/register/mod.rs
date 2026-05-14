@@ -197,7 +197,14 @@ macro_rules! set_clear_csr_field {
     }
 }
 
-pub(crate) use {
-    clear_csr, clear_csr_field, read_composite_csr, read_csr, read_csr_as, read_csr_as_usize,
-    set_clear_csr_field, set_csr, set_csr_field, write_csr, write_csr_as_usize,
-};
+pub(crate) use clear_csr;
+pub(crate) use clear_csr_field;
+pub(crate) use read_composite_csr;
+pub(crate) use read_csr;
+pub(crate) use read_csr_as;
+pub(crate) use read_csr_as_usize;
+pub(crate) use set_clear_csr_field;
+pub(crate) use set_csr;
+pub(crate) use set_csr_field;
+pub(crate) use write_csr;
+pub(crate) use write_csr_as_usize;
