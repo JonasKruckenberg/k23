@@ -43,11 +43,11 @@ pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
         match raise_exception_phase2(frames, exception) {
             Ok(_) => {}
             Err(Error::EndOfStack) => {
-                tracing::error!("Uncaught exception");
+                log::error!("Uncaught exception");
                 abort();
             }
             Err(err) => {
-                tracing::error!("Failed to resume exception: {err:?}");
+                log::error!("Failed to resume exception: {err:?}");
                 abort()
             }
         }

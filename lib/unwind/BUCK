@@ -7,7 +7,7 @@ rust_library(
         "//third-party:cfg-if",
         "//third-party:gimli",
         "//third-party:fallible-iterator",
-        "//third-party:tracing",
+        "//third-party:log",
     ],
     visibility = ["PUBLIC"],
 )

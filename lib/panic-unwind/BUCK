@@ -6,7 +6,7 @@ rust_library(
         "//lib/spin:spin",
         "//lib/cpu-local:cpu-local",
         "//lib/abort:abort",
-        "//third-party:tracing",
+        "//third-party:log",
     ],
     visibility = ["PUBLIC"],
 )

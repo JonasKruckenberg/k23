@@ -222,5 +222,5 @@ pub fn take_hook() -> fn(&PanicHookInfo<'_>) {
 
 /// The default panic handler.
 pub(crate) fn default_hook(info: &PanicHookInfo<'_>) {
-    tracing::error!("{info}");
+    log::error!("{info}");
 }
