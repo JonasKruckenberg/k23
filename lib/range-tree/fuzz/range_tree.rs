@@ -1,5 +1,4 @@
 #![feature(allocator_api)]
-#![feature(new_range_api)]
 #![feature(range_bounds_is_empty)]
 #![no_main]
 
@@ -65,7 +64,7 @@ enum Action<Index, Value> {
     Clear,
     Insert {
         start: Index,
-        end: Index,
+        last: Index,
         value: Value,
     },
     Get(Index),
@@ -89,7 +88,7 @@ enum CursorMutAction<Index, Value> {
     Prev,
     Insert {
         start: Index,
-        end: Index,
+        last: Index,
         value: Value,
     },
     Replace(Value),
@@ -143,23 +142,23 @@ fn run<
                 tree.clear();
                 vec.clear();
             }
-            Action::Insert { start, end, value } => {
-                let res = tree.insert(RangeInclusive { start, end }, value);
+            Action::Insert { start, last, value } => {
+                let res = tree.insert(RangeInclusive { start, last }, value);
 
-                let index = vec.partition_point(|(range, _v)| range.end < end);
+                let index = vec.partition_point(|(range, _v)| range.last < last);
 
-                if index != vec.len() && vec[index].0.start < end {
+                if index != vec.len() && vec[index].0.start < last {
                     assert_eq!(res, Err(OverlapError));
-                } else if index != 0 && vec[index - 1].0.end > start {
+                } else if index != 0 && vec[index - 1].0.last > start {
                     assert_eq!(res, Err(OverlapError));
                 } else {
-                    vec.insert(index, (RangeInclusive { start, end }, value));
+                    vec.insert(index, (RangeInclusive { start, last }, value));
                     assert_eq!(res, Ok(()));
                 }
             }
             Action::Get(search) => {
                 let value = tree.get(search);
-                let index = vec.partition_point(|(range, _v)| range.end < search);
+                let index = vec.partition_point(|(range, _v)| range.last < search);
 
                 if index != vec.len() && vec[index].0.start <= search {
                     assert_eq!(value, Some(&vec[index].1));
@@ -169,7 +168,7 @@ fn run<
             }
             Action::Remove(search) => {
                 let value = tree.remove(search);
-                let index = vec.partition_point(|(range, _v)| range.end < search);
+                let index = vec.partition_point(|(range, _v)| range.last < search);
 
                 if index != vec.len() && vec[index].0.start <= search {
                     assert_eq!(value, Some(vec[index].1));
@@ -186,21 +185,23 @@ fn run<
                 let entries: Vec<_> = range.map(|(k, &v)| (k, v)).collect();
                 let start = match start {
                     Bound::Unbounded => 0,
-                    Bound::Included(start) => vec.partition_point(|(range, _v)| range.end < start),
-                    Bound::Excluded(start) => vec.partition_point(|(range, _v)| range.end <= start),
+                    Bound::Included(start) => vec.partition_point(|(range, _v)| range.last < start),
+                    Bound::Excluded(start) => {
+                        vec.partition_point(|(range, _v)| range.last <= start)
+                    }
                 };
                 let end = match end {
                     Bound::Unbounded => vec.len(),
-                    Bound::Included(end) => vec.partition_point(|(range, _v)| range.end <= end),
-                    Bound::Excluded(end) => vec.partition_point(|(range, _v)| range.end < end),
+                    Bound::Included(end) => vec.partition_point(|(range, _v)| range.last <= end),
+                    Bound::Excluded(end) => vec.partition_point(|(range, _v)| range.last < end),
                 };
                 assert_eq!(vec[start.min(end)..end], entries);
             }
             Action::Iter(from) => {
                 let index = match from {
                     Bound::Unbounded => 0,
-                    Bound::Included(from) => vec.partition_point(|(r, _v)| r.end < from),
-                    Bound::Excluded(from) => vec.partition_point(|(r, _v)| r.end <= from),
+                    Bound::Included(from) => vec.partition_point(|(r, _v)| r.last < from),
+                    Bound::Excluded(from) => vec.partition_point(|(r, _v)| r.last <= from),
                 };
                 let entries: Vec<_> = tree.iter_from(from).map(|(k, &v)| (k, v)).collect();
                 assert_eq!(entries, vec[index..]);
@@ -214,7 +215,7 @@ fn run<
                     .scan(Some(Bound::Unbounded), |prev_end, (range, _v)| {
                         let gap = ((*prev_end)?, Bound::Excluded(range.start));
 
-                        *prev_end = range.end.checked_increment().map(Bound::Included);
+                        *prev_end = range.last.checked_increment().map(Bound::Included);
 
                         Some(gap)
                     })
@@ -223,7 +224,7 @@ fn run<
                 // add the final gap at the end. either between the last range and MAX or
                 // if no ranges exists the gap between ZERO and MAX
                 if let Some((last_range, _)) = vec.last() {
-                    if let Some(end) = last_range.end.checked_increment() {
+                    if let Some(end) = last_range.last.checked_increment() {
                         expected_gaps.push((Bound::Included(end), Bound::Unbounded));
                     }
                 } else {
@@ -241,8 +242,8 @@ fn run<
                         tree.cursor_at(at),
                         match at {
                             Bound::Unbounded => vec.len(),
-                            Bound::Included(at) => vec.partition_point(|(r, _v)| r.end < at),
-                            Bound::Excluded(at) => vec.partition_point(|(r, _v)| r.end <= at),
+                            Bound::Included(at) => vec.partition_point(|(r, _v)| r.last < at),
+                            Bound::Excluded(at) => vec.partition_point(|(r, _v)| r.last <= at),
                         },
                     )
                 } else {
@@ -280,8 +281,8 @@ fn run<
                         tree.cursor_mut_at(at),
                         match at {
                             Bound::Unbounded => vec.len(),
-                            Bound::Included(at) => vec.partition_point(|(r, _v)| r.end < at),
-                            Bound::Excluded(at) => vec.partition_point(|(r, _v)| r.end <= at),
+                            Bound::Included(at) => vec.partition_point(|(r, _v)| r.last < at),
+                            Bound::Excluded(at) => vec.partition_point(|(r, _v)| r.last <= at),
                         },
                     )
                 } else {
@@ -306,29 +307,29 @@ fn run<
                                 index -= 1;
                             }
                         }
-                        CursorMutAction::Insert { start, end, value } => {
+                        CursorMutAction::Insert { start, last, value } => {
                             // The new entry lands at vec[index]. The model vec is sorted by
                             // `.end` (every other action's partition_point relies on this), so
                             // we need vec[index-1].end <= end <= vec[index].end whenever those
                             // neighbors exist. When the fuzzer's range satisfies that, use it
                             // directly. Otherwise duplicate a neighbor's range — sortedness is
                             // trivially preserved and the multimap-insert path stays covered.
-                            let lo_ok = index == 0 || vec[index - 1].0.end <= end;
-                            let hi_ok = index == vec.len() || end <= vec[index].0.end;
+                            let lo_ok = index == 0 || vec[index - 1].0.last <= last;
+                            let hi_ok = index == vec.len() || last <= vec[index].0.last;
                             let range = if lo_ok && hi_ok {
-                                RangeInclusive { start, end }
+                                RangeInclusive { start, last }
                             } else if index == vec.len() {
-                                vec[index - 1].0.clone()
+                                vec[index - 1].0
                             } else {
-                                vec[index].0.clone()
+                                vec[index].0
                             };
                             cursor.insert(range, value);
                             vec.insert(index, (range, value));
                         }
                         CursorMutAction::Replace(value) => {
                             if index != vec.len() {
-                                let entry = cursor.replace(vec[index].0.clone(), value);
-                                let vec_entry = vec[index].clone();
+                                let entry = cursor.replace(vec[index].0, value);
+                                let vec_entry = vec[index];
                                 assert_eq!(entry, vec_entry);
                                 vec[index].1 = value;
                             }

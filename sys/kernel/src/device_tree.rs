@@ -414,10 +414,12 @@ impl<'arena> Device<'arena> {
     pub fn interrupts(self, devtree: &'arena DeviceTree) -> Option<Interrupts<'arena>> {
         let prop = self.property(devtree, "interrupts")?;
         let parent = self.interrupt_parent(devtree)?;
+        let (chunks, rest) = prop.raw.as_chunks::<4>();
+        debug_assert!(rest.is_empty());
         Some(Interrupts {
             parent,
             parent_cells: parent.interrupt_cells(devtree)?,
-            raw: prop.raw.array_chunks::<4>().map(|b| u32::from_be_bytes(*b)),
+            raw: chunks.iter().copied().map(u32::from_be_bytes),
         })
     }
 
@@ -427,9 +429,11 @@ impl<'arena> Device<'arena> {
         devtree: &'arena DeviceTree,
     ) -> Option<InterruptsExtended<'arena>> {
         let prop = self.property(devtree, "interrupts-extended")?;
+        let (chunks, rest) = prop.raw.as_chunks::<4>();
+        debug_assert!(rest.is_empty());
         Some(InterruptsExtended {
             devtree,
-            raw: prop.raw.array_chunks::<4>().map(|b| u32::from_be_bytes(*b)),
+            raw: chunks.iter().copied().map(u32::from_be_bytes),
         })
     }
 }
@@ -614,7 +618,7 @@ pub enum IrqSource {
 pub struct Interrupts<'a> {
     parent: Device<'a>,
     parent_cells: usize,
-    raw: iter::Map<slice::ArrayChunks<'a, u8, 4>, fn(&[u8; 4]) -> u32>,
+    raw: iter::Map<iter::Copied<slice::Iter<'a, [u8; 4]>>, fn([u8; 4]) -> u32>,
 }
 impl<'a> Iterator for Interrupts<'a> {
     type Item = (Device<'a>, IrqSource);
@@ -630,7 +634,7 @@ impl<'a> Iterator for Interrupts<'a> {
 #[expect(clippy::type_complexity, reason = "this is not thaaat complex")]
 pub struct InterruptsExtended<'a> {
     devtree: &'a DeviceTree,
-    raw: iter::Map<slice::ArrayChunks<'a, u8, 4>, fn(&[u8; 4]) -> u32>,
+    raw: iter::Map<iter::Copied<slice::Iter<'a, [u8; 4]>>, fn([u8; 4]) -> u32>,
 }
 impl<'a> Iterator for InterruptsExtended<'a> {
     type Item = (Device<'a>, IrqSource);

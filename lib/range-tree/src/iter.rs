@@ -105,7 +105,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Iter<'a, I, V, A> {
 
                 let range = RangeInclusive {
                     start: *start,
-                    end: I::from_int(end),
+                    last: I::from_int(end),
                 };
                 (range, value)
             })
@@ -142,7 +142,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for IterMut<'a, I, V, A> {
 
                 let range = RangeInclusive {
                     start: *start,
-                    end: I::from_int(end),
+                    last: I::from_int(end),
                 };
                 (range, value)
             })
@@ -171,7 +171,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> Iterator for IntoIter<I, V, A> {
 
                 let range = RangeInclusive {
                     start,
-                    end: I::from_int(end),
+                    last: I::from_int(end),
                 };
                 (range, value)
             })
@@ -224,7 +224,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Ranges<'a, I, V, A> {
 
                 RangeInclusive {
                     start: *start,
-                    end: I::from_int(end),
+                    last: I::from_int(end),
                 }
             })
         }
@@ -322,7 +322,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Range<'a, I, V, A> {
 
                 let range = RangeInclusive {
                     start: *start,
-                    end: I::from_int(end),
+                    last: I::from_int(end),
                 };
                 (range, value)
             })
@@ -365,7 +365,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for RangeMut<'a, I, V, A> 
 
                 let range = RangeInclusive {
                     start: *start,
-                    end: I::from_int(end),
+                    last: I::from_int(end),
                 };
                 (range, value)
             })
@@ -389,7 +389,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Gaps<'a, I, V, A> {
             let gap = if let Some(range) = self.inner.next() {
                 let gap = (prev_end, Bound::Excluded(range.start));
 
-                self.prev_end = pivot_from_int(I::Int::increment(int_from_pivot(range.end)))
+                self.prev_end = pivot_from_int(I::Int::increment(int_from_pivot(range.last)))
                     .map(Bound::Included);
 
                 gap

@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::fmt;
 use core::time::Duration;
+use core::{fmt, ptr};
 
 use crate::time::max_duration;
 
@@ -190,7 +190,7 @@ impl Drop for Clock {
 
 impl fmt::Debug for Clock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let vtable_ptr = self.clock.vtable as *const RawClockVTable;
+        let vtable_ptr = ptr::from_ref(self.clock.vtable);
         f.debug_struct("Waker")
             .field("name", &self.name)
             .field("tick_duration", &self.tick_duration)

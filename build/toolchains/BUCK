@@ -107,7 +107,7 @@ rust_library(
     crate = "compiler-builtins",
     srcs = [":rust_toolchain"],
     crate_root = "out.link/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/lib.rs",
-    features = ["compiler-builtins", "mem"],
+    features = ["compiler-builtins", "mem", "unmangled-names"],
     deps = [
         ":rust_core"
     ],

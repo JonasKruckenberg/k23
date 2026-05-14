@@ -70,7 +70,9 @@ macro_rules! u32_offset_of {
     };
 }
 
-pub(crate) use {enum_accessors, owned_enum_accessors, u32_offset_of};
+pub(crate) use enum_accessors;
+pub(crate) use owned_enum_accessors;
+pub(crate) use u32_offset_of;
 
 pub fn value_type(ty: &WasmValType, pointer_type: ir::Type) -> ir::Type {
     match ty {

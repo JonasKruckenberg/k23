@@ -2,7 +2,6 @@
 
 #![cfg_attr(not(test), no_std)]
 #![feature(allocator_api)]
-#![feature(new_range_api)]
 #![warn(missing_docs)]
 #![expect(
     clippy::undocumented_unsafe_blocks,
@@ -266,12 +265,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
 
         // Safety: we immediately initialize the cursor below
         let mut cursor = unsafe { CursorMut::uninit(self) };
-        cursor.seek(int_from_pivot(range.end));
+        cursor.seek(int_from_pivot(range.last));
 
         if let Some((existing, _)) = cursor.entry()
             && I::Int::cmp(
                 existing.start.to_int().to_raw(),
-                range.end.to_int().to_raw(),
+                range.last.to_int().to_raw(),
             )
             .is_lt()
         {
@@ -280,7 +279,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
 
         if cursor.prev() {
             if let Some((prev, _)) = cursor.entry()
-                && I::Int::cmp(prev.end.to_int().to_raw(), range.start.to_int().to_raw()).is_gt()
+                && I::Int::cmp(prev.last.to_int().to_raw(), range.start.to_int().to_raw()).is_gt()
             {
                 // Overlap detected: previous range ends after new range starts
                 return Err(OverlapError);

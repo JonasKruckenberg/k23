@@ -14,10 +14,8 @@
 #![feature(std_internals, panic_can_unwind, formatting_options)]
 #![feature(step_trait)]
 #![feature(box_into_inner)]
-#![feature(array_chunks)]
 #![feature(iter_array_chunks)]
 #![feature(iter_next_chunk)]
-#![feature(if_let_guard)]
 #![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 #![feature(asm_unwind)]

@@ -15,9 +15,6 @@
   "tls-model": "local-exec",
   "position-independent-executables": true,
   "relro-level": "full",
-  "supported-sanitizers": [
-    "shadow-call-stack",
-    "kernel-address"
-  ],
-  "target-pointer-width": "64"
+  "supported-sanitizers": ["shadow-call-stack", "kernel-address"],
+  "target-pointer-width": 64
 }
