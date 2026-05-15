@@ -53,13 +53,13 @@ jobs:
           purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: impacted-targets
       # Always restore the latest baseline so PRs compare against main.
       # Saving is gated to push-on-main below so PRs cannot poison the baseline.
       - name: restore criterion baseline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: bench
           key: bench-${{ github.sha }}
@@ -68,7 +68,7 @@ jobs:
       - run: ./.github/workflows/run-filtered.sh benchmark '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
       - name: save criterion baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: bench
           key: bench-${{ github.sha }}
