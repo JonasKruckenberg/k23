@@ -124,6 +124,24 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "allocator-api2-0.4.0.crate",
+    sha256 = "c880a97d28a3681c0267bd29cff89621202715b065127cd445fa0f0fe0aa2880",
+    strip_prefix = "allocator-api2-0.4.0",
+    urls = ["https://static.crates.io/crates/allocator-api2/0.4.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "allocator-api2-0.4.0",
+    srcs = [":allocator-api2-0.4.0.crate"],
+    crate = "allocator_api2",
+    crate_root = "allocator-api2-0.4.0.crate/src/lib.rs",
+    edition = "2018",
+    features = ["alloc"],
+    visibility = [],
+)
+
+http_archive(
     name = "anes-0.1.6.crate",
     sha256 = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299",
     strip_prefix = "anes-0.1.6",
@@ -4216,30 +4234,30 @@ cargo.rust_library(
 
 alias(
     name = "talc",
-    actual = ":talc-4.4.3",
+    actual = ":talc-5.0.3",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "talc-4.4.3.crate",
-    sha256 = "a3ae828aa394de34c7de08f522d1b86bd1c182c668d27da69caadda00590f26d",
-    strip_prefix = "talc-4.4.3",
-    urls = ["https://static.crates.io/crates/talc/4.4.3/download"],
+    name = "talc-5.0.3.crate",
+    sha256 = "3081e3f3ad542dc4cd0ae720f752598f8880fd364dc2d031132e3509f673aa23",
+    strip_prefix = "talc-5.0.3",
+    urls = ["https://static.crates.io/crates/talc/5.0.3/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "talc-4.4.3",
-    srcs = [":talc-4.4.3.crate"],
+    name = "talc-5.0.3",
+    srcs = [":talc-5.0.3.crate"],
     crate = "talc",
-    crate_root = "talc-4.4.3.crate/src/lib.rs",
+    crate_root = "talc-5.0.3.crate/src/lib.rs",
     edition = "2021",
-    features = [
-        "counters",
-        "lock_api",
-    ],
+    features = ["counters"],
     visibility = [],
-    deps = [":lock_api-0.4.14"],
+    deps = [
+        ":allocator-api2-0.4.0",
+        ":lock_api-0.4.14",
+    ],
 )
 
 alias(
