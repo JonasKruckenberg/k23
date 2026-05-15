@@ -35,11 +35,11 @@ jobs:
           purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: impacted-targets
       - name: restore fuzz corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
@@ -48,7 +48,7 @@ jobs:
       - run: ./.github/workflows/run-filtered.sh fuzz '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}' fuzz_args=--test-arg=-max_total_time=60
       - name: upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts
           path: fuzz/artifacts/
