@@ -54,7 +54,7 @@ use kasync::time::{Instant, Ticks, Timer};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use mem::frame_alloc;
 use mem_core::{AddressRangeExt, PhysicalAddress};
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use crate::backtrace::Backtrace;

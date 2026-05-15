@@ -57,7 +57,7 @@ where
 
 pub fn init(
     boot_info: &BootInfo,
-    rand: &mut impl rand::RngCore,
+    rand: &mut impl rand::Rng,
     frame_alloc: &'static FrameAllocator,
 ) -> crate::Result<()> {
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {

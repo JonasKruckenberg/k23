@@ -1,2 +1,0 @@
-# Apache 2 or MIT from https://github.com/dtolnay/buck2-rustc-bootstrap
-buildscript.run = true

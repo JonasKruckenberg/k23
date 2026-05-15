@@ -384,6 +384,8 @@ impl TypeDef<'_> {
                 InnerTypeKind::Cont(ct) => Cont(ct.into()),
             },
             shared: self.shared,
+            descriptor: None,
+            describes: None,
         };
         wasm_encoder::SubType {
             composite_type,

@@ -1,3 +1,0 @@
-buildscript.run = false
-
-cfgs = [ "core_error" ]
