@@ -9,7 +9,7 @@ use cranelift_codegen::ir;
 use cranelift_codegen::ir::{InstBuilder, ValueLabel};
 use cranelift_entity::EntityRef;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use wasmparser::{BinaryReader, FuncValidator, FunctionBody, WasmModuleResources};
+use wasmparser::{BinaryReader, FuncValidator, FunctionBody, OperatorsReader, WasmModuleResources};
 
 use crate::wasm::cranelift::code_translator::{bitcast_wasm_returns, translate_operator};
 use crate::wasm::cranelift::env::TranslationEnvironment;
@@ -52,7 +52,7 @@ impl FuncTranslator {
         debug_assert_eq!(func.dfg.num_insts(), 0, "Function must be empty");
 
         let mut builder = FunctionBuilder::new(func, &mut self.func_ctx);
-        builder.set_srcloc(cur_srcloc(&reader));
+        builder.set_srcloc(cur_srcloc(reader.original_position()));
         let entry_block = builder.create_block();
         builder.append_block_params_for_function_params(entry_block);
         builder.switch_to_block(entry_block);
@@ -71,7 +71,13 @@ impl FuncTranslator {
         self.state.initialize(&builder.func.signature, exit_block);
 
         translate_local_decls(&mut reader, &mut builder, num_params, validator, env)?;
-        translate_function_body(validator, reader, &mut builder, &mut self.state, env)?;
+        translate_function_body(
+            validator,
+            body.get_operators_reader()?,
+            &mut builder,
+            &mut self.state,
+            env,
+        )?;
 
         builder.finalize();
         tracing::trace!("translated Wasm to CLIF:\n{}", func.display());
@@ -120,7 +126,7 @@ fn translate_local_decls(
     let local_count = reader.read_var_u32()?;
 
     for _ in 0..local_count {
-        builder.set_srcloc(cur_srcloc(reader));
+        builder.set_srcloc(cur_srcloc(reader.original_position()));
         let pos = reader.original_position();
         let count = reader.read_var_u32()?;
         let ty = reader.read()?;
@@ -203,7 +209,7 @@ fn declare_locals(
 /// arguments and locals are declared in the builder.
 fn translate_function_body(
     validator: &mut FuncValidator<impl WasmModuleResources>,
-    mut reader: BinaryReader,
+    mut reader: OperatorsReader,
     builder: &mut FunctionBuilder,
     state: &mut FuncTranslationState,
     env: &mut TranslationEnvironment,
@@ -213,14 +219,13 @@ fn translate_function_body(
 
     while !reader.eof() {
         let pos = reader.original_position();
-        builder.set_srcloc(cur_srcloc(&reader));
-        let op = reader.read_operator()?;
+        builder.set_srcloc(cur_srcloc(pos));
+        let op = reader.read()?;
         translate_operator(validator, &op, builder, state, env)?;
         validator.op(pos, &op)?;
     }
+    reader.finish()?;
     // env.after_translate_function(builder, state)?;
-    let pos = reader.original_position();
-    validator.finish(pos)?;
 
     // The final `End` operator left us in the exit block where we need to manually add a return
     // instruction.
@@ -239,8 +244,8 @@ fn translate_function_body(
     Ok(())
 }
 
-/// Get the current source location from a reader.
-fn cur_srcloc(reader: &BinaryReader) -> ir::SourceLoc {
+/// Get the current source location from a readers position.
+fn cur_srcloc(pos: usize) -> ir::SourceLoc {
     // We record source locations as byte code offsets relative to the beginning of the file.
-    ir::SourceLoc::new(u32::try_from(reader.original_position()).unwrap())
+    ir::SourceLoc::new(u32::try_from(pos).unwrap())
 }

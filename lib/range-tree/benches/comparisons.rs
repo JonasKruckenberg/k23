@@ -16,9 +16,9 @@ use brie_tree::BTree;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use nonmax::NonMaxU64;
 use pin_project::pin_project;
-use rand::Rng;
 use rand::distr::Uniform;
 use rand::prelude::SliceRandom;
+use rand::{Rng, RngExt};
 use range_tree::RangeTree;
 use wavltree::{Linked, Links, WAVLTree};
 

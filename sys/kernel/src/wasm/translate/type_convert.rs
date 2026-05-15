@@ -72,6 +72,7 @@ impl<'a> WasmparserTypeConverter<'a> {
 
                 WasmHeapType { shared, inner: ty }
             }
+            wasmparser::HeapType::Exact(_index) => todo!("custom-descriptors not supported"),
         }
     }
 
