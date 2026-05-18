@@ -30,7 +30,7 @@ fn single_threaded_spawn(c: &mut Criterion) {
                 let h = EXEC.try_spawn(work()).unwrap();
                 assert_eq!(h.await.unwrap(), 2);
             }))
-        })
+        });
     });
 }
 
@@ -44,7 +44,7 @@ fn single_threaded_spawn10(c: &mut Criterion) {
         b.iter(|| {
             kasync::test_util::block_on(worker.run(async {
                 let mut handles = Vec::with_capacity(10);
-                for _ in 0..10 {
+                for _ in 0..10_usize {
                     let h = EXEC.build_task().try_spawn(work()).unwrap();
                     handles.push(h);
                 }
@@ -54,7 +54,7 @@ fn single_threaded_spawn10(c: &mut Criterion) {
                 }
             }))
             .unwrap();
-        })
+        });
     });
 }
 

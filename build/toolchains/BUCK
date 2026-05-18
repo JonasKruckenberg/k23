@@ -3,6 +3,7 @@ load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
 load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
 load(":flake.bzl", "flake")
+load(":lints.bzl", "ALLOW", "DENY")
 load(":rust.bzl", "rust_toolchain")
 load(":cxx.bzl", "clang_toolchain")
 load(":qemu.bzl", "qemu_toolchain")
@@ -35,6 +36,7 @@ flake.package(
     ],
     package = "clang_20",
     path = "root//:flake",
+    visibility = ["PUBLIC"],
 )
 
 flake.package(
@@ -42,6 +44,15 @@ flake.package(
     package = "lld_20",
     binaries = ["ld.lld", "ld64.lld"],
     path = "root//:flake",
+)
+
+# Target-agnostic, unlike the GNU bintools clang_20's cc-wrapper pulls in.
+flake.package(
+    name = "llvm_bintools",
+    package = "llvmBintools_20",
+    binaries = ["llvm-objcopy", "llvm-strip"],
+    path = "root//:flake",
+    visibility = ["PUBLIC"],
 )
 
 flake.package(
@@ -142,17 +153,20 @@ rust_toolchain(
         "prelude//os:none": select({
             "constraints//:env[kernel]": select({
                 "prelude//cpu:riscv64": "riscv64gc-k23-none-kernel",
-            }),
-            "constraints//:env[loader]": select({
-                "prelude//cpu:riscv64": "riscv64gc-unknown-none-elf",
+                "prelude//cpu:arm64": "aarch64-unknown-none",
+                "prelude//cpu:x86_64": "x86_64-unknown-none",
             }),
             "DEFAULT": select({
                 "prelude//cpu:riscv64": "riscv64gc-unknown-none-elf",
+                "prelude//cpu:arm64": "aarch64-unknown-none",
+                "prelude//cpu:x86_64": "x86_64-unknown-none",
             }),
         }),
         "DEFAULT": None
     }),
     rust_target_path = "@root//build:targets",
+    deny_lints = DENY,
+    allow_lints = ALLOW,
     rustc_flags = [
         "-Zunstable-options",
     ] + select({

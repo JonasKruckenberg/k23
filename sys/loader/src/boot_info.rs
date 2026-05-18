@@ -25,6 +25,7 @@ pub fn prepare_boot_info(
     maybe_tls_template: Option<TlsTemplate>,
     loader_phys: Range<PhysicalAddress>,
     kernel_phys: Range<PhysicalAddress>,
+    kernel_debuginfo_phys: Range<PhysicalAddress>,
     fdt_phys: Range<PhysicalAddress>,
     hart_mask: usize,
     rng_seed: [u8; 32],
@@ -41,6 +42,7 @@ pub fn prepare_boot_info(
         fdt_phys,
         loader_phys,
         kernel_phys.clone(),
+        kernel_debuginfo_phys.clone(),
     );
 
     let mut boot_info = BootInfo::new(memory_regions);
@@ -49,6 +51,7 @@ pub fn prepare_boot_info(
     boot_info.tls_template = maybe_tls_template;
     boot_info.kernel_virt = kernel_virt;
     boot_info.kernel_phys = kernel_phys;
+    boot_info.kernel_debuginfo_phys = kernel_debuginfo_phys;
     boot_info.cpu_mask = hart_mask;
     boot_info.rng_seed = rng_seed;
 
@@ -69,6 +72,7 @@ fn init_boot_info_memory_regions(
     fdt_phys: Range<PhysicalAddress>,
     loader_phys: Range<PhysicalAddress>,
     kernel_phys: Range<PhysicalAddress>,
+    kernel_debuginfo_phys: Range<PhysicalAddress>,
 ) -> MemoryRegions {
     // Safety: we just allocated a whole frame for the boot info
     let regions: &mut [MaybeUninit<MemoryRegion>] = unsafe {
@@ -105,18 +109,36 @@ fn init_boot_info_memory_regions(
         });
     }
 
-    // Most of the memory occupied by the loader is not needed once the kernel is running,
-    // but the kernel itself lies somewhere in the loader memory.
-    //
-    // We can still mark the range before and after the kernel as usable.
-    push_region(MemoryRegion {
-        range: loader_phys.start..kernel_phys.start,
-        kind: MemoryRegionKind::Usable,
-    });
-    push_region(MemoryRegion {
-        range: kernel_phys.end..loader_phys.end,
-        kind: MemoryRegionKind::Usable,
-    });
+    // go over the embedded kernel and kernel debuginfo that are
+    // directly mapped and mark every around them as usable memory
+    {
+        let mut holes = [kernel_phys, kernel_debuginfo_phys];
+        holes.sort_unstable_by_key(|r| r.start);
+
+        let start = loader_phys.start..holes[0].start;
+        if !start.is_empty() {
+            push_region(MemoryRegion {
+                range: start,
+                kind: MemoryRegionKind::Usable,
+            });
+        }
+
+        let mid = holes[0].end..holes[1].start;
+        if !mid.is_empty() {
+            push_region(MemoryRegion {
+                range: mid,
+                kind: MemoryRegionKind::Usable,
+            });
+        }
+
+        let end = holes[1].end..loader_phys.end;
+        if !end.is_empty() {
+            push_region(MemoryRegion {
+                range: end,
+                kind: MemoryRegionKind::Usable,
+            });
+        }
+    }
 
     // Report the flattened device tree as a separate region.
     push_region(MemoryRegion {

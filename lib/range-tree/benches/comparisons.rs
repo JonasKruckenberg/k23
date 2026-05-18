@@ -1,6 +1,9 @@
 #![feature(allocator_api)]
 #![feature(new_range_api)]
-
+#![expect(
+    clippy::undocumented_unsafe_blocks,
+    reason = "benchmarks are not that important"
+)]
 use std::collections::{BTreeMap, Bound};
 use std::hint::black_box;
 use std::mem::offset_of;
@@ -13,9 +16,9 @@ use brie_tree::BTree;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use nonmax::NonMaxU64;
 use pin_project::pin_project;
-use rand::Rng;
 use rand::distr::Uniform;
 use rand::prelude::SliceRandom;
+use rand::{Rng, RngExt};
 use range_tree::RangeTree;
 use wavltree::{Linked, Links, WAVLTree};
 
@@ -113,7 +116,7 @@ fn bench_insertions(c: &mut Criterion) {
     let mut group = c.benchmark_group("Insertions");
     for num_entries in (10..1000).step_by(100) {
         let mut ranges = (1..num_entries * 2 * MIB)
-            .step_by(2 * MIB as usize)
+            .step_by(usize::try_from(2 * MIB).unwrap())
             .map(|base| base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap()))
             .collect::<Vec<_>>();
 
@@ -188,7 +191,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
     let mut group = c.benchmark_group("Lookups Hits");
     for num_entries in (10..1000).step_by(100) {
         let mut ranges = (1..num_entries * 2 * MIB)
-            .step_by(2 * MIB as usize)
+            .step_by(usize::try_from(2 * MIB).unwrap())
             .map(|base| base..base + rng.sample(Uniform::new(1, 2 * MIB).unwrap()))
             .collect::<Vec<_>>();
 
@@ -196,7 +199,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
 
         let mut lookups = vec![];
         for range in &ranges {
-            for _ in 0..1_000 {
+            for _ in 0..1_000_usize {
                 let lookup = rng.sample(Uniform::new(range.start, range.end).unwrap());
                 lookups.push(lookup);
             }
@@ -273,7 +276,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
 //     let mut group = c.benchmark_group("Lookups Misses");
 //     for num_entries in (10..10_000).step_by(1000) {
 //         let mut ranges = (0..num_entries * 2 * MIB)
-//             .step_by(2 * MIB as usize)
+//             .step_by(usize::try_from(2 * MIB).unwrap())
 //             .map(|base| base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap()))
 //             .collect::<Vec<_>>();
 //

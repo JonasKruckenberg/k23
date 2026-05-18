@@ -1,3 +1,16 @@
+#![allow(
+    clippy::cast_ptr_alignment,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    reason = "AVX-512 intrinsics: `_mm512_load_si512` requires 64-byte \
+              alignment, which callers uphold via the aligned `pivots` \
+              buffer; k-mask register results from `_mm512_kunpack*` are \
+              reinterpreted into u64/u32/u16 of the same bit width; \
+              signed/unsigned bitcasts on integer lanes are required by \
+              the signed-compare intrinsics."
+)]
+
 #[cfg(target_arch = "x86")]
 use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]

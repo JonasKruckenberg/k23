@@ -42,17 +42,24 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
       - name: fetch impacted targets
         if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: impacted-targets
       # Always restore the latest baseline so PRs compare against main.
       # Saving is gated to push-on-main below so PRs cannot poison the baseline.
       - name: restore criterion baseline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: bench
           key: bench-${{ github.sha }}
@@ -61,7 +68,7 @@ jobs:
       - run: ./.github/workflows/run-filtered.sh benchmark '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
       - name: save criterion baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: bench
           key: bench-${{ github.sha }}

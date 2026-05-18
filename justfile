@@ -1,7 +1,9 @@
 set unstable
 
 platform := ""
-_platform_args := if platform != "" { f"--target-platforms {{platform}}" } else { "" }
+# --skip-incompatible-targets drops riscv-only and host-only targets that
+# don't match the active platform instead of erroring out.
+_platform_args := "--skip-incompatible-targets" + if platform != "" { f" --target-platforms {{platform}}" } else { "" }
 
 _buck2 := require("buck2")
 _typos := require("typos")
@@ -9,6 +11,7 @@ _supertd := require("supertd")
 _reindeer := require("reindeer")
 _rust_project := require("rust-project")
 _cargo_deny := require("cargo-deny")
+_jq := require("jq")
 
 _docstring := "
 justfile for k23
@@ -23,12 +26,22 @@ _default:
 run target buck2_args="" *qemu_args="":
     {{ _buck2 }} run {{target}} {{buck2_args}} {{qemu_args}}
 
-# quick check for development
-@check targets="" *buck2_args:
-    {{ _buck2 }} build {{append("[check]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
+# quick check for development.
+# The prelude's [diag.json] action is infallible by design; gate on the
+# rendered diagnostics ourselves.
+check targets="" *buck2_args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$({{ _buck2 }} build {{append("[diag.json]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}} --show-simple-output | xargs {{ _jq }} -r 'select(.level=="error") | .rendered')
+    [ -z "$out" ] || { printf '%s' "$out" >&2; exit 1; }
 
-# run all lints and tests on a crate or the entire workspace.
-preflight targets="" *buck2_args: (lint targets buck2_args) (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args) (selftests buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
+# One CI lane locally. Default is the host lane. With `platform=X` it's the
+# X lane: lint and check at X; unittests/miri/loom are host-only and get
+# skipped via --skip-incompatible-targets. selftests always boots the riscv64
+# qemu image.
+preflight targets="" *buck2_args: (lint targets buck2_args) (check targets buck2_args) (_host_tests targets buck2_args) (selftests buck2_args) buck2-audit cargo-deny reindeer-clean check-license-headers
+
+_host_tests targets="" *buck2_args: (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args)
 
 # run linters on a crate or the entire workspace.
 lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
@@ -36,22 +49,23 @@ lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck
 # ===== linting =====
 
 # run clippy on a crate or the entire workspace.
-@clippy targets="" *buck2_args:
-    {{ _buck2 }} build {{append("[clippy.txt]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
+# The prelude's [clippy.json] action is infallible by design; gate on the
+# rendered diagnostics ourselves.
+clippy targets="" *buck2_args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$({{ _buck2 }} build {{append("[clippy.json]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}} --show-simple-output | xargs {{ _jq }} -r 'select(.level=="error") | .rendered')
+    [ -z "$out" ] || { printf '%s' "$out" >&2; exit 1; }
 
 # check the workspace for typos
 @typos:
     {{ _typos }}
 
-# regenerate third-party/BUCK from third-party/Cargo.toml via reindeer
-@buckify:
-    {{ _reindeer }} buckify
-
 # Generate rust-project.json so rust-analyzer can index the workspace.
 # rust-analyzer auto-loads rust-project.json from the repo root.
 # Re-run after adding/removing crates or changing BUCK deps.
-@rust-project:
-    {{ _rust_project }} develop --pretty --prefer-rustup-managed-toolchain 'root//sys/...' 'root//lib/...'
+rust-project arch="riscv64":
+    {{ _rust_project }} develop --pretty --prefer-rustup-managed-toolchain '--rustc-target={{ _rustc_target(arch) }}' '--mode=--target-platforms=//platforms:{{arch}}' 'root//sys/...' 'root//lib/...'
 
 # ===== testing =====
 
@@ -115,8 +129,8 @@ benchmark targets="" *buck2_args:
 # audit the buck2 graph: cell config plus visibility/providers for top-level kernel targets.
 @buck2-audit:
     {{ _buck2 }} audit cell
-    {{ _buck2 }} audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
     {{ _buck2 }} audit providers //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+# {{ _buck2 }} audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
 
 # run cargo-deny against the third-party Cargo workspace.
 @cargo-deny:
@@ -189,6 +203,8 @@ changed-targets CHANGES BASE_JSONL UNIVERSE='root//...':
       | tr '\n' ' '
     echo
 
+_rustc_target(arch) := if arch == "riscv64" { "riscv64gc-unknown-none-elf" } else if arch == "aarch64" { "aarch64-unknown-none" } else { "x86_64-unknown-none" }
+
 # ===== query helpers =====
 #
 # Recipes accept `targets` as a space-separated list of buck2 target patterns;
@@ -205,7 +221,10 @@ _default_query := "'//...' except '//third-party/...'"
 _targets_query(targets) := if targets == "" { _default_query } else { f"set({{targets}})" }
 
 # Refinements: each takes a query expression and returns a more specific one.
-_q_buildables(q) := f"kind(rust_binary, {{q}}) + kind(rust_library, {{q}})"
+# Proc-macros are routed via their `rust_proc_macro_alias`, which exec-configures
+# the underlying `rust_library`. Building the underlying directly would fail
+# under non-host --target-platforms.
+_q_buildables(q) := f"kind(rust_binary, {{q}}) + (kind(rust_library, {{q}}) except attrfilter(proc_macro, True, {{q}})) + kind(rust_proc_macro_alias, {{q}})"
 _q_tests(q)      := f"kind(rust_test, {{q}}) + kind(rust_test, testsof({{q}}))"
 _q_unit_tests(q) := f"nattrfilter(labels, loom, ({{_q_tests(q)}}))"
 _q_loom_tests(q) := f"attrfilter(labels, loom, ({{_q_tests(q)}}))"

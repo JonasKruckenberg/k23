@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 _DEFAULT_MODIFIERS = [
     "constraints//:opt-level[3]",
     "constraints//:debuginfo[line-tables-only]",
@@ -40,6 +42,7 @@ def rust_benchmark(name, modifiers = [], visibility = None, **kwargs):
     bin_name = name + "_bin"
     native.rust_binary(
         name = bin_name,
+        target_compatible_with = [host_configuration.os, host_configuration.cpu],
         modifiers = _DEFAULT_MODIFIERS + modifiers,
         visibility = visibility,
         **kwargs
@@ -47,5 +50,6 @@ def rust_benchmark(name, modifiers = [], visibility = None, **kwargs):
     _rust_benchmark_runner(
         name = name,
         binary = ":" + bin_name,
+        target_compatible_with = [host_configuration.os, host_configuration.cpu],
         visibility = visibility,
     )

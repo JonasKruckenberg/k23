@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 rust_library(
     name = "riscv",
     srcs = glob(["src/**/*.rs"]),
@@ -20,5 +22,6 @@ rust_test(
         "//third-party:cfg-if",
         "//third-party:bitflags",
     ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )

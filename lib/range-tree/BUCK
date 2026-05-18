@@ -24,6 +24,7 @@ rust_test(
         "//third-party:tracing-subscriber",
         "//third-party:nonmax",
     ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
 

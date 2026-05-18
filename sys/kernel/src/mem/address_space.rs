@@ -18,7 +18,7 @@ use core::ptr::NonNull;
 
 use anyhow::{bail, ensure};
 use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-use rand::Rng;
+use rand::RngExt;
 use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;
 

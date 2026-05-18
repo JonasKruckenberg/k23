@@ -19,7 +19,11 @@ use core::ops::Range;
 use arrayvec::ArrayVec;
 use loader_api::BootInfo;
 use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-use talc::{OomHandler, Span, Talc, Talck};
+use static_assertions::const_assert;
+use talc::base::Talc;
+use talc::base::binning::{Binning, DefaultBinning};
+use talc::source::Source;
+use talc::{TalcLock, min_first_heap_size};
 
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::mem::frame_alloc::FrameAllocator;
@@ -34,14 +38,19 @@ const HEAP_DEFAULT_MAX_PAGES: usize = 256 * 1024;
 /// Hard upper bound on the number of distinct talc heaps we'll ever claim.
 const MAX_HEAP_CHUNKS: usize = 1024;
 
-#[global_allocator]
-static KERNEL_ALLOCATOR: Talck<spin::RawMutex, KernelOomHandler> =
-    Talc::new(KernelOomHandler::new()).lock();
+// The first claim must fit talc's gap-list metadata; subsequent claims have a much
+// smaller minimum. See `Talc::claim` and `min_first_heap_size`.
+const_assert!(INITIAL_HEAP_SIZE_PAGES * arch::PAGE_SIZE >= min_first_heap_size::<DefaultBinning>());
 
-/// Auto-resizing OOM handler for the kernel heap. See module docs.
-pub struct KernelOomHandler {
-    /// Wired up by [`late_init`] once the frame allocator exists. While `None` the handler
-    /// behaves like `ErrOnOom`, which is the correct fallback during early boot.
+#[global_allocator]
+static KERNEL_ALLOCATOR: TalcLock<spin::RawMutex, KernelHeapSource> =
+    TalcLock::new(KernelHeapSource::new());
+
+/// Auto-resizing memory source for the kernel heap. See module docs.
+#[derive(Debug)]
+pub struct KernelHeapSource {
+    /// Wired up by [`late_init`] once the frame allocator exists. While `None` the source
+    /// behaves like [`talc::source::Manual`], which is the correct fallback during early boot.
     frame_alloc: Option<&'static FrameAllocator>,
     /// Soft cap on total claimed pages, including the initial heap. `0` means unlimited.
     /// Soft because the underlying buddy allocator rounds requests up to a power of two, so
@@ -60,7 +69,7 @@ struct HeapChunk {
     pages: usize,
 }
 
-impl KernelOomHandler {
+impl KernelHeapSource {
     const fn new() -> Self {
         Self {
             frame_alloc: None,
@@ -71,19 +80,22 @@ impl KernelOomHandler {
     }
 }
 
-impl OomHandler for KernelOomHandler {
-    fn handle_oom(talc: &mut Talc<Self>, layout: Layout) -> Result<(), ()> {
+// SAFETY: `acquire` only mutates `KernelHeapSource` state and calls `talc.claim` on a
+// freshly-allocated, exclusively-owned physical run via the stable HHDM mapping. It
+// never re-enters the parent `TalcLock` directly or indirectly.
+unsafe impl Source for KernelHeapSource {
+    fn acquire<B: Binning>(talc: &mut Talc<Self, B>, layout: Layout) -> Result<(), ()> {
         // TODO(metrics): increment a "kernel_heap.oom.invocations" counter here.
 
-        // Snapshot what we need from the handler up front so we don't have to juggle reborrows
+        // Snapshot what we need from the source up front so we don't have to juggle reborrows
         // around the call to `talc.claim`.
-        let fa = talc.oom_handler.frame_alloc.ok_or(())?;
-        if talc.oom_handler.chunks.is_full() {
+        let fa = talc.source.frame_alloc.ok_or(())?;
+        if talc.source.chunks.is_full() {
             // TODO(metrics): increment "kernel_heap.oom.chunk_table_full".
             return Err(());
         }
-        let max_total = talc.oom_handler.max_total_pages;
-        let total = talc.oom_handler.total_pages;
+        let max_total = talc.source.max_total_pages;
+        let total = talc.source.total_pages;
 
         // Round to whole pages with worst-case alignment slack, plus one page for talc's
         // per-claim metadata. Without that slack, a layout sized within a few words of a page
@@ -114,28 +126,30 @@ impl OomHandler for KernelOomHandler {
         let phys_start = frames.iter().next().unwrap().addr();
 
         let virt_start = arch::phys_to_virt(phys_start);
-        let span = Span::from_base_size(virt_start.as_mut_ptr(), frames.len() * arch::PAGE_SIZE);
 
         // Safety: we just exclusively allocated this physical run from the frame allocator and
         // the HHDM mapping is wired and stable for the rest of the kernel's lifetime.
         //
-        // `claim` only fails for spans below talc's `MIN_HEAP_SIZE` (~4 words); we always pass
-        // at least one page, so this is unreachable. If it ever does fail the physical run
-        // stays pinned (`alloc_contiguous_pages_global` `mem::forget`s the frames) until a
-        // matching free path exists — see TODO on that function.
-        unsafe { talc.claim(span).map_err(|_| ())? };
+        // `claim` returns `None` only for regions below `CHUNK_UNIT`; we always pass at least
+        // one page, so this is unreachable. If it ever does fail the physical run stays pinned
+        // (`alloc_contiguous_pages_global` `mem::forget`s the frames) until a matching free
+        // path exists — see TODO on that function.
+        unsafe {
+            talc.claim(virt_start.as_mut_ptr(), frames.len() * arch::PAGE_SIZE)
+                .ok_or(())?;
+        };
 
         // Capacity was checked before we did anything observable.
         // Safety: `chunks.is_full()` returned false above and we hold the talc lock, so no
         // other task can have pushed in between.
         unsafe {
-            talc.oom_handler.chunks.push_unchecked(HeapChunk {
+            talc.source.chunks.push_unchecked(HeapChunk {
                 phys_start,
                 virt_start,
                 pages: frames.len(),
             });
         }
-        talc.oom_handler.total_pages = total.saturating_add(frames.len());
+        talc.source.total_pages = total.saturating_add(frames.len());
 
         // TODO(metrics): increment "kernel_heap.oom.grew" and update a "kernel_heap.total_pages"
         // gauge.
@@ -146,7 +160,7 @@ impl OomHandler for KernelOomHandler {
 
 /// Set up the initial heap from the bootstrap allocator.
 ///
-/// Runs before `frame_alloc::init`; the OOM handler stays in fallback mode (returning `Err`)
+/// Runs before `frame_alloc::init`; the heap source stays in fallback mode (returning `Err`)
 /// until [`late_init`] wires up the frame allocator.
 pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     let layout =
@@ -161,22 +175,22 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     tracing::debug!("Kernel Heap: {virt:#x?}");
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
-    let span = Span::from_base_size(virt.start.as_mut_ptr(), virt.len());
 
-    // Safety: just allocated the memory region.
+    // Safety: just allocated the memory region. The compile-time assertion at the top of
+    // this module guarantees the initial heap is large enough for talc's first-claim metadata.
     unsafe {
-        alloc.claim(span).unwrap();
+        alloc.claim(virt.start.as_mut_ptr(), virt.len()).unwrap();
     }
 
     // Safety: `chunks` is empty and `MAX_HEAP_CHUNKS >= 1`.
     unsafe {
-        alloc.oom_handler.chunks.push_unchecked(HeapChunk {
+        alloc.source.chunks.push_unchecked(HeapChunk {
             phys_start: phys,
             virt_start: virt.start,
             pages: INITIAL_HEAP_SIZE_PAGES,
         });
     }
-    alloc.oom_handler.total_pages = INITIAL_HEAP_SIZE_PAGES;
+    alloc.source.total_pages = INITIAL_HEAP_SIZE_PAGES;
 }
 
 /// Wire up the frame allocator and bootargs-driven cap, enabling automatic heap growth.
@@ -191,8 +205,8 @@ pub fn late_init(fa: &'static FrameAllocator, heap_max_bytes: Option<usize>) {
 
     {
         let mut alloc = KERNEL_ALLOCATOR.lock();
-        alloc.oom_handler.frame_alloc = Some(fa);
-        alloc.oom_handler.max_total_pages = max_total_pages;
+        alloc.source.frame_alloc = Some(fa);
+        alloc.source.max_total_pages = max_total_pages;
     }
 
     // Trace outside the lock: tracing macros may allocate, and the kernel allocator's spinlock

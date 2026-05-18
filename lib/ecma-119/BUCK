@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 _DEPS = [
     "//third-party:anyhow",
     "//third-party:fallible-iterator",
@@ -21,6 +23,7 @@ rust_test(
     name = "ecma-119_unittests",
     srcs = glob(["src/**/*.rs"]),
     features = ["build"],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
     deps = _DEPS
 )
@@ -29,6 +32,7 @@ rust_test(
     name = "ecma-119_roundtrip",
     srcs = ["tests/roundtrip.rs"],
     crate_root = "tests/roundtrip.rs",
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
     deps = [
         ":ecma-119",

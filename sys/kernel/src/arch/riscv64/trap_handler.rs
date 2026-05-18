@@ -514,7 +514,7 @@ mod tests {
     #[test::test]
     async fn repeated_wasm_traps() {
         let mut ctx = WastContext::new_default().unwrap();
-        for i in 0..5 {
+        for i in 0..5_usize {
             ctx.run(
                 "repeated_wasm_traps",
                 include_str!("../../../wast/tests/trap.wast"),

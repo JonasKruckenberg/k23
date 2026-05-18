@@ -103,6 +103,24 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "allocator-api2-0.4.0.crate",
+    sha256 = "c880a97d28a3681c0267bd29cff89621202715b065127cd445fa0f0fe0aa2880",
+    strip_prefix = "allocator-api2-0.4.0",
+    urls = ["https://static.crates.io/crates/allocator-api2/0.4.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "allocator-api2-0.4.0",
+    srcs = [":allocator-api2-0.4.0.crate"],
+    crate = "allocator_api2",
+    crate_root = "allocator-api2-0.4.0.crate/src/lib.rs",
+    edition = "2018",
+    features = ["alloc"],
+    visibility = [],
+)
+
+http_archive(
     name = "anes-0.1.6.crate",
     sha256 = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299",
     strip_prefix = "anes-0.1.6",
@@ -492,6 +510,36 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "chacha20-0.10.0.crate",
+    sha256 = "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601",
+    strip_prefix = "chacha20-0.10.0",
+    urls = ["https://static.crates.io/crates/chacha20/0.10.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "chacha20-0.10.0",
+    srcs = [":chacha20-0.10.0.crate"],
+    crate = "chacha20",
+    crate_root = "chacha20-0.10.0.crate/src/lib.rs",
+    edition = "2024",
+    features = ["rng"],
+    platform = {
+        "linux-x86_64": dict(
+            deps = [":cpufeatures-0.3.0"],
+        ),
+        "macos-x86_64": dict(
+            deps = [":cpufeatures-0.3.0"],
+        ),
+    },
+    visibility = [],
+    deps = [
+        ":cfg-if-1.0.4",
+        ":rand_core-0.10.1",
+    ],
+)
+
+http_archive(
     name = "ciborium-0.2.2.crate",
     sha256 = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e",
     strip_prefix = "ciborium-0.2.2",
@@ -735,6 +783,23 @@ cargo.rust_library(
     crate_root = "cordyceps-0.3.4.crate/src/lib.rs",
     edition = "2021",
     features = ["default"],
+    visibility = [],
+)
+
+http_archive(
+    name = "cpufeatures-0.3.0.crate",
+    sha256 = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201",
+    strip_prefix = "cpufeatures-0.3.0",
+    urls = ["https://static.crates.io/crates/cpufeatures/0.3.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "cpufeatures-0.3.0",
+    srcs = [":cpufeatures-0.3.0.crate"],
+    crate = "cpufeatures",
+    crate_root = "cpufeatures-0.3.0.crate/src/lib.rs",
+    edition = "2024",
     visibility = [],
 )
 
@@ -1646,10 +1711,15 @@ cargo.rust_library(
     crate = "getrandom",
     crate_root = "getrandom-0.4.2.crate/src/lib.rs",
     edition = "2024",
+    features = [
+        "std",
+        "sys_rng",
+    ],
     visibility = [],
     deps = [
         ":cfg-if-1.0.4",
         ":libc-0.2.186",
+        ":rand_core-0.10.1",
         "//third-party:libc",
     ],
 )
@@ -1702,12 +1772,6 @@ cargo.rust_library(
     ],
 )
 
-alias(
-    name = "hashbrown",
-    actual = ":hashbrown-0.15.5",
-    visibility = ["PUBLIC"],
-)
-
 http_archive(
     name = "hashbrown-0.15.5.crate",
     sha256 = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1",
@@ -1722,13 +1786,15 @@ cargo.rust_library(
     crate = "hashbrown",
     crate_root = "hashbrown-0.15.5.crate/src/lib.rs",
     edition = "2021",
-    features = [
-        "default-hasher",
-        "inline-more",
-        "nightly",
-    ],
+    features = ["default-hasher"],
     visibility = [],
     deps = [":foldhash-0.1.5"],
+)
+
+alias(
+    name = "hashbrown",
+    actual = ":hashbrown-0.17.0",
+    visibility = ["PUBLIC"],
 )
 
 http_archive(
@@ -1745,7 +1811,10 @@ cargo.rust_library(
     crate = "hashbrown",
     crate_root = "hashbrown-0.17.0.crate/src/lib.rs",
     edition = "2024",
-    features = ["default-hasher"],
+    features = [
+        "default-hasher",
+        "inline-more",
+    ],
     visibility = [],
     deps = [":foldhash-0.2.0"],
 )
@@ -2693,41 +2762,41 @@ buildscript_run(
 
 alias(
     name = "pin-project",
-    actual = ":pin-project-1.1.12",
+    actual = ":pin-project-1.1.13",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "pin-project-1.1.12.crate",
-    sha256 = "cbf0d9e68100b3a7989b4901972f265cd542e560a3a8a724e1e20322f4d06ce9",
-    strip_prefix = "pin-project-1.1.12",
-    urls = ["https://static.crates.io/crates/pin-project/1.1.12/download"],
+    name = "pin-project-1.1.13.crate",
+    sha256 = "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924",
+    strip_prefix = "pin-project-1.1.13",
+    urls = ["https://static.crates.io/crates/pin-project/1.1.13/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "pin-project-1.1.12",
-    srcs = [":pin-project-1.1.12.crate"],
+    name = "pin-project-1.1.13",
+    srcs = [":pin-project-1.1.13.crate"],
     crate = "pin_project",
-    crate_root = "pin-project-1.1.12.crate/src/lib.rs",
+    crate_root = "pin-project-1.1.13.crate/src/lib.rs",
     edition = "2021",
     visibility = [],
-    deps = [":pin-project-internal-1.1.12"],
+    deps = [":pin-project-internal-1.1.13"],
 )
 
 http_archive(
-    name = "pin-project-internal-1.1.12.crate",
-    sha256 = "a990e22f43e84855daf260dded30524ef4a9021cc7541c26540500a50b624389",
-    strip_prefix = "pin-project-internal-1.1.12",
-    urls = ["https://static.crates.io/crates/pin-project-internal/1.1.12/download"],
+    name = "pin-project-internal-1.1.13.crate",
+    sha256 = "c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b",
+    strip_prefix = "pin-project-internal-1.1.13",
+    urls = ["https://static.crates.io/crates/pin-project-internal/1.1.13/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "pin-project-internal-1.1.12",
-    srcs = [":pin-project-internal-1.1.12.crate"],
+    name = "pin-project-internal-1.1.13",
+    srcs = [":pin-project-internal-1.1.13.crate"],
     crate = "pin_project_internal",
-    crate_root = "pin-project-internal-1.1.12.crate/src/lib.rs",
+    crate_root = "pin-project-internal-1.1.13.crate/src/lib.rs",
     edition = "2021",
     proc_macro = True,
     visibility = [],
@@ -3027,12 +3096,6 @@ cargo.rust_library(
     deps = [":proc-macro2-1.0.106"],
 )
 
-alias(
-    name = "rand",
-    actual = ":rand-0.9.4",
-    visibility = ["PUBLIC"],
-)
-
 http_archive(
     name = "rand-0.9.4.crate",
     sha256 = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea",
@@ -3047,56 +3110,91 @@ cargo.rust_library(
     crate = "rand",
     crate_root = "rand-0.9.4.crate/src/lib.rs",
     edition = "2021",
-    platform = {
-        "linux-arm64": dict(
-            features = [
-                "alloc",
-                "os_rng",
-                "std",
-                "std_rng",
-                "thread_rng",
-            ],
-            deps = [":rand_chacha-0.9.0"],
-        ),
-        "linux-x86_64": dict(
-            features = [
-                "alloc",
-                "os_rng",
-                "std",
-                "std_rng",
-                "thread_rng",
-            ],
-            deps = [":rand_chacha-0.9.0"],
-        ),
-        "macos-arm64": dict(
-            features = [
-                "alloc",
-                "os_rng",
-                "std",
-                "std_rng",
-                "thread_rng",
-            ],
-            deps = [":rand_chacha-0.9.0"],
-        ),
-        "macos-x86_64": dict(
-            features = [
-                "alloc",
-                "os_rng",
-                "std",
-                "std_rng",
-                "thread_rng",
-            ],
-            deps = [":rand_chacha-0.9.0"],
-        ),
-    },
+    features = [
+        "alloc",
+        "os_rng",
+        "std",
+    ],
     visibility = [],
     deps = [":rand_core-0.9.5"],
 )
 
 alias(
-    name = "rand_chacha",
-    actual = ":rand_chacha-0.9.0",
+    name = "rand",
+    actual = ":rand-0.10.1",
     visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "rand-0.10.1.crate",
+    sha256 = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207",
+    strip_prefix = "rand-0.10.1",
+    urls = ["https://static.crates.io/crates/rand/0.10.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "rand-0.10.1",
+    srcs = [":rand-0.10.1.crate"],
+    crate = "rand",
+    crate_root = "rand-0.10.1.crate/src/lib.rs",
+    edition = "2024",
+    platform = {
+        "linux-arm64": dict(
+            features = [
+                "alloc",
+                "std",
+                "std_rng",
+                "sys_rng",
+                "thread_rng",
+            ],
+            deps = [
+                ":chacha20-0.10.0",
+                ":getrandom-0.4.2",
+            ],
+        ),
+        "linux-x86_64": dict(
+            features = [
+                "alloc",
+                "std",
+                "std_rng",
+                "sys_rng",
+                "thread_rng",
+            ],
+            deps = [
+                ":chacha20-0.10.0",
+                ":getrandom-0.4.2",
+            ],
+        ),
+        "macos-arm64": dict(
+            features = [
+                "alloc",
+                "std",
+                "std_rng",
+                "sys_rng",
+                "thread_rng",
+            ],
+            deps = [
+                ":chacha20-0.10.0",
+                ":getrandom-0.4.2",
+            ],
+        ),
+        "macos-x86_64": dict(
+            features = [
+                "alloc",
+                "std",
+                "std_rng",
+                "sys_rng",
+                "thread_rng",
+            ],
+            deps = [
+                ":chacha20-0.10.0",
+                ":getrandom-0.4.2",
+            ],
+        ),
+    },
+    visibility = [],
+    deps = [":rand_core-0.10.1"],
 )
 
 http_archive(
@@ -3113,24 +3211,38 @@ cargo.rust_library(
     crate = "rand_chacha",
     crate_root = "rand_chacha-0.9.0.crate/src/lib.rs",
     edition = "2021",
-    platform = {
-        "linux-arm64": dict(
-            features = ["std"],
-        ),
-        "linux-x86_64": dict(
-            features = ["std"],
-        ),
-        "macos-arm64": dict(
-            features = ["std"],
-        ),
-        "macos-x86_64": dict(
-            features = ["std"],
-        ),
-    },
+    features = ["std"],
     visibility = [],
     deps = [
         ":ppv-lite86-0.2.21",
         ":rand_core-0.9.5",
+    ],
+)
+
+alias(
+    name = "rand_chacha",
+    actual = ":rand_chacha-0.10.0",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "rand_chacha-0.10.0.crate",
+    sha256 = "3e6af7f3e25ded52c41df4e0b1af2d047e45896c2f3281792ed68a1c243daedb",
+    strip_prefix = "rand_chacha-0.10.0",
+    urls = ["https://static.crates.io/crates/rand_chacha/0.10.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "rand_chacha-0.10.0",
+    srcs = [":rand_chacha-0.10.0.crate"],
+    crate = "rand_chacha",
+    crate_root = "rand_chacha-0.10.0.crate/src/lib.rs",
+    edition = "2024",
+    visibility = [],
+    deps = [
+        ":ppv-lite86-0.2.21",
+        ":rand_core-0.10.1",
     ],
 )
 
@@ -3148,36 +3260,28 @@ cargo.rust_library(
     crate = "rand_core",
     crate_root = "rand_core-0.9.5.crate/src/lib.rs",
     edition = "2021",
-    platform = {
-        "linux-arm64": dict(
-            features = [
-                "os_rng",
-                "std",
-            ],
-            deps = [":getrandom-0.3.4"],
-        ),
-        "linux-x86_64": dict(
-            features = [
-                "os_rng",
-                "std",
-            ],
-            deps = [":getrandom-0.3.4"],
-        ),
-        "macos-arm64": dict(
-            features = [
-                "os_rng",
-                "std",
-            ],
-            deps = [":getrandom-0.3.4"],
-        ),
-        "macos-x86_64": dict(
-            features = [
-                "os_rng",
-                "std",
-            ],
-            deps = [":getrandom-0.3.4"],
-        ),
-    },
+    features = [
+        "os_rng",
+        "std",
+    ],
+    visibility = [],
+    deps = [":getrandom-0.3.4"],
+)
+
+http_archive(
+    name = "rand_core-0.10.1.crate",
+    sha256 = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69",
+    strip_prefix = "rand_core-0.10.1",
+    urls = ["https://static.crates.io/crates/rand_core/0.10.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "rand_core-0.10.1",
+    srcs = [":rand_core-0.10.1.crate"],
+    crate = "rand_core",
+    crate_root = "rand_core-0.10.1.crate/src/lib.rs",
+    edition = "2024",
     visibility = [],
 )
 
@@ -3556,6 +3660,23 @@ cargo.rust_library(
     crate = "scopeguard",
     crate_root = "scopeguard-1.2.0.crate/src/lib.rs",
     edition = "2015",
+    visibility = [],
+)
+
+http_archive(
+    name = "semver-1.0.28.crate",
+    sha256 = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd",
+    strip_prefix = "semver-1.0.28",
+    urls = ["https://static.crates.io/crates/semver/1.0.28/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "semver-1.0.28",
+    srcs = [":semver-1.0.28.crate"],
+    crate = "semver",
+    crate_root = "semver-1.0.28.crate/src/lib.rs",
+    edition = "2021",
     visibility = [],
 )
 
@@ -3989,30 +4110,30 @@ cargo.rust_library(
 
 alias(
     name = "talc",
-    actual = ":talc-4.4.3",
+    actual = ":talc-5.0.3",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "talc-4.4.3.crate",
-    sha256 = "a3ae828aa394de34c7de08f522d1b86bd1c182c668d27da69caadda00590f26d",
-    strip_prefix = "talc-4.4.3",
-    urls = ["https://static.crates.io/crates/talc/4.4.3/download"],
+    name = "talc-5.0.3.crate",
+    sha256 = "3081e3f3ad542dc4cd0ae720f752598f8880fd364dc2d031132e3509f673aa23",
+    strip_prefix = "talc-5.0.3",
+    urls = ["https://static.crates.io/crates/talc/5.0.3/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "talc-4.4.3",
-    srcs = [":talc-4.4.3.crate"],
+    name = "talc-5.0.3",
+    srcs = [":talc-5.0.3.crate"],
     crate = "talc",
-    crate_root = "talc-4.4.3.crate/src/lib.rs",
+    crate_root = "talc-5.0.3.crate/src/lib.rs",
     edition = "2021",
-    features = [
-        "counters",
-        "lock_api",
-    ],
+    features = ["counters"],
     visibility = [],
-    deps = [":lock_api-0.4.14"],
+    deps = [
+        ":allocator-api2-0.4.0",
+        ":lock_api-0.4.14",
+    ],
 )
 
 alias(
@@ -4555,27 +4676,8 @@ cargo.rust_library(
 
 alias(
     name = "wasm-encoder",
-    actual = ":wasm-encoder-0.241.2",
+    actual = ":wasm-encoder-0.248.0",
     visibility = ["PUBLIC"],
-)
-
-http_archive(
-    name = "wasm-encoder-0.241.2.crate",
-    sha256 = "e01164c9dda68301e34fdae536c23ed6fe90ce6d97213ccc171eebbd3d02d6b8",
-    strip_prefix = "wasm-encoder-0.241.2",
-    urls = ["https://static.crates.io/crates/wasm-encoder/0.241.2/download"],
-    visibility = [],
-)
-
-cargo.rust_library(
-    name = "wasm-encoder-0.241.2",
-    srcs = [":wasm-encoder-0.241.2.crate"],
-    crate = "wasm_encoder",
-    crate_root = "wasm-encoder-0.241.2.crate/src/lib.rs",
-    edition = "2021",
-    rustc_flags = ["--cfg=core_error"],
-    visibility = [],
-    deps = [":leb128fmt-0.1.0"],
 )
 
 http_archive(
@@ -4592,72 +4694,93 @@ cargo.rust_library(
     crate = "wasm_encoder",
     crate_root = "wasm-encoder-0.248.0.crate/src/lib.rs",
     edition = "2024",
-    features = [
-        "component-model",
-        "std",
-    ],
-    rustc_flags = ["--cfg=core_error"],
+    platform = {
+        "linux-arm64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+        ),
+        "linux-x86_64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+        ),
+        "macos-arm64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+        ),
+        "macos-x86_64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+        ),
+    },
     visibility = [],
     deps = [":leb128fmt-0.1.0"],
 )
 
 alias(
     name = "wasmparser",
-    actual = ":wasmparser-0.228.0",
+    actual = ":wasmparser-0.248.0",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "wasmparser-0.228.0.crate",
-    sha256 = "4abf1132c1fdf747d56bbc1bb52152400c70f336870f968b85e89ea422198ae3",
-    strip_prefix = "wasmparser-0.228.0",
-    urls = ["https://static.crates.io/crates/wasmparser/0.228.0/download"],
+    name = "wasmparser-0.248.0.crate",
+    sha256 = "aa4439c5eee9df71ee0c6efb37f63b1fcb1fec38f85f5142c54e7ed05d33091a",
+    strip_prefix = "wasmparser-0.248.0",
+    urls = ["https://static.crates.io/crates/wasmparser/0.248.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "wasmparser-0.228.0",
-    srcs = [":wasmparser-0.228.0.crate"],
+    name = "wasmparser-0.248.0",
+    srcs = [":wasmparser-0.248.0.crate"],
     crate = "wasmparser",
-    crate_root = "wasmparser-0.228.0.crate/src/lib.rs",
-    edition = "2021",
-    env = {
-        "OUT_DIR": "$(location :wasmparser-0.228.0-build-script-run[out_dir])",
-    },
+    crate_root = "wasmparser-0.248.0.crate/src/lib.rs",
+    edition = "2024",
     features = [
         "features",
         "simd",
         "validate",
     ],
-    rustc_flags = ["@$(location :wasmparser-0.228.0-build-script-run[rustc_flags])"],
+    platform = {
+        "linux-arm64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+            deps = [":semver-1.0.28"],
+        ),
+        "linux-x86_64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+            deps = [":semver-1.0.28"],
+        ),
+        "macos-arm64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+            deps = [":semver-1.0.28"],
+        ),
+        "macos-x86_64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+            deps = [":semver-1.0.28"],
+        ),
+    },
     visibility = [],
     deps = [":bitflags-2.11.1"],
-)
-
-cargo.rust_binary(
-    name = "wasmparser-0.228.0-build-script-build",
-    srcs = [":wasmparser-0.228.0.crate"],
-    crate = "build_script_build",
-    crate_root = "wasmparser-0.228.0.crate/build.rs",
-    edition = "2021",
-    features = [
-        "features",
-        "simd",
-        "validate",
-    ],
-    visibility = [],
-)
-
-buildscript_run(
-    name = "wasmparser-0.228.0-build-script-run",
-    package_name = "wasmparser",
-    buildscript_rule = ":wasmparser-0.228.0-build-script-build",
-    features = [
-        "features",
-        "simd",
-        "validate",
-    ],
-    version = "0.228.0",
 )
 
 alias(

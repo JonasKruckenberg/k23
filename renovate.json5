@@ -7,6 +7,10 @@
     schedule: ['before 9am on Friday'],
     // Limit concurrent open PRs
     prConcurrentLimit: 5,
+    // Set a minimum release age to give security scanners/researchers
+    // and maintainers time to react to supply chain attacks
+    // 7 days is picked at random, but seems sensible enough
+    minimumReleaseAge: "7 days",
     packageRules: [
         // Group all minor & patch Rust dependency updates into one PR
         {

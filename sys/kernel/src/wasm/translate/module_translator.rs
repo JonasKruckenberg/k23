@@ -9,6 +9,7 @@ use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+use anyhow::bail;
 use cranelift_entity::packed_option::ReservedValue;
 use hashbrown::HashMap;
 use wasmparser::{
@@ -138,7 +139,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                 self.translate_data_section(data)?;
             }
             Payload::CodeSectionStart { count, range, .. } => {
-                self.validator.code_section_start(count, &range)?;
+                self.validator.code_section_start(&range)?;
                 self.result.function_bodies.reserve_exact(count as usize);
                 self.result.debug_info.code_section_offset = range.start as u64;
             }
@@ -259,7 +260,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             .imports
             .reserve_exact(imports.count() as usize);
 
-        for import in imports {
+        for import in imports.into_imports() {
             let import = import?;
 
             let index = match import.ty {
@@ -312,6 +313,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                     let interned_index = self.result.module.types[signature];
                     EntityType::Tag(CanonicalizedTypeIndex::Module(interned_index))
                 }
+                TypeRef::FuncExact(_index) => bail!("custom-descriptors not supported"),
             };
 
             self.result.module.imports.push(Import {
@@ -504,6 +506,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                         .insert(index, export.name);
                     EntityIndex::Global(index)
                 }
+                ExternalKind::FuncExact => bail!("custom-descriptors not supported"),
             };
 
             self.result

@@ -1,3 +1,5 @@
+load("//build:split_debuginfo.bzl", "split_debuginfo")
+
 _DEPS = [
     # internal libraries
     "//sys/loader/api:loader-api",
@@ -54,23 +56,41 @@ _DEPS = [
 })
 
 rust_binary(
-    name = "kernel",
+    name = "kernel-unstripped",
+    crate = "k23",
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/main.rs",
     default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     incoming_transition = "//build:kernel",
     deps = _DEPS,
+)
+
+split_debuginfo(
+    name = "kernel",
+    binary = ":kernel-unstripped",
+    default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     visibility = ["PUBLIC"],
 )
 
 rust_binary(
-    name = "kernel_tests",
+    name = "kernel-tests-unstripped",
+    crate = "k23",
     srcs = glob(["src/**/*.rs"]),
     mapped_srcs = {"//:wast_tests": "wast"},
     crate_root = "src/main.rs",
     default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     incoming_transition = "//build:kernel-tests",
     rustc_flags = ["--cfg=test"],
     deps = _DEPS,
+)
+
+split_debuginfo(
+    name = "kernel-tests",
+    binary = ":kernel-tests-unstripped",
+    default_target_platform = "//platforms:riscv64",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     visibility = ["PUBLIC"],
 )

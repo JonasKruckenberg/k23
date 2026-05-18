@@ -246,7 +246,7 @@ impl<T: fmt::Display + ?Sized> fmt::Display for MutexGuard<'_, T> {
 // `lock_api::RawMutex::INIT` is an associated const, which forces
 // `Mutex::new(())` to be a constant expression. That rules out loom atomics
 // (their constructors aren't `const`), so this impl is only compiled outside
-// loom. The kernel (`talc::Talck<spin::RawMutex, _>`) never builds under loom,
+// loom. The kernel (`talc::TalcLock<spin::RawMutex, _>`) never builds under loom,
 // so it's unaffected; loom-driven tests in this crate use `Mutex` directly and
 // don't need the trait.
 #[cfg(not(loom))]

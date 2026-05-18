@@ -52,7 +52,7 @@ jobs:
 
       - name: Restore base.jsonl
         id: cache-base
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: base.jsonl
           key: changed-targets-base-${{ runner.os }}-${{ steps.base.outputs.sha }}
@@ -105,7 +105,7 @@ jobs:
             printf '%s\n' "$IMPACTED" > impacted-targets.txt
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: impacted-targets
           path: impacted-targets.txt

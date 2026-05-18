@@ -1,3 +1,5 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 # Converts a RISC-V ELF shared object into a PE/COFF `.efi` executable.
 rust_binary(
     name = "riscv-elf2efi",
@@ -10,5 +12,6 @@ rust_binary(
         "//third-party:clap",
         "//third-party:memmap2",
     ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )

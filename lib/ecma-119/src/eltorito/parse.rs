@@ -7,6 +7,7 @@
 
 use core::cmp;
 
+use anyhow::Context;
 use fallible_iterator::FallibleIterator;
 use zerocopy::IntoBytes;
 
@@ -45,7 +46,7 @@ impl BootRecord {
             )
         })?;
         let len = u32::try_from(cmp::min(remaining, 6 * SECTOR_SIZE))
-            .expect("len bounded above by 6 * SECTOR_SIZE");
+            .context("len bounded above by 6 * SECTOR_SIZE")?;
 
         let parser = Parser::from_lba_and_len(img.data, lba, len, img.strict)?;
 

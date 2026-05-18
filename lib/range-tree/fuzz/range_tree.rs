@@ -121,9 +121,8 @@ enum ValueType {
 fn bounds_reversed<T: Ord>(start: Bound<T>, end: Bound<T>) -> bool {
     match (start, end) {
         (Bound::Unbounded, _) | (_, Bound::Unbounded) => false,
-        (Bound::Included(s), Bound::Included(e))
-        | (Bound::Included(s), Bound::Excluded(e))
-        | (Bound::Excluded(s), Bound::Included(e)) => s > e,
+        (Bound::Included(s) | Bound::Excluded(s), Bound::Included(e))
+        | (Bound::Included(s), Bound::Excluded(e)) => s > e,
         (Bound::Excluded(s), Bound::Excluded(e)) => s >= e,
     }
 }
@@ -228,7 +227,7 @@ fn run<
                         expected_gaps.push((Bound::Included(end), Bound::Unbounded));
                     }
                 } else {
-                    expected_gaps.push((Bound::Unbounded, Bound::Unbounded))
+                    expected_gaps.push((Bound::Unbounded, Bound::Unbounded));
                 }
 
                 // filter out all empty ranges
@@ -347,7 +346,7 @@ fn run<
                     assert_eq!(entries, vec[index..]);
                     assert_eq!(
                         cursor.entry().map(|(k, &v)| (k, v)),
-                        vec.get(index).cloned()
+                        vec.get(index).copied()
                     );
                     assert_eq!(cursor.is_end(), index == vec.len());
                 }

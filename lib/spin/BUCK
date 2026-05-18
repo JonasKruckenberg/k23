@@ -1,3 +1,4 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//build:loom.bzl", "rust_loom_test")
 
 rust_library(
@@ -26,6 +27,7 @@ rust_test(
         "//third-party:lazy_static",
         "//third-party:rand",
     ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
 

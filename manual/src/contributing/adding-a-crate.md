@@ -16,6 +16,11 @@ If you're unsure about where to put a crate, default to `lib/`.
 Crates generally look the same under [buck2] as they do under [Cargo]: a `src` folder containing your Rust code, a `src/lib.rs` or `src/main.rs` entrypoint. The biggest difference is the `BUCK` file (written in [Starlark]): It is our equivalent of `Cargo.toml` and where you declare all the crates metadata to the build system.
 
 ```starlark
+# host_configuration carries the build machine's os/cpu labels. We use it
+# below to mark the unit-test target as host-only so cross-arch lanes
+# (`just platform=//platforms:riscv64 …`) skip it.
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
 # declare the crate so the build system knows about it
 rust_library(
     # the name of the crate. rust code imports from this name.
@@ -45,6 +50,9 @@ rust_test(
         "//third-party:cfg-if",
         "//third-party:proptest",  # or whatever the tests need
     ],
+    # unit tests run on the developer machine, so they're only compatible
+    # with the host platform. Cross-arch preflight lanes skip them.
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
 ```
@@ -91,6 +99,14 @@ features = select({
     "constraints//:env[kernel]": ["thread-local"], # when running inside the kernel thread-locals are available, so lets use them
     "DEFAULT": [] # otherwise we use some fallback mechanism
 })
+```
+
+If your crate is intrinsically arch-locked (e.g. wraps RISC-V intrinsics),
+mark the library itself incompatible with the other arches so cross-arch
+preflight lanes skip it instead of failing to build:
+
+```starlark
+target_compatible_with = ["prelude//cpu/constraints:riscv64"],
 ```
 
 ## Removing a crate
