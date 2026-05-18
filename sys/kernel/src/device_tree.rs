@@ -672,12 +672,16 @@ impl<'bump> Builder<'bump> {
 
     fn push_device(&mut self, n: DeviceNode) -> DeviceId {
         self.devices.push(n);
-        DeviceId(NonZeroU32::new(self.devices.len() as u32).unwrap())
+        let id = u32::try_from(self.devices.len())
+            .expect("device tree contains more than u32::MAX devices");
+        DeviceId(NonZeroU32::new(id).unwrap())
     }
 
     fn push_property(&mut self, p: PropertyNode) -> PropertyId {
         self.properties.push(p);
-        PropertyId(NonZeroU32::new(self.properties.len() as u32).unwrap())
+        let id = u32::try_from(self.properties.len())
+            .expect("device tree contains more than u32::MAX properties");
+        PropertyId(NonZeroU32::new(id).unwrap())
     }
 
     fn register_phandle(&mut self, phandle: u32, id: DeviceId) {
