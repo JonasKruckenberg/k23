@@ -11,7 +11,7 @@ use core::time::Duration;
 use kasync::time::{Clock, NANOS_PER_SEC, RawClock, RawClockVTable};
 use riscv::sbi;
 
-use crate::device_tree::Device;
+use crate::device_tree::{Device, DeviceTree};
 
 static CLOCK_VTABLE: RawClockVTable =
     RawClockVTable::new(clone_raw, now_raw, schedule_wakeup_raw, drop_raw);
@@ -37,10 +37,15 @@ unsafe fn drop_raw(_ptr: *const ()) {
     debug_assert!(_ptr.is_null());
 }
 
-pub fn new(cpu_node: &Device) -> crate::Result<Clock> {
+pub fn new(devtree: &DeviceTree, cpu_node: Device<'_>) -> crate::Result<Clock> {
     let timebase_frequency = cpu_node
-        .property("timebase-frequency")
-        .or_else(|| cpu_node.parent().unwrap().property("timebase-frequency"))
+        .property(devtree, "timebase-frequency")
+        .or_else(|| {
+            cpu_node
+                .parent(devtree)
+                .unwrap()
+                .property(devtree, "timebase-frequency")
+        })
         .unwrap()
         .as_u64()?;
 
