@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>k23 dependency map</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0e1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --fg: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --system: #d2a8ff;
+    --lib: #58a6ff;
+    --external: #f0883e;
+    --external-git: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body, html { margin: 0; padding: 0; height: 100%; background: var(--bg);
+    color: var(--fg); font: 14px/1.4 -apple-system, BlinkMacSystemFont,
+    "Segoe UI", system-ui, sans-serif; }
+  #app { display: grid; grid-template-columns: 1fr 360px; height: 100vh; }
+  #cy { background: var(--bg); }
+  #sidebar { background: var(--panel); border-left: 1px solid var(--border);
+    overflow-y: auto; padding: 18px; }
+  header { padding: 12px 18px; border-bottom: 1px solid var(--border);
+    background: var(--panel); display: flex; justify-content: space-between;
+    align-items: center; gap: 16px; }
+  header h1 { font-size: 16px; margin: 0; }
+  header .meta { color: var(--muted); font-size: 12px; }
+  #controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  #controls input[type=text] { background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); padding: 4px 8px; border-radius: 4px;
+    width: 180px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px;
+    color: var(--muted); }
+  .legend .swatch { display: inline-block; width: 10px; height: 10px;
+    border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .swatch.system { background: var(--system); }
+  .swatch.lib { background: var(--lib); }
+  .swatch.ext { background: var(--external); }
+  .swatch.ext-git { background: var(--external-git); }
+  .swatch.maint-green { background: var(--green); }
+  .swatch.maint-yellow { background: var(--yellow); }
+  .swatch.maint-red { background: var(--red); }
+  #sidebar h2 { font-size: 14px; margin: 0 0 8px; }
+  #sidebar h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  #sidebar .row { display: flex; justify-content: space-between; gap: 8px;
+    padding: 2px 0; border-bottom: 1px dotted var(--border); }
+  #sidebar .row .k { color: var(--muted); }
+  #sidebar a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  #sidebar a:hover { text-decoration: underline; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 10px;
+    background: var(--border); color: var(--fg); font-size: 11px; }
+  .badge.green { background: rgba(63,185,80,0.16); color: var(--green); }
+  .badge.yellow { background: rgba(210,153,34,0.16); color: var(--yellow); }
+  .badge.red { background: rgba(248,81,73,0.16); color: var(--red); }
+  .dep-list { font-size: 12px; max-height: 200px; overflow-y: auto; }
+  .dep-list .item { padding: 2px 0; cursor: pointer; }
+  .dep-list .item:hover { color: var(--accent); }
+  .empty-hint { color: var(--muted); font-size: 12px; padding: 20px 0; }
+  button.tab { background: transparent; color: var(--muted); border: 1px solid
+    var(--border); padding: 4px 10px; border-radius: 4px; cursor: pointer;
+    font-size: 12px; }
+  button.tab.active { color: var(--fg); border-color: var(--accent); }
+  .checks { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>k23 dependency map</h1>
+    <div class="meta" id="meta"></div>
+  </div>
+  <div id="controls">
+    <input type="text" id="search" placeholder="Filter (substring)…">
+    <div class="checks">
+      <button class="tab active" data-layout="cose-bilkent">force</button>
+      <button class="tab" data-layout="breadthfirst">layered</button>
+      <button class="tab" data-layout="concentric">concentric</button>
+    </div>
+  </div>
+</header>
+<div id="app">
+  <div id="cy"></div>
+  <div id="sidebar">
+    <h2>Legend</h2>
+    <div class="legend">
+      <span><span class="swatch system"></span>system / kernel</span>
+      <span><span class="swatch lib"></span>internal lib</span>
+      <span><span class="swatch ext"></span>external (crates.io)</span>
+      <span><span class="swatch ext-git"></span>external (git/fork)</span>
+    </div>
+    <h3>Maintenance signal (external)</h3>
+    <div class="legend">
+      <span><span class="swatch maint-green"></span>≤ 1 year</span>
+      <span><span class="swatch maint-yellow"></span>≤ 2 years</span>
+      <span><span class="swatch maint-red"></span>&gt; 2 years</span>
+    </div>
+    <div id="detail">
+      <p class="empty-hint">
+        Click a node to inspect it. Node size reflects fan-in (how many other
+        crates depend on it). Border ring reflects maintenance signal for
+        external crates.
+      </p>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
+<script id="graph-data" type="application/json">__GRAPH_JSON__</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById('graph-data').textContent);
+  document.getElementById('meta').textContent =
+    `${data.nodes.length} nodes · ${data.edges.length} edges · generated ${data.generated_at}`;
+
+  // Precompute adjacency once so click handlers don't linear-scan all edges.
+  const adjOut = new Map(), adjIn = new Map();
+  for (const n of data.nodes) { adjOut.set(n.id, []); adjIn.set(n.id, []); }
+  for (const e of data.edges) {
+    adjOut.get(e.source)?.push(e.target);
+    adjIn.get(e.target)?.push(e.source);
+  }
+
+  const NODE_COLOR = { system: '#d2a8ff', lib: '#58a6ff',
+                       external: '#f0883e', 'external-git': '#a371f7' };
+  const MAINT_COLOR = { green: '#3fb950', yellow: '#d29922', red: '#f85149' };
+  const colorFor = (n) => NODE_COLOR[
+    n.category === 'external' && n.source === 'git' ? 'external-git' : n.category
+  ] || '#8b949e';
+  const borderFor = (n) => MAINT_COLOR[n.metrics?.maintenance] || '#30363d';
+  const sizeFor = (n) => Math.max(18, Math.min(70, 18 + Math.sqrt(n.fan_in || 0) * 10));
+
+  const elements = [
+    ...data.nodes.map(n => ({
+      data: { id: n.id, label: n.label, color: colorFor(n),
+              border: borderFor(n), size: sizeFor(n), node: n },
+    })),
+    ...data.edges.map((e, i) => ({
+      data: { id: 'e' + i, source: e.source, target: e.target },
+    })),
+  ];
+
+  const COSE = { name: 'cose-bilkent', idealEdgeLength: 90, nodeRepulsion: 4500,
+                 edgeElasticity: 0.45, animate: false, randomize: true, fit: true };
+  const layoutOpts = (name) => name === 'cose-bilkent'
+    ? COSE : { name, animate: false, fit: true, spacingFactor: 1.1 };
+
+  const cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements,
+    wheelSensitivity: 0.2,
+    style: [
+      { selector: 'node', style: {
+        'background-color': 'data(color)', 'border-width': 2.5,
+        'border-color': 'data(border)', 'label': 'data(label)',
+        'color': '#c9d1d9', 'text-outline-color': '#0e1117',
+        'text-outline-width': 2, 'font-size': 9,
+        'width': 'data(size)', 'height': 'data(size)',
+        'text-valign': 'bottom', 'text-margin-y': 2,
+      }},
+      { selector: 'edge', style: {
+        'width': 0.7, 'line-color': '#30363d',
+        'target-arrow-color': '#30363d', 'target-arrow-shape': 'triangle',
+        'arrow-scale': 0.6, 'curve-style': 'bezier', 'opacity': 0.55,
+      }},
+      { selector: 'node.dim',  style: { 'opacity': 0.12 }},
+      { selector: 'edge.dim',  style: { 'opacity': 0.05 }},
+      { selector: 'node.hi',   style: { 'border-width': 4 }},
+      { selector: 'edge.hi',   style: {
+        'line-color': '#58a6ff', 'target-arrow-color': '#58a6ff',
+        'opacity': 1, 'width': 1.6,
+      }},
+    ],
+    layout: COSE,
+  });
+
+  function highlight(node) {
+    cy.elements().addClass('dim').removeClass('hi');
+    if (!node) return;
+    cy.getElementById(node.id).closedNeighborhood()
+      .removeClass('dim').addClass('hi');
+  }
+
+  const row = (k, v) => v == null ? '' :
+    `<div class="row"><span class="k">${k}</span><span>${v}</span></div>`;
+  const link = (label, url) => url
+    ? `<a href="${url}" target="_blank" rel="noopener">${label}</a>` : '';
+
+  function renderDetail(n) {
+    const d = document.getElementById('detail');
+    if (!n) { d.innerHTML = '<p class="empty-hint">Click a node to inspect it.</p>'; return; }
+    const m = n.metrics || {};
+    const rows = [
+      row('target', `<code>${n.id}</code>`),
+      row('category', n.category + (n.source ? ` · ${n.source}` : '')),
+      row('fan-in', n.fan_in),
+    ];
+    if (n.category === 'external') {
+      rows.push(row('crate', n.crate_name), row('version', n.version));
+      if (m.latest_stable_version && m.latest_stable_version !== n.version)
+        rows.push(row('latest stable', m.latest_stable_version));
+      rows.push(row('license', m.license));
+      if (m.crate_size != null)
+        rows.push(row('crate size', `${(m.crate_size / 1024).toFixed(1)} KB`));
+      rows.push(
+        row('downloads (90d)', m.downloads_recent?.toLocaleString()),
+        row('downloads (total)', m.downloads_total?.toLocaleString()),
+      );
+      if (m.days_since_last_release != null)
+        rows.push(row('last release',
+          `<span class="badge ${m.maintenance||'unknown'}">${m.days_since_last_release} days ago</span>`));
+      rows.push(
+        row('crates.io', link(n.crate_name, `https://crates.io/crates/${n.crate_name}/${n.version}`)),
+        row('repository', link(m.repository || '', m.repository)),
+      );
+      if (n.git_url) rows.push(row('git source', link(n.git_url, n.git_url)));
+      if (m.description)
+        rows.push(`<p style="margin:8px 0; color:var(--muted)">${m.description}</p>`);
+      if (m.fetch_error)
+        rows.push(row('crates.io error', `<span class="badge red">${m.fetch_error}</span>`));
+    }
+    const depList = (title, ids) => ids.length
+      ? `<h3>${title} (${ids.length})</h3><div class="dep-list">${
+          ids.slice(0, 200).map(id => `<div class="item" data-jump="${id}">${id}</div>`).join('')
+        }</div>` : '';
+    d.innerHTML = `<h2>${n.label}</h2>` + rows.join('')
+      + depList('Direct deps', adjOut.get(n.id) || [])
+      + depList('Dependents', adjIn.get(n.id) || []);
+    d.querySelectorAll('[data-jump]').forEach(el => {
+      el.addEventListener('click', () => {
+        const target = cy.getElementById(el.dataset.jump);
+        if (!target.length) return;
+        cy.animate({ center: { eles: target }, zoom: 1.4, duration: 250 });
+        const node = data.nodes.find(x => x.id === el.dataset.jump);
+        highlight(node);
+        renderDetail(node);
+      });
+    });
+  }
+
+  cy.on('tap', 'node', evt => {
+    const n = evt.target.data('node');
+    highlight(n); renderDetail(n);
+  });
+  cy.on('tap', evt => {
+    if (evt.target === cy) {
+      cy.elements().removeClass('dim').removeClass('hi');
+      renderDetail(null);
+    }
+  });
+
+  document.getElementById('search').addEventListener('input', e => {
+    const q = e.target.value.trim().toLowerCase();
+    if (!q) { cy.elements().removeClass('dim'); return; }
+    cy.nodes().forEach(node => {
+      const n = node.data('node');
+      const hit = n.id.toLowerCase().includes(q)
+        || (n.crate_name || '').toLowerCase().includes(q);
+      node[hit ? 'removeClass' : 'addClass']('dim');
+    });
+    cy.edges().forEach(edge => {
+      const dim = edge.source().hasClass('dim') || edge.target().hasClass('dim');
+      edge[dim ? 'addClass' : 'removeClass']('dim');
+    });
+  });
+
+  document.querySelectorAll('button.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('button.tab')
+        .forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      cy.layout(layoutOpts(btn.dataset.layout)).run();
+    });
+  });
+})();
+</script>
+</body>
+</html>
