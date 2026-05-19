@@ -24,6 +24,10 @@ jobs:
         uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate dependency map
+        # Writes manual/src/dep-map.html + dep-map.json (both gitignored).
+        # mdbook's glob picks them up as static assets during the next step.
+        run: nix develop --command just dep-map
       - name: Build Book
         # //manual:manual is the source of truth — the genrule includes the
         # auto-generated kcfg reference (//build:config_docs) that a plain

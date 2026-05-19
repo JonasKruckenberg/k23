@@ -12,6 +12,7 @@ _reindeer := require("reindeer")
 _rust_project := require("rust-project")
 _cargo_deny := require("cargo-deny")
 _jq := require("jq")
+_python3 := require("python3")
 
 _docstring := "
 justfile for k23
@@ -114,6 +115,13 @@ fuzz_args := ""
 
 manual:
     {{ _buck2 }} run //manual:manual
+
+# Regenerate the interactive dependency map (manual/src/dep-map.{html,json}).
+# Reaches out to crates.io for per-crate metrics; results are cached in
+# .dep-map-cache.json at the repo root so repeated local runs stay cheap.
+# Pass `--skip-crates-io` to work offline.
+dep-map *args:
+    {{ _python3 }} build/dep-map/dep-map.py gen --out-dir manual/src {{args}}
 
 # ===== benchmarking =====
 

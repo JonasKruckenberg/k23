@@ -1,0 +1,144 @@
+name: Dependency map
+
+# Renders the dependency-graph diff between the PR's base and HEAD, attaches
+# the full graph as artifacts, and posts a sticky comment summarizing what
+# crates were added / removed / version-changed.
+#
+# Skips when no relevant files changed (Cargo.lock, third-party/BUCK, or any
+# internal BUCK file under lib/ or sys/).
+
+on:
+  pull_request:
+    paths:
+      - 'third-party/Cargo.lock'
+      - 'third-party/Cargo.toml'
+      - 'third-party/BUCK'
+      - 'lib/**/BUCK'
+      - 'sys/**/BUCK'
+      - 'build/dep-map/**'
+      - '.github/workflows/dep-map.yml'
+
+concurrency:
+  group: dep-map-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write  # to post the sticky comment
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
+
+      - name: Determine base SHA
+        id: base
+        run: |
+          BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "sha=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Base: $BASE"
+
+      # Cache crates.io fetches across PR runs. The cache file is keyed by
+      # the union of the two Cargo.locks; a different lock will produce a
+      # different key (but old keys still match as a prefix and seed the
+      # cache for warm hits).
+      - name: Restore crates.io cache
+        uses: actions/cache@v5
+        with:
+          path: .dep-map-cache.json
+          key: dep-map-cache-${{ runner.os }}-${{ hashFiles('third-party/Cargo.lock') }}
+          restore-keys: |
+            dep-map-cache-${{ runner.os }}-
+
+      - name: Build HEAD dep-map
+        run: |
+          mkdir -p dep-map-head
+          nix develop .#ci --command \
+            python3 build/dep-map/dep-map.py gen \
+              --out-dir dep-map-head \
+              --cache .dep-map-cache.json
+
+      - name: Build BASE dep-map
+        id: base-build
+        run: |
+          set -e
+          BASE="${{ steps.base.outputs.sha }}"
+          git worktree add --detach /tmp/base-tree "$BASE"
+          mkdir -p dep-map-base
+          if [ ! -f /tmp/base-tree/build/dep-map/dep-map.py ]; then
+            echo "Base $BASE predates dep-map tooling; using empty graph"
+            echo '{"schema_version":1,"nodes":[],"edges":[],"generated_at":"1970-01-01T00:00:00Z"}' > dep-map-base/dep-map.json
+            echo "synthetic_base=1" >> "$GITHUB_OUTPUT"
+          else
+            # The base-tree script reads base's Cargo.lock/BUCK but reuses
+            # the warm crates.io cache from HEAD's workspace.
+            (cd /tmp/base-tree && nix develop "$GITHUB_WORKSPACE#ci" --command \
+              python3 build/dep-map/dep-map.py gen \
+                --out-dir "$GITHUB_WORKSPACE/dep-map-base" \
+                --cache "$GITHUB_WORKSPACE/.dep-map-cache.json")
+          fi
+          git worktree remove --force /tmp/base-tree
+
+      - name: Diff
+        run: |
+          nix develop .#ci --command \
+            python3 build/dep-map/dep-map.py diff \
+              --base dep-map-base/dep-map.json \
+              --head dep-map-head/dep-map.json \
+              --out-dir dep-map-diff
+
+      - name: Compose comment body
+        id: comment
+        run: |
+          {
+            cat dep-map-diff/dep-map-diff.md
+            echo ''
+            echo "---"
+            echo "_📎 Full interactive graph (HEAD): see workflow artifact \`dep-map-html\`._"
+            if [ -f dep-map-diff/dep-map-diff.svg ]; then
+              echo "_📎 Colorized diff SVG: see workflow artifact \`dep-map-diff\`._"
+            fi
+            if [ "${{ steps.base-build.outputs.synthetic_base }}" = "1" ]; then
+              echo ''
+              echo "> ℹ️ Base commit predates the dep-map tooling — every crate is reported as 'added'."
+            fi
+          } > comment.md
+          # Write to GITHUB_OUTPUT with delimiter for multi-line payload.
+          {
+            echo 'body<<EOF'
+            cat comment.md
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload HEAD graph (HTML + JSON)
+        uses: actions/upload-artifact@v7
+        with:
+          name: dep-map-html
+          path: |
+            dep-map-head/dep-map.html
+            dep-map-head/dep-map.json
+
+      - name: Upload diff artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dep-map-diff
+          path: dep-map-diff/
+
+      - name: Post / update sticky PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: dep-map-diff
+          message: ${{ steps.comment.outputs.body }}

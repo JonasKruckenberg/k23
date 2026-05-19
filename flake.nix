@@ -229,6 +229,10 @@
             typos
             jq
             zstd
+            # `just dep-map` is a Python script; the PR diff renders an SVG
+            # via Graphviz. Both are tiny and only used by dep-map tooling.
+            python3
+            graphviz
           ];
 
           # Extra tooling for jobs that exercise the kernel on-target.

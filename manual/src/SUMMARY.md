@@ -16,6 +16,7 @@
 - [Adding Tests](contributing/adding-tests.md)
 - [Adding a Third-Party Dependency](contributing/adding-a-dependency.md)
 - [Running Checks Across Architectures](contributing/cross-arch-checks.md)
+- [Dependency Map](contributing/dep-map.md)
 
 # High-Level Architecture
 
