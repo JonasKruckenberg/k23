@@ -54,11 +54,20 @@ impl BumpStr {
     ///
     /// The caller must guarantee:
     ///
-    /// 1. `self.ptr` is valid for reads of `self.len` consecutive bytes
-    ///    throughout `'a`, and those bytes form valid UTF-8.
-    /// 2. No `&mut` reference overlaps with that region for the duration of `'a`.
+    /// It holds a reference `&'a Bump` for the bump allocator that created this
+    /// `BumpStr` via `alloc_str`.
     unsafe fn as_str<'a>(self) -> &'a str {
-        // Safety: ensured by caller.
+        // Safety: The caller ensures that it holds `&'a Bump` for the `Bump`
+        // which created this `BumpStr` via `alloc_str`.
+        //
+        // This implies:
+        //
+        // 1. `self.ptr` is valid for reads of `self.len` consecutive bytes
+        // throughout `'a`. This makes `slice::from_raw_parts` safe.
+        //
+        // 2. Those bytes form valid UTF-8. This makes
+        // `str::from_utf8_unchecked` safe).
+        //
         unsafe {
             core::str::from_utf8_unchecked(slice::from_raw_parts(self.ptr.as_ptr(), self.len))
         }
@@ -79,11 +88,14 @@ impl BumpBytes {
     ///
     /// The caller must guarantee:
     ///
-    /// 1. `self.ptr` is valid for reads of `self.len` consecutive initialised
-    ///    bytes throughout `'a`.
-    /// 2. No `&mut` reference overlaps with that region for the duration of `'a`.
+    /// It holds a reference `&'a Bump` for the bump allocator that created this
+    /// `BumpBytes` via `alloc_bytes`.
     unsafe fn as_slice<'a>(self) -> &'a [u8] {
-        // Safety: ensured by caller.
+        // Safety: The caller ensures that it holds `&'a Bump` for the `Bump`
+        // which created this `BumpBytes` via `alloc_bytes`.
+        //
+        // This ensures that `self.ptr` is valid for reads of `self.len`
+        // consecutive initialised bytes throughout `'a`.
         unsafe { slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
     }
 }
@@ -131,16 +143,22 @@ impl Arena {
     fn device(&self, id: DeviceId) -> Device<'_> {
         // Safety: `self.devices` was constructed by `Builder::finish` from a
         // `BumpVec` finalized via `into_bump_slice`; its bytes live in
-        // `self.bump`, which is alive while `&self` is held. The slice is
-        // never mutated after construction. Every `BumpStr` in a
-        // `DeviceNode` was produced by `Builder::alloc_str`, so it points
-        // at a bump-allocated valid UTF-8 slice.
+        // `self.bump`, which is alive while `&self` is held.
         let n = &unsafe { self.devices.as_ref() }[id.idx()];
         Device {
             name: NodeName {
+                // Safety: Every `BumpStr` in a `DeviceNode` was produced by
+                // `Bump::alloc_str`, with `self.bump` which we hold a reference
+                // to for `'_`.
                 name: unsafe { n.name.as_str() },
+                // Safety: Every `BumpStr` in a `DeviceNode` was produced by
+                // `Bump::alloc_str`, with `self.bump` which we hold a reference
+                // to for `'_`.
                 unit_address: n.unit_address.map(|s| unsafe { s.as_str() }),
             },
+            // Safety: Every `BumpStr` in a `DeviceNode` was produced by
+            // `Bump::alloc_str`, with `self.bump` which we hold a reference
+            // to for `'_`.
             compatible: unsafe { n.compatible.as_str() },
             phandle: n.phandle,
             properties: n.properties,
@@ -151,17 +169,27 @@ impl Arena {
     }
 
     fn property(&self, id: PropertyId) -> Property<'_> {
-        // Safety: see `Arena::device`.
+        // Safety: `self.properties` was constructed by `Builder::finish` from a
+        // `BumpVec` finalized via `into_bump_slice`; its bytes live in
+        // `self.bump`, which is alive while `&self` is held.
         let p = &unsafe { self.properties.as_ref() }[id.idx()];
         Property {
+            // Safety: Every `BumpStr` in a `PropertyNode` was produced by
+            // `Bump::alloc_str`, with `self.bump` which we hold a reference
+            // to for `'_`.
             name: unsafe { p.name.as_str() },
+            // Safety: Every `BumpBytes` in a `PropertyNode` was produced by
+            // `Bump::alloc_bytes`, with `self.bump` which we hold a reference
+            // to for `'_`.
             raw: unsafe { p.raw.as_slice() },
             next: p.next,
         }
     }
 
     fn find_phandle(&self, phandle: u32) -> Option<DeviceId> {
-        // Safety: see `Arena::device`.
+        // Safety: `self.phandle_index` was constructed by `Builder::finish` from a
+        // `BumpVec` finalized via `into_bump_slice`; its bytes live in
+        // `self.bump`, which is alive while `&self` is held.
         let idx = unsafe { self.phandle_index.as_ref() };
         idx.binary_search_by_key(&phandle, |&(p, _)| p)
             .ok()
@@ -389,7 +417,7 @@ impl<'arena> Device<'arena> {
         Some(Interrupts {
             parent,
             parent_cells: parent.interrupt_cells(devtree)?,
-            raw: prop.raw.array_chunks::<4>().map(chunk_to_u32),
+            raw: prop.raw.array_chunks::<4>().map(|b| u32::from_be_bytes(*b)),
         })
     }
 
@@ -401,7 +429,7 @@ impl<'arena> Device<'arena> {
         let prop = self.property(devtree, "interrupts-extended")?;
         Some(InterruptsExtended {
             devtree,
-            raw: prop.raw.array_chunks::<4>().map(chunk_to_u32),
+            raw: prop.raw.array_chunks::<4>().map(|b| u32::from_be_bytes(*b)),
         })
     }
 }
@@ -616,10 +644,6 @@ impl<'a> Iterator for InterruptsExtended<'a> {
             interrupt_address(&mut self.raw, parent_interrupt_cells)?,
         ))
     }
-}
-
-fn chunk_to_u32(chunk: &[u8; 4]) -> u32 {
-    u32::from_be_bytes(*chunk)
 }
 
 fn interrupt_address(
