@@ -1748,6 +1748,10 @@ mod tests {
 
     #[cfg(not(target_os = "none"))]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "rand's ThreadRng uses chacha20's aarch64 NEON backend, which Miri cannot interpret"
+    )]
     fn random_inserts_and_removals() {
         let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
 
@@ -1776,6 +1780,10 @@ mod tests {
 
     #[cfg(not(target_os = "none"))]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "rand's ThreadRng uses chacha20's aarch64 NEON backend, which Miri cannot interpret"
+    )]
     fn random_inserts_and_searches() {
         let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
 

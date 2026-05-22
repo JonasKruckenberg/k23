@@ -33,6 +33,10 @@ rust_test(
         "//third-party:test-log",
     ],
     features = ["test_utils"],
+    # miri blocks getcwd so we need to disable proptest's getcwd-based failure persistence.
+    env = {
+        "PROPTEST_DISABLE_FAILURE_PERSISTENCE": "true",
+    },
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )

@@ -718,6 +718,10 @@ mod tests {
         }
 
         #[test_log::test]
+        #[cfg_attr(
+            miri,
+            ignore = "1 GiB is too much for miri's allocator"
+        )]
         fn allocate_contiguous_large_alignment<A: Arch>() {
             let machine: Machine<A> = MachineBuilder::new()
                 .with_memory_regions([
@@ -737,6 +741,10 @@ mod tests {
         }
 
         #[test_log::test]
+        #[cfg_attr(
+            miri,
+            ignore = "1 GiB is too much for miri's allocator"
+        )]
         fn allocate_large_alignment<A: Arch>() {
             let machine: Machine<A> = MachineBuilder::new()
                 .with_memory_regions([
@@ -759,7 +767,9 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+// The tests below allocate GiBs of regions and go through every frame. Takes
+// forever under miri.
+#[cfg(all(test, not(miri)))]
 mod proptests {
     use core::alloc::Layout;
 
