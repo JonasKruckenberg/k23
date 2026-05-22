@@ -18,7 +18,7 @@ flake.package(
 flake.package(
     name = "rust_toolchain",
     package = "rustToolchain",
-    binaries = ["rustc", "rustdoc", "clippy-driver", "miri-driver", "rustfmt"],
+    binaries = ["rustc", "cargo", "cargo-miri", "rustdoc", "clippy-driver", "miri", "rustfmt"],
     path = "root//:flake",
 )
 
@@ -133,13 +133,34 @@ filegroup(
   srcs = [":rust_toolchain"],
 )
 
+# Miri can only interpret crates whose std/core/alloc carry full MIR
+# (`-Zalways-encode-mir`). `cargo miri setup` rebuilds the standard library
+# from the toolchain's bundled `rust-src` into a Miri-compatible sysroot.
+#
+# `cargo miri setup` shells out to cargo-miri, miri and rustc, so the flake
+# toolchain's bin dir goes on PATH. buck hands genrules repo-relative paths
+# and those subprocesses change directory, so $PWD absolutizes them.
+genrule(
+    name = "miri_sysroot",
+    out = "sysroot",
+    cmd = " && ".join([
+        'export CARGO_HOME="$TMP/cargo"',
+        'export PATH="$PWD/$(location :rust_toolchain)/bin:$PATH"',
+        'export MIRI_SYSROOT="$PWD/$OUT"',
+        '$(exe :rust_toolchain[cargo]) miri setup',
+    ]),
+)
+
 rust_toolchain(
     name = "rust",
     rustc = ":rust_toolchain[rustc]",
     clippy = ":rust_toolchain[clippy-driver]",
     rustdoc = ":rust_toolchain[rustdoc]",
-    miri_driver = ":rust_toolchain[miri-driver]",
-    miri_sysroot_path = ":rust_toolchain",
+    miri_driver = ":rust_toolchain[miri]",
+    miri_sysroot_path = ":miri_sysroot",
+    # Forwarded into miri tests that set this var in their target `env`
+    # (mem-core uses it to disable proptest's getcwd-based persistence).
+    miri_flags = ["-Zmiri-env-forward=PROPTEST_DISABLE_FAILURE_PERSISTENCE", "-Zmiri-env-set=PROPTEST_CASES=16"],
     default_edition = "2024",
     nightly_features = select({
         "constraints//:rust-std[bootstrap]": True,

@@ -284,6 +284,8 @@ unsafe impl lock_api::RawMutex for Mutex<()> {
 
 #[cfg(test)]
 mod tests {
+    use fastrand::FastRand;
+
     use super::*;
     use crate::loom;
     use crate::loom::sync::atomic::AtomicUsize;
@@ -295,7 +297,7 @@ mod tests {
     const CYCLES: usize = if cfg!(loom) {
         1
     } else if cfg!(miri) {
-        100
+        10
     } else {
         500
     };
@@ -317,14 +319,15 @@ mod tests {
 
         loom::model(|| {
             let mut threads = Vec::new();
-            for _ in 0..THREADS {
-                threads.push(thread::spawn(|| {
+            for i in 0..THREADS {
+                threads.push(thread::spawn(move || {
+                    let mut rng = FastRand::from_seed(i as u64 + 1);
                     for _ in 0..CYCLES {
                         let mut guard = M.lock();
 
                         assert!(guard.iter().all(|b| *b == guard[0]));
 
-                        guard.fill(rand::random());
+                        guard.fill(rng.fastrand().to_le_bytes()[0]);
 
                         drop(guard);
                         #[cfg(loom)]

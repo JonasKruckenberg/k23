@@ -25,7 +25,7 @@ rust_test(
         "//third-party:cfg-if",
         "//third-party:lock_api",
         "//third-party:lazy_static",
-        "//third-party:rand",
+        "//lib/fastrand:fastrand",
     ],
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
@@ -40,7 +40,7 @@ rust_loom_test(
         "//third-party:cfg-if",
         "//third-party:lock_api",
         "//third-party:lazy_static",
-        "//third-party:rand",
+        "//lib/fastrand:fastrand",
         "//third-party:loom",
     ],
 )
