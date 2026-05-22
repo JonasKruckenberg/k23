@@ -1,7 +1,8 @@
 # `mem-core` behavioral model
 
 A specification of what the `mem-core` crate is *intended* to guarantee, derived
-by reading the crate and refined over several rounds of assertion review. It is
+by reading the crate and refined over several rounds of assertion and
+architectural review. It is
 the reference for new code, for callers in dependent subsystems, and for turning
 behavior into executable tests.
 
@@ -15,8 +16,12 @@ This document was last reconciled against the source on 2026-05-22.
 - **FIX** — The current code diverges from the model here. A bug to fix; the
   assertion describes intended behavior, not present behavior.
 - **OPEN** — An unresolved design question. The model does not yet commit.
+- **D** — *Design direction* (see §12). A committed architectural decision the
+  crate is evolving toward but does not yet reflect. Unlike a `FIX`, there is no
+  existing code to correct — a `D` item describes a target, not a delta.
 
-`FIX` items are the actionable delta between the code and this model.
+`FIX` items are the actionable delta between the code and this model; the §12
+`D` items are its intended direction of travel.
 
 ---
 
@@ -124,7 +129,9 @@ Newtype `usize` wrappers (`#[repr(transparent)]`), `Copy`, totally ordered.
     from the attributes, so a `WriteOrExecute::Write` region with `READ` unset
     produces `W=1, R=0` — a reserved/illegal RISC-V leaf encoding. `new_leaf`
     should force `R` on when `W` is set (or the attribute model should make
-    `Write` imply readable).
+    `Write` imply readable). **D-7 supersedes this:** a writable-without-readable
+    region becomes unrepresentable at `MemoryAttributes` construction, so
+    `new_leaf` never receives the illegal input.
   - **FIX-3.** Only `Riscv64Sv39` has a public constructor. `Riscv64Sv48` and
     `Riscv64Sv57` carry a private `asid` field with no `new`, so they cannot be
     instantiated outside the module. Add `new(asid: u16)` for both.
@@ -322,12 +329,117 @@ the phase typestate.
 
 ---
 
+## §12 Architectural direction
+
+Everything above describes `mem-core` as it stands: a RISC-V-only library whose
+only consumer is the loader. The decisions below are the **target** the crate is
+evolving toward — the single hardware page-table layer for the whole system —
+settled over several rounds of architectural review. They are committed
+directions, not yet reflected in code.
+
+- **D-1 System-wide bottom layer.** `mem-core` becomes the only hardware
+  page-table abstraction in k23. The kernel's hand-rolled `arch/riscv64/mem.rs`,
+  its `ArchAddressSpace`, and its `Flush` are retired in favour of `mem-core`'s
+  equivalents; the kernel's VMAR/Vmo virtual-memory manager is layered *on top*
+  of `mem-core`, not beside it. Consequence: the model is judged against real
+  kernel needs — demand paging, MMIO mappings, multiple address spaces, a
+  free-capable allocator — not just the loader's one-shot bootstrap.
+
+- **D-2 Cross-architecture `Arch`.** The `Arch` trait must abstract RISC-V
+  (Sv39/Sv48/Sv57), AArch64, and x86-64 behind one interface, with no ISA
+  specifics leaking to callers. Where the architectures genuinely disagree the
+  *backend* absorbs the difference (see D-5, D-7); the generic layer commits to
+  the weakest common contract.
+
+- **D-3 Multiple address spaces.** `mem-core` must support more than one live
+  `HardwareAddressSpace`. k23 runs a single global address space by default, but
+  additional aspaces are created (a) when a root aspace's virtual range is
+  exhausted — *aspace paging*: further mappings are placed in a fresh aspace —
+  and (b) to hold clusters of provably-disjoint Wasm instances (instances that
+  can never import or export to one another). The policy is unfinalized; the
+  *mechanism* — N coexisting aspaces, switched between — is required.
+  Consequences: the `Bootstrapping`/`Active` typestate (§11) must accommodate
+  aspaces created after boot (OPEN-3); ASIDs/PCIDs become load-bearing for
+  switch-time TLB economy; and the kernel must stay reachable from whichever
+  aspace is active (OPEN-4).
+
+- **D-4 TLB shootdown — CPU-set hint.** `Arch::fence` / `fence_all` stay
+  parameterless. The per-aspace arch backend instead carries a mutable *CPU-set
+  hint*: the set of CPUs that may hold cached translations for this aspace. It
+  defaults to "all CPUs"; a higher layer (Wasm-instance scheduling/affinity) may
+  narrow it — ideally updated on every CPU migration. Until narrowed, every
+  TLB-invalidating change is conceptually an all-CPU broadcast; broadcast is the
+  correct last-resort baseline, not the optimised path. `mem-core` owns the slot
+  and the mechanism; the narrowing policy lives above it and is unsettled (it
+  interacts with memory shared between Wasm instances — OPEN-5). This hint is
+  shared-mutable interior state and becomes a second sanctioned exception to
+  INV-0.2, alongside `BumpAllocator`.
+
+- **D-5 Mutation stays overwrite-in-place.** The §6 mutation contract is
+  unchanged: a leaf is updated by a single store followed by a flush; the generic
+  layer performs no break-before-make. Portability caveat: the AArch64 backend
+  must target FEAT_BBM level 2, or itself perform break-before-make for the
+  output-address / page-size / memory-type transitions AArch64 forbids on a live
+  entry. That risk is carried by the AArch64 backend, not the generic layer.
+
+- **D-6 Memory type — Normal vs Device.** `MemoryAttributes` gains a memory-type
+  field with two variants: `Normal` (cacheable) and `Device` (non-cacheable,
+  strongly-ordered, for MMIO). Each backend lowers it to its native encoding
+  (RISC-V Svpbmt, AArch64 MAIR index, x86 PAT). The split is deliberately minimal
+  and may be extended later without reshaping callers.
+
+- **D-7 Fallible leaf encoding.** `PageTableEntry::new_leaf` becomes fallible: a
+  backend returns an error for an attribute combination it cannot encode (e.g.
+  execute-only on x86-64). Combinations illegal on *every* architecture — notably
+  writable-without-readable — are instead made unrepresentable at
+  `MemoryAttributes` construction, so they never reach a backend. This supersedes
+  FIX-2: RISC-V `new_leaf` no longer needs to repair a reserved `W=1,R=0`
+  encoding, because that input can no longer be constructed. Fallibility ripples
+  into the error types of `map` / `map_contiguous`.
+
+- **D-8 Accessed/Dirty bits are first-class.** The accessed (A) and dirty (D)
+  bits are part of a leaf's modelled lifecycle, not opaque hardware state. A leaf
+  has an A/D state; the page-fault handler is part of the mutation story (RISC-V
+  Svade, and AArch64 without FEAT_HAFDBS, fault on first access / first write);
+  and the Vmo pager reads and clears A/D for working-set and dirty tracking.
+  `PageTableEntry` exposes A/D accessors.
+
+- **D-9 Frames are Vmo-owned; the table only borrows.** Physical *data* frames
+  are owned by Vmo objects. The page-table layer borrows them: `map` installs a
+  borrowed frame and `unmap` clears the PTE — it never deallocates a leaf data
+  frame (the Vmo's lifecycle does). `mem-core`'s `FrameAllocator` is therefore
+  for page-table *node* frames only: `map` allocates intermediate-table frames
+  and `unmap` reclaims them once a subtable is empty — so FIX-4 (`is_empty`) is a
+  prerequisite for D-9, and A-9.5 stands (node-frame reclamation needs a
+  `deallocate`-capable allocator, which `BumpAllocator` is not). Sharing and
+  copy-on-write are expressed entirely in the Vmo layer; `mem-core` has no
+  refcounts and no CoW logic — a write-protect fault is resolved by the Vmo layer
+  calling back into `mem-core` to remap.
+
+- **OPEN-3.** Runtime aspace construction. A-11.2 `debug_assert`s the machine has
+  *no active page table* during `Bootstrapping`. A second aspace created at
+  runtime (D-3) is built while another aspace is already active and so cannot use
+  that path. What constructor builds and first activates a runtime-created
+  aspace?
+
+- **OPEN-4.** Shared kernel mapping. D-3 requires the kernel reachable from every
+  aspace. Via shared page-table subtrees (one kernel sub-tree referenced by every
+  root), full per-aspace replication, or an arch-global mechanism? This
+  constrains `unmap` — it must never reclaim a shared kernel subtree (cf. FIX-4)
+  — and interacts with hardware "global" PTE bits.
+
+- **OPEN-5.** CPU-set narrowing policy (D-4): when, and by whom, the per-aspace
+  CPU-set hint is updated relative to Wasm-instance migration, and how that stays
+  correct for memory shared between instances running on different CPUs.
+
+---
+
 ## FIX summary (code ≠ model)
 
 | # | Location | Defect |
 |---|----------|--------|
 | FIX-1 | `memory_attributes.rs::is_read_only` | Ignores `WRITE_OR_EXECUTE`; true for writable/executable regions. |
-| FIX-2 | `arch/riscv64.rs::new_leaf` | Can emit `W=1,R=0`, a reserved RISC-V leaf encoding. |
+| FIX-2 | `arch/riscv64.rs::new_leaf` | Can emit `W=1,R=0`, a reserved RISC-V leaf encoding. Resolution superseded by D-7. |
 | FIX-3 | `arch/riscv64.rs` | `Riscv64Sv48` / `Riscv64Sv57` have no public constructor. |
 | FIX-4 | `table.rs::is_empty` | `|=` instead of `&=` → always `true` → `unmap` frees in-use frames. |
 | FIX-5 | `address_space.rs::map_contiguous` | Closure rejects existing intermediate tables; release build leaks them. |
@@ -345,6 +457,10 @@ correctness or robustness defects.
   iterators (§8).
 - **OPEN-2** — Supported input domain of `page_table_entries_for` for ranges
   that wrap the PTE index space or cross the non-canonical hole (§5).
+- **OPEN-3** — How a runtime-created address space is constructed and first
+  activated, given the `Bootstrapping` path assumes no active page table (§12).
+- **OPEN-4** — How the kernel mapping is shared across every address space (§12).
+- **OPEN-5** — When and by whom the per-aspace CPU-set hint is narrowed (§12).
 
 ## Notes for turning this into tests
 
