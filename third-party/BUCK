@@ -1813,23 +1813,23 @@ cargo.rust_library(
 
 alias(
     name = "hashbrown",
-    actual = ":hashbrown-0.17.0",
+    actual = ":hashbrown-0.17.1",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "hashbrown-0.17.0.crate",
-    sha256 = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51",
-    strip_prefix = "hashbrown-0.17.0",
-    urls = ["https://static.crates.io/crates/hashbrown/0.17.0/download"],
+    name = "hashbrown-0.17.1.crate",
+    sha256 = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a",
+    strip_prefix = "hashbrown-0.17.1",
+    urls = ["https://static.crates.io/crates/hashbrown/0.17.1/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "hashbrown-0.17.0",
-    srcs = [":hashbrown-0.17.0.crate"],
+    name = "hashbrown-0.17.1",
+    srcs = [":hashbrown-0.17.1.crate"],
     crate = "hashbrown",
-    crate_root = "hashbrown-0.17.0.crate/src/lib.rs",
+    crate_root = "hashbrown-0.17.1.crate/src/lib.rs",
     edition = "2024",
     features = [
         "default-hasher",
@@ -1892,7 +1892,7 @@ cargo.rust_library(
     visibility = [],
     deps = [
         ":equivalent-1.0.2",
-        ":hashbrown-0.17.0",
+        ":hashbrown-0.17.1",
     ],
 )
 
@@ -2663,7 +2663,7 @@ cargo.rust_library(
     deps = [
         ":crc32fast-1.5.0",
         ":flate2-1.1.9",
-        ":hashbrown-0.17.0",
+        ":hashbrown-0.17.1",
         ":indexmap-2.14.0",
         ":memchr-2.8.0",
         ":ruzstd-0.8.2",
@@ -4800,23 +4800,23 @@ cargo.rust_library(
 
 alias(
     name = "wasm-encoder",
-    actual = ":wasm-encoder-0.248.0",
+    actual = ":wasm-encoder-0.249.0",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "wasm-encoder-0.248.0.crate",
-    sha256 = "ac92cf547bc18d27ecc521015c08c353b4f18b84ab388bb6d1b6b682c620d9b6",
-    strip_prefix = "wasm-encoder-0.248.0",
-    urls = ["https://static.crates.io/crates/wasm-encoder/0.248.0/download"],
+    name = "wasm-encoder-0.249.0.crate",
+    sha256 = "69830ccbbf41c55eb585991659fb70867ef628193af3a495f09a6956f7615e59",
+    strip_prefix = "wasm-encoder-0.249.0",
+    urls = ["https://static.crates.io/crates/wasm-encoder/0.249.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "wasm-encoder-0.248.0",
-    srcs = [":wasm-encoder-0.248.0.crate"],
+    name = "wasm-encoder-0.249.0",
+    srcs = [":wasm-encoder-0.249.0.crate"],
     crate = "wasm_encoder",
-    crate_root = "wasm-encoder-0.248.0.crate/src/lib.rs",
+    crate_root = "wasm-encoder-0.249.0.crate/src/lib.rs",
     edition = "2024",
     platform = {
         "linux-arm64": dict(
@@ -4850,23 +4850,23 @@ cargo.rust_library(
 
 alias(
     name = "wasmparser",
-    actual = ":wasmparser-0.248.0",
+    actual = ":wasmparser-0.249.0",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "wasmparser-0.248.0.crate",
-    sha256 = "aa4439c5eee9df71ee0c6efb37f63b1fcb1fec38f85f5142c54e7ed05d33091a",
-    strip_prefix = "wasmparser-0.248.0",
-    urls = ["https://static.crates.io/crates/wasmparser/0.248.0/download"],
+    name = "wasmparser-0.249.0.crate",
+    sha256 = "30538cae9a794215f490b532df01c557e2e2bfac92569482554acd0992a102ea",
+    strip_prefix = "wasmparser-0.249.0",
+    urls = ["https://static.crates.io/crates/wasmparser/0.249.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "wasmparser-0.248.0",
-    srcs = [":wasmparser-0.248.0.crate"],
+    name = "wasmparser-0.249.0",
+    srcs = [":wasmparser-0.249.0.crate"],
     crate = "wasmparser",
-    crate_root = "wasmparser-0.248.0.crate/src/lib.rs",
+    crate_root = "wasmparser-0.249.0.crate/src/lib.rs",
     edition = "2024",
     features = [
         "features",
@@ -4931,18 +4931,18 @@ cargo.rust_library(
 )
 
 http_archive(
-    name = "wast-248.0.0.crate",
-    sha256 = "acc54622ed5a5cddafcdf152043f9d4aed54d4a653d686b7dfe874809fca99d7",
-    strip_prefix = "wast-248.0.0",
-    urls = ["https://static.crates.io/crates/wast/248.0.0/download"],
+    name = "wast-249.0.0.crate",
+    sha256 = "2474a321bf9ae2808e9fa23ac4ec2b27300e70985e30bcb5a38d43b76bfc901a",
+    strip_prefix = "wast-249.0.0",
+    urls = ["https://static.crates.io/crates/wast/249.0.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "wast-248.0.0",
-    srcs = [":wast-248.0.0.crate"],
+    name = "wast-249.0.0",
+    srcs = [":wast-249.0.0.crate"],
     crate = "wast",
-    crate_root = "wast-248.0.0.crate/src/lib.rs",
+    crate_root = "wast-249.0.0.crate/src/lib.rs",
     edition = "2024",
     features = [
         "component-model",
@@ -4954,36 +4954,36 @@ cargo.rust_library(
         ":leb128fmt-0.1.0",
         ":memchr-2.8.0",
         ":unicode-width-0.2.2",
-        ":wasm-encoder-0.248.0",
+        ":wasm-encoder-0.249.0",
     ],
 )
 
 alias(
     name = "wat",
-    actual = ":wat-1.248.0",
+    actual = ":wat-1.249.0",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "wat-1.248.0.crate",
-    sha256 = "d75cd9e510603909748e6ebab89f27cd04472c1d9d85a3c88a7a6fc51a1a7934",
-    strip_prefix = "wat-1.248.0",
-    urls = ["https://static.crates.io/crates/wat/1.248.0/download"],
+    name = "wat-1.249.0.crate",
+    sha256 = "28af699d0a9c7e4e250b7b8e36167ae5215fbb4b7ae526bb4ce7b234ba0afc90",
+    strip_prefix = "wat-1.249.0",
+    urls = ["https://static.crates.io/crates/wat/1.249.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "wat-1.248.0",
-    srcs = [":wat-1.248.0.crate"],
+    name = "wat-1.249.0",
+    srcs = [":wat-1.249.0.crate"],
     crate = "wat",
-    crate_root = "wat-1.248.0.crate/src/lib.rs",
+    crate_root = "wat-1.249.0.crate/src/lib.rs",
     edition = "2024",
     features = [
         "component-model",
         "default",
     ],
     visibility = [],
-    deps = [":wast-248.0.0"],
+    deps = [":wast-249.0.0"],
 )
 
 alias(
