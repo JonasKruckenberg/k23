@@ -121,7 +121,8 @@ impl fmt::Debug for Memory {
 // Use mmap with MAP_NORESERVE on Unix so the kernel doesn't count test memory against
 // overcommit limits. Without this, proptests that allocate hundreds of GiB of virtual
 // address space fail on Linux systems with limited RAM and no swap.
-#[cfg(unix)]
+// Miri can't call `mmap`, so under `cfg(miri)` it uses the `System` branch below.
+#[cfg(all(unix, not(miri)))]
 fn host_alloc(layout: Layout) -> NonNull<[u8]> {
     let ptr = unsafe {
         libc::mmap(
@@ -141,19 +142,19 @@ fn host_alloc(layout: Layout) -> NonNull<[u8]> {
     .unwrap()
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(miri)))]
 unsafe fn host_dealloc(region: NonNull<[u8]>, _layout: Layout) {
     let ret = unsafe { libc::munmap(region.as_ptr() as *mut libc::c_void, region.len()) };
     assert_eq!(ret, 0, "munmap failed");
 }
 
-#[cfg(not(unix))]
+#[cfg(any(not(unix), miri))]
 fn host_alloc(layout: Layout) -> NonNull<[u8]> {
     use std::alloc::Allocator;
     std::alloc::System.allocate(layout).unwrap()
 }
 
-#[cfg(not(unix))]
+#[cfg(any(not(unix), miri))]
 unsafe fn host_dealloc(region: NonNull<[u8]>, layout: Layout) {
     use std::alloc::Allocator;
     unsafe { std::alloc::System.deallocate(region.cast(), layout) }

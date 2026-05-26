@@ -305,7 +305,7 @@ mod tests {
                 }
             });
 
-            block_on(&NOTIFY, fut);
+            block_on(&NOTIFY, fut).unwrap();
             waker_thread.join().unwrap();
         });
     }
@@ -336,7 +336,8 @@ mod tests {
                         Poll::Ready::<()>(())
                     }
                 }),
-            );
+            )
+            .unwrap();
             assert_eq!(polls.load(Ordering::SeqCst), 2);
         });
     }
@@ -360,7 +361,8 @@ mod tests {
                     *stashed_c.lock().unwrap() = Some(cx.waker().clone());
                     Poll::Ready::<()>(())
                 }),
-            );
+            )
+            .unwrap();
 
             let waker = stashed.lock().unwrap().take().expect("waker stashed");
             // Must not UAF; the parker is still live.

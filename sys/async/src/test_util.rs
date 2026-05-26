@@ -6,7 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use std::convert::Infallible;
+use std::sync::Mutex;
 
 use crate::block_on::{Notify, Park};
 use crate::loom::thread::{self, Thread};
@@ -43,12 +45,25 @@ impl Park for StdPark {
     }
 }
 
+/// Process-global owner of every per-thread [`NOTIFY`].
+///
+/// Each `Notify` must outlive the thread that created it: the executor keeps
+/// `Waker`s cloned from it, and `block_on` requires `&'static Notify`. So they
+/// are intentionally never freed. Rooting them in this `static` keeps the
+/// leaked allocations *reachable*, so Miri's leak checker treats them — and the
+/// `Thread` handles they transitively own — as live rather than flagging them.
+static NOTIFY_REGISTRY: Mutex<Vec<&'static Notify<StdPark>>> = Mutex::new(Vec::new());
+
 crate::loom::thread_local! {
     /// Per-thread `Notify<StdPark>`. Lazily allocated on first use so that
     /// `StdPark::current()` captures the calling thread, and leaked so the
     /// `&'static Notify` requirement of `block_on` is satisfied.
-    static NOTIFY: &'static Notify<StdPark> =
-        Box::leak(Box::new(Notify::new(StdPark::current())));
+    static NOTIFY: &'static Notify<StdPark> = {
+        let notify: &'static Notify<StdPark> =
+            Box::leak(Box::new(Notify::new(StdPark::current())));
+        NOTIFY_REGISTRY.lock().unwrap().push(notify);
+        notify
+    };
 }
 
 pub fn block_on<F: Future>(f: F) -> F::Output {

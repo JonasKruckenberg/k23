@@ -2,6 +2,17 @@
 
 k23 has quite a number of test flavors, each with its own usecase.
 
+Wherever you can, **prefer tests that explore the input space over example-based
+tests**. A hand-written `assert_eq!` only ever checks the one case you thought
+of; property-based tests ([proptest]), fuzz tests, and concurrency model
+checking ([loom]) generate thousands of cases — including the adversarial
+corners you'd never write by hand — and shrink any failure down to a minimal
+reproducer. In a kernel an unhandled edge case is a soundness or security bug,
+so that coverage is worth the extra effort. Reach for a property test, fuzz
+target, or loom test first, and fall back to example-based tests only for what
+those tools can't express: specific regressions, hardware-shaped scenarios, and
+end-to-end wiring.
+
 ## Unit tests (`rust_test`)
 
 The most straightforward and common kind of test. These are just regular Rust unit tests that you write either inside the modules directly or in `test/` files. They use the regular rust `#[test]` macro annotated functions:
@@ -37,6 +48,11 @@ otherwise!
 
 `just unittests` or `just unittests //lib/mycrate:mycrate` to run the tests.
 `just miri` will automatically run the tests under [miri] as well.
+
+Property-based tests belong here too: write them as ordinary `#[test]` functions
+using [proptest] and add `//third-party:proptest` to the test's `deps`. They run
+under the same `rust_test` rule and `just unittests`. Prefer a `proptest!` block
+over a hand-written example whenever the property generalizes over inputs.
 
 ## Loom tests (concurrency model checking)
 
@@ -137,6 +153,7 @@ See `tests/fib.wast` and `tests/trap.wast` for complete examples.
 
 [miri]: https://github.com/rust-lang/miri
 [loom]: https://github.com/tokio-rs/loom
+[proptest]: https://github.com/proptest-rs/proptest
 [libfuzzer]: https://llvm.org/docs/LibFuzzer.html
 [libfuzzer-sys]: https://github.com/rust-fuzz/libfuzzer
 [arbitrary]: https://github.com/rust-fuzz/arbitrary

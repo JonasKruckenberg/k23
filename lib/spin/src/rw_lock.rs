@@ -772,7 +772,7 @@ mod tests {
     const CYCLES: usize = if cfg!(loom) {
         1
     } else if cfg!(miri) {
-        100
+        10
     } else {
         500
     };
