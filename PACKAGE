@@ -12,12 +12,14 @@ set_cfg_constructor(
         debug = [
             "constraints//:opt-level[0]",
             "constraints//:debuginfo[full]",
-            "constraints//:strip[none]"
+            "constraints//:strip[none]",
+            "constraints//:lto[off]"
         ],
         release = [
             "constraints//:opt-level[3]",
             "constraints//:debuginfo[line-tables-only]",
-            "constraints//:strip[debuginfo]"
+            "constraints//:strip[debuginfo]",
+            "constraints//:lto[thin]"
         ],
     ),
     extra_data = struct(),
