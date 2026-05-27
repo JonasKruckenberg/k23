@@ -8,6 +8,7 @@ _NAMED_SETTINGS = [
     "constraints//:rust-std",
     "constraints//:sanitizer",
     "constraints//:opt-level",
+    "constraints//:lto",
 ]
 
 def _cfg_name(cfg: ConfigurationInfo) -> str:

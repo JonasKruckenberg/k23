@@ -5,7 +5,7 @@ target
 .DS_Store
 .local
 /qemu-monitor-socket
-.direnv
+.direnv/
 
 # buck2-change-detector files
 /base.jsonl

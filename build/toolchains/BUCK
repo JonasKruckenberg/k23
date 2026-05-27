@@ -207,6 +207,9 @@ rust_toolchain(
         "constraints//:strip[debuginfo]": ["-Cstrip=debuginfo"],
         "constraints//:strip[symbols]": ["-Cstrip=symbols"],
     }) + select({
+        "constraints//:lto[off]": [],
+        "constraints//:lto[thin]": ["-Clto=thin"],
+    }) + select({
         "constraints//:sanitizer[address]": [
             "-Zsanitizer=address",
             "-Cpasses=sancov-module",

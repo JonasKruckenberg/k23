@@ -77,3 +77,13 @@ constraint(
     default = "none",
     visibility = ["PUBLIC"],
 )
+
+constraint(
+    name = "lto",
+    values = [
+        "off",
+        "thin",
+    ],
+    default = "off",
+    visibility = ["PUBLIC"],
+)
