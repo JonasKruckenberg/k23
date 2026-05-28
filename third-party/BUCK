@@ -850,8 +850,8 @@ cargo.rust_library(
     },
     features = [
         "core",
-        "host-arch",
         "libm",
+        "riscv64",
     ],
     rustc_flags = ["@$(location :cranelift-codegen-0.117.0-build-script-run[rustc_flags])"],
     visibility = [],
@@ -893,8 +893,8 @@ cargo.rust_binary(
     },
     features = [
         "core",
-        "host-arch",
         "libm",
+        "riscv64",
     ],
     visibility = [],
     deps = [
@@ -918,8 +918,8 @@ buildscript_run(
     },
     features = [
         "core",
-        "host-arch",
         "libm",
+        "riscv64",
     ],
     manifest_dir = ":wasmtime-babe873e45b57824.git[cranelift/codegen]",
     version = "0.117.0",
