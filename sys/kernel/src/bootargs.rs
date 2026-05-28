@@ -55,7 +55,7 @@ pub fn read_raw(devtree: &DeviceTree) -> crate::Result<&str> {
         .find_by_path("/chosen")
         .context("missing /chosen node")?;
     Ok(chosen
-        .property("bootargs")
+        .property(devtree, "bootargs")
         .map(|p| p.as_str())
         .transpose()?
         .unwrap_or(""))

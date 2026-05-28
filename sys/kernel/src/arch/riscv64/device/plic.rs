@@ -76,11 +76,11 @@ struct ThresholdsClaimsRegs {
 
 impl Plic {
     #[cold]
-    pub fn new(devtree: &DeviceTree, hlic_node: &Device) -> crate::Result<Plic> {
+    pub fn new(devtree: &DeviceTree, hlic_node: Device<'_>) -> crate::Result<Plic> {
         let soc = devtree.find_by_path("/soc").expect("missing /soc node");
 
         let (context, dev) = soc
-            .children()
+            .children(devtree)
             .filter(|dev| dev.is_compatible(["sifive,plic-1.0.0", "riscv,plic0"]))
             .find_map(|dev| {
                 let interrupts = if let Some(interrupts) = dev.interrupts_extended(devtree) {
@@ -105,7 +105,7 @@ impl Plic {
             .unwrap();
 
         let mmio_range = {
-            let reg = dev.regs().unwrap().next()?.unwrap();
+            let reg = dev.regs(devtree).unwrap().next()?.unwrap();
 
             Range::from_start_len(
                 PhysicalAddress::new(reg.starting_address),
@@ -138,7 +138,7 @@ impl Plic {
         });
 
         // Specifies how many external interrupts are supported by this controller.
-        let ndev = dev.property("riscv,ndev").unwrap().as_usize()?;
+        let ndev = dev.property(devtree, "riscv,ndev").unwrap().as_usize()?;
 
         let regs: *mut PlicRegs = mmio_region.start.as_ptr().cast_mut().cast();
 

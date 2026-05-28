@@ -60,7 +60,7 @@ pub struct Node<'dt> {
     structs: StructsBlock<'dt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct NodeName<'dt> {
     pub name: &'dt str,
     pub unit_address: Option<&'dt str>,

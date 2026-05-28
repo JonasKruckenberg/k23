@@ -6,67 +6,208 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::ffi::CStr;
+use core::num::NonZeroU32;
 use core::ptr::NonNull;
 use core::{fmt, iter, mem, slice};
 
 use bumpalo::Bump;
+use bumpalo::collections::Vec as BumpVec;
 use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Error, Fdt, NodeName, StringList};
-use hashbrown::HashMap;
 use smallvec::{SmallVec, smallvec};
 
-type Link<T> = Option<NonNull<T>>;
+/// Handle to a [`Device`] record in a [`DeviceTree`]. `NonZeroU32` so that
+/// `Option<DeviceId>` is the same size as `DeviceId`.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct DeviceId(NonZeroU32);
+
+impl DeviceId {
+    fn idx(self) -> usize {
+        self.0.get() as usize - 1
+    }
+}
+
+/// Handle to a [`Property`] record in a [`DeviceTree`]. See [`DeviceId`].
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct PropertyId(NonZeroU32);
+
+impl PropertyId {
+    fn idx(self) -> usize {
+        self.0.get() as usize - 1
+    }
+}
+
+/// Raw `(ptr, len)` view into a UTF-8 slice the [`Builder`] allocated in the
+/// arena's bump. Stored without a lifetime so that [`DeviceNode`] /
+/// [`PropertyNode`] don't carry one — the lifetime is reattached at access
+/// time by [`Arena::device`] / [`Arena::property`].
+#[derive(Copy, Clone)]
+struct BumpStr {
+    ptr: NonNull<u8>,
+    len: usize,
+}
+
+impl BumpStr {
+    /// Reattach a lifetime to the underlying bytes and return them as a `&str`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee:
+    ///
+    /// It holds a reference `&'a Bump` for the bump allocator that created this
+    /// `BumpStr` via `alloc_str`.
+    unsafe fn as_str<'a>(self) -> &'a str {
+        // Safety: The caller ensures that it holds `&'a Bump` for the `Bump`
+        // which created this `BumpStr` via `alloc_str`.
+        //
+        // This implies:
+        //
+        // 1. `self.ptr` is valid for reads of `self.len` consecutive bytes
+        // throughout `'a`. This makes `slice::from_raw_parts` safe.
+        //
+        // 2. Those bytes form valid UTF-8. This makes
+        // `str::from_utf8_unchecked` safe).
+        //
+        unsafe {
+            core::str::from_utf8_unchecked(slice::from_raw_parts(self.ptr.as_ptr(), self.len))
+        }
+    }
+}
+
+/// As [`BumpStr`], for an arbitrary byte slice.
+#[derive(Copy, Clone)]
+struct BumpBytes {
+    ptr: NonNull<u8>,
+    len: usize,
+}
+
+impl BumpBytes {
+    /// Reattach a lifetime to the underlying bytes and return them as a `&[u8]`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee:
+    ///
+    /// It holds a reference `&'a Bump` for the bump allocator that created this
+    /// `BumpBytes` via `alloc_bytes`.
+    unsafe fn as_slice<'a>(self) -> &'a [u8] {
+        // Safety: The caller ensures that it holds `&'a Bump` for the `Bump`
+        // which created this `BumpBytes` via `alloc_bytes`.
+        //
+        // This ensures that `self.ptr` is valid for reads of `self.len`
+        // consecutive initialised bytes throughout `'a`.
+        unsafe { slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
+    }
+}
+
+/// Owned node record stored in the arena.
+struct DeviceNode {
+    name: BumpStr,
+    unit_address: Option<BumpStr>,
+    compatible: BumpStr,
+    phandle: Option<u32>,
+    properties: Option<PropertyId>,
+    parent: Option<DeviceId>,
+    first_child: Option<DeviceId>,
+    next_sibling: Option<DeviceId>,
+}
+
+/// Owned property record stored in the arena.
+struct PropertyNode {
+    name: BumpStr,
+    raw: BumpBytes,
+    next: Option<PropertyId>,
+}
+
+/// Backing storage for a parsed device tree: a bump allocator that owns the raw
+/// bytes of every string and slice. All `BumpStr`s and `BumpBytes` appearing in
+/// `devices` and `properties` are guaranteed to be backed by `bump`.
+///
+/// It is critical for safety that this struct remains immutable after its
+/// creation.
+struct Arena {
+    bump: Bump,
+    // Raw fat pointers into bump-allocated slices, finalized by
+    // `Builder::finish`. Wrapped as `NonNull<[T]>` so the `Arena` itself
+    // has no `'bump` lifetime — which is what lets `DeviceTree` hold the
+    // arena by value.
+    devices: NonNull<[DeviceNode]>,
+    properties: NonNull<[PropertyNode]>,
+    // Sorted ascending by phandle.
+    phandle_index: NonNull<[(u32, DeviceId)]>,
+}
+
+impl Arena {
+    /// Reconstruct a [`Device`] view from a [`DeviceId`]. The returned value
+    /// borrows the strings it exposes from `self`'s bump.
+    fn device(&self, id: DeviceId) -> Device<'_> {
+        // Safety: `self.devices` was constructed by `Builder::finish` from a
+        // `BumpVec` finalized via `into_bump_slice`; its bytes live in
+        // `self.bump`, which is alive while `&self` is held.
+        let n = &unsafe { self.devices.as_ref() }[id.idx()];
+        Device {
+            name: NodeName {
+                // Safety: Every `BumpStr` in a `DeviceNode` was produced by
+                // `Bump::alloc_str`, with `self.bump` which we hold a reference
+                // to for `'_`.
+                name: unsafe { n.name.as_str() },
+                // Safety: Every `BumpStr` in a `DeviceNode` was produced by
+                // `Bump::alloc_str`, with `self.bump` which we hold a reference
+                // to for `'_`.
+                unit_address: n.unit_address.map(|s| unsafe { s.as_str() }),
+            },
+            // Safety: Every `BumpStr` in a `DeviceNode` was produced by
+            // `Bump::alloc_str`, with `self.bump` which we hold a reference
+            // to for `'_`.
+            compatible: unsafe { n.compatible.as_str() },
+            phandle: n.phandle,
+            properties: n.properties,
+            parent: n.parent,
+            first_child: n.first_child,
+            next_sibling: n.next_sibling,
+        }
+    }
+
+    fn property(&self, id: PropertyId) -> Property<'_> {
+        // Safety: `self.properties` was constructed by `Builder::finish` from a
+        // `BumpVec` finalized via `into_bump_slice`; its bytes live in
+        // `self.bump`, which is alive while `&self` is held.
+        let p = &unsafe { self.properties.as_ref() }[id.idx()];
+        Property {
+            // Safety: Every `BumpStr` in a `PropertyNode` was produced by
+            // `Bump::alloc_str`, with `self.bump` which we hold a reference
+            // to for `'_`.
+            name: unsafe { p.name.as_str() },
+            // Safety: Every `BumpBytes` in a `PropertyNode` was produced by
+            // `Bump::alloc_bytes`, with `self.bump` which we hold a reference
+            // to for `'_`.
+            raw: unsafe { p.raw.as_slice() },
+            next: p.next,
+        }
+    }
+
+    fn find_phandle(&self, phandle: u32) -> Option<DeviceId> {
+        // Safety: `self.phandle_index` was constructed by `Builder::finish` from a
+        // `BumpVec` finalized via `into_bump_slice`; its bytes live in
+        // `self.bump`, which is alive while `&self` is held.
+        let idx = unsafe { self.phandle_index.as_ref() };
+        idx.binary_search_by_key(&phandle, |&(p, _)| p)
+            .ok()
+            .map(|i| idx[i].1)
+    }
+}
 
 /// A device tree describing the hardware configuration of the system.
-#[ouroboros::self_referencing] // `root` and all other nodes & data borrows from `alloc`
 pub struct DeviceTree {
-    alloc: Bump,
-    #[borrows(alloc)]
-    #[covariant]
-    inner: DeviceTreeInner<'this>,
+    arena: Arena,
+    root: DeviceId,
 }
 
-struct DeviceTreeInner<'devtree> {
-    phandle2ptr: HashMap<u32, NonNull<Device<'devtree>>>,
-    root: NonNull<Device<'devtree>>,
-}
-
-/// Tree of the following shape:
-///
-///
-///                root
-///              /
-///            /
-///          node  -  node  -  node
-///        /                 /
-///      /                 /
-///     node  -  node     node
-///
-/// where each node has a pointer to its first child, which in turn form a linked list of siblings.
-/// additionally each node has a pointer to back its parent.
-pub struct Device<'a> {
-    /// The name of the device
-    pub name: NodeName<'a>,
-    pub compatible: &'a str,
-    pub phandle: Option<u32>,
-
-    // linked list of device properties
-    properties: Link<Property<'a>>,
-    // links to other devices in the tree
-    parent: Link<Device<'a>>,
-    first_child: Link<Device<'a>>,
-    next_sibling: Link<Device<'a>>,
-}
-
-/// A property of a device.
-pub struct Property<'a> {
-    inner: fdt::Property<'a>,
-    next: Link<Property<'a>>,
-}
-
-// Safety: `DeviceTree`s accessor methods allow non-mutable access.
+// Safety: `DeviceTree`'s accessor methods only hand out shared references.
+// The arena's three `NonNull<[T]>` slice pointers and the `Bump` they reference
+// are mutated only during `parse`, before the `DeviceTree` is shared.
 unsafe impl Send for DeviceTree {}
-// Safety: `DeviceTree`s accessor methods allow non-mutable access.
+// Safety: see `Send`.
 unsafe impl Sync for DeviceTree {}
 
 impl fmt::Debug for DeviceTree {
@@ -78,179 +219,166 @@ impl fmt::Debug for DeviceTree {
 }
 
 impl DeviceTree {
+    /// Parse the given flattened device tree blob.
     pub fn parse(fdt: &[u8]) -> crate::Result<Self> {
         // Safety: u32 has no invalid bit patterns
         let (left, aligned, _) = unsafe { fdt.align_to::<u32>() };
         assert!(left.is_empty()); // TODO decide what to do with unaligned slices
         let fdt = Fdt::new(aligned)?;
 
-        let alloc = Bump::new();
+        let bump = Bump::new();
+        let mut b = Builder::new(&bump);
 
-        DeviceTree::try_new(alloc, |alloc| {
-            let mut phandle2ptr = HashMap::new();
+        let root = unflatten_root(&fdt, &mut b)?;
+        let mut stack: [Option<DeviceId>; 16] = [None; 16];
+        stack[0] = Some(root);
 
-            let mut stack: [Link<Device>; 16] = [const { None }; 16];
+        let mut iter = fdt.nodes()?;
+        while let Some((depth, node)) = iter.next()? {
+            let id = unflatten_node(node, stack[depth - 1].unwrap(), stack[depth], &mut b)?;
+            stack[depth] = Some(id);
+        }
 
-            let root = unflatten_root(&fdt, alloc)?;
-            stack[0] = Some(root);
+        let (devices, properties, phandle_index) = b.finish();
 
-            let mut iter = fdt.nodes()?;
-            while let Some((depth, node)) = iter.next()? {
-                let ptr = unflatten_node(
-                    node,
-                    &mut phandle2ptr,
-                    stack[depth - 1].unwrap(),
-                    stack[depth],
-                    alloc,
-                )?;
-
-                // insert ourselves into the stack so we will become the new previous sibling in the next iteration
-                stack[depth] = Some(ptr);
-            }
-
-            Ok(DeviceTreeInner { phandle2ptr, root })
+        Ok(Self {
+            arena: Arena {
+                bump,
+                devices,
+                properties,
+                phandle_index,
+            },
+            root,
         })
     }
 
-    /// Matches the root device tree `compatible` string against the given list of strings.
+    /// The root device tree node.
+    #[inline]
+    pub fn root(&self) -> Device<'_> {
+        self.arena.device(self.root)
+    }
+
+    /// Matches the root device tree `compatible` string against the given list.
     #[inline]
     pub fn is_compatible<'b>(&self, compats: impl IntoIterator<Item = &'b str>) -> bool {
         self.root().is_compatible(compats)
     }
 
-    /// Returns an iterator over all top-level devices in the tree.
+    /// Iterator over all top-level devices in the tree.
     #[inline]
     pub fn children(&self) -> Children<'_> {
-        self.root().children()
+        Children::new(self, self.root().first_child)
     }
 
-    /// Returns an iterator over all nodes in the tree in depth-first order.
+    /// Iterator over all nodes in the tree in depth-first order.
     #[inline]
     pub fn descendants(&self) -> Descendants<'_> {
-        self.root().descendants()
+        Descendants::new(self.children())
     }
 
-    /// Returns an iterator over all top-level properties in the tree.
+    /// Iterator over all top-level properties in the tree.
     #[inline]
     pub fn properties(&self) -> Properties<'_> {
-        self.root().properties()
+        Properties::new(self, self.root().properties)
     }
 
     /// Returns the top-level property with the given name.
     #[inline]
-    pub fn property(&self, name: &str) -> Option<&Property<'_>> {
-        self.root().property(name)
+    pub fn property(&self, name: &str) -> Option<Property<'_>> {
+        self.root().property(self, name)
     }
 
     /// Returns the device with the given path.
     #[inline]
-    pub fn find_by_path(&self, path: &str) -> Option<&Device<'_>> {
-        self.root().find_by_path(path)
+    pub fn find_by_path(&self, path: &str) -> Option<Device<'_>> {
+        self.root().find_by_path(self, path)
     }
 
-    pub fn find_by_phandle(&self, phandle: u32) -> Option<&Device<'_>> {
-        // Safety: we only inserted valid pointers into the map, so we should only get valid pointers out...
-        self.with_inner(|inner| unsafe { Some(inner.phandle2ptr.get(&phandle)?.as_ref()) })
+    /// Returns the device with the given phandle.
+    pub fn find_by_phandle(&self, phandle: u32) -> Option<Device<'_>> {
+        Some(self.arena.device(self.arena.find_phandle(phandle)?))
     }
+}
 
-    #[inline]
-    fn root(&self) -> &Device<'_> {
-        // Safety: `init` guarantees the root node always exists and is correctly initialized
-        unsafe { self.borrow_inner().root.as_ref() }
-    }
+/// A node in the device tree.
+///
+/// Holds the immutable per-node data inline as borrowed slices and stores
+/// parent/child/sibling links as IDs that resolve through a [`DeviceTree`].
+#[derive(Copy, Clone)]
+pub struct Device<'arena> {
+    /// The name of this device (node name + optional unit address).
+    pub name: NodeName<'arena>,
+    /// The contents of the `compatible` property, or `""` if absent.
+    pub compatible: &'arena str,
+    /// The `phandle` property, if present.
+    pub phandle: Option<u32>,
+
+    properties: Option<PropertyId>,
+    parent: Option<DeviceId>,
+    first_child: Option<DeviceId>,
+    next_sibling: Option<DeviceId>,
 }
 
 impl fmt::Debug for Device<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let alternate = f.alternate();
-
-        let mut s = f.debug_struct("Device");
-        s.field("name", &self.name)
+        f.debug_struct("Device")
+            .field("name", &self.name)
             .field("compatible", &self.compatible)
-            .field("phandle", &self.phandle);
-        if alternate {
-            s.field_with("<properties>", |f| {
-                let mut f = f.debug_list();
-                for prop in self.properties() {
-                    f.entry(&prop);
-                }
-                f.finish()
-            });
-
-            s.field_with("<children>", |f| {
-                let mut f = f.debug_list();
-                for prop in self.children() {
-                    f.entry(&prop);
-                }
-                f.finish()
-            });
-
-            s.finish()
-        } else {
-            s.finish_non_exhaustive()
-        }
+            .field("phandle", &self.phandle)
+            .finish_non_exhaustive()
     }
 }
 
-impl<'a> Device<'a> {
-    /// Returns `true` if this device is usable, i.e. its reported status property is "okay".
-    pub fn is_available(&self) -> bool {
-        self.properties()
-            .any(|prop| prop.inner.name == "status" && prop.inner.raw == b"okay")
-    }
-
-    /// Matches the device `compatible` string against the given list of strings.
+impl<'arena> Device<'arena> {
+    /// Matches the device `compatible` string against the given list.
     pub fn is_compatible<'b>(&self, compats: impl IntoIterator<Item = &'b str>) -> bool {
         compats.into_iter().any(|c| self.compatible.contains(c))
     }
 
-    pub fn parent(&self) -> Option<&Device<'a>> {
-        // Safety: tree construction guarantees that the pointer is valid
-        self.parent.map(|parent| unsafe { parent.as_ref() })
+    /// This device's parent, if any.
+    pub fn parent(&self, devtree: &'arena DeviceTree) -> Option<Device<'arena>> {
+        Some(devtree.arena.device(self.parent?))
     }
 
-    /// Returns an iterator over all immediate children of this device.
-    pub fn children(&self) -> Children<'_> {
-        Children {
-            current: self.first_child,
-        }
+    /// Iterator over all immediate children.
+    pub fn children(&self, devtree: &'arena DeviceTree) -> Children<'arena> {
+        Children::new(devtree, self.first_child)
     }
 
-    /// Returns an iterator over all descendants of this device in depth-first order.
-    pub fn descendants(&self) -> Descendants<'_> {
-        Descendants {
-            stack: smallvec![],
-            current: self.children(),
-        }
+    /// Iterator over all descendants in depth-first order.
+    pub fn descendants(&self, devtree: &'arena DeviceTree) -> Descendants<'arena> {
+        Descendants::new(self.children(devtree))
     }
 
-    /// Returns an iterator over all properties of this device.
-    pub fn properties(&self) -> Properties<'_> {
-        Properties {
-            current: self.properties,
-        }
+    /// Iterator over all properties of this device.
+    pub fn properties(&self, devtree: &'arena DeviceTree) -> Properties<'arena> {
+        Properties::new(devtree, self.properties)
     }
 
-    /// Returns the property with the given name.
-    pub fn property(&self, name: &str) -> Option<&Property<'_>> {
-        self.properties().find(|prop| prop.inner.name == name)
+    /// Property with the given name, if any.
+    pub fn property(&self, devtree: &'arena DeviceTree, name: &str) -> Option<Property<'arena>> {
+        self.properties(devtree).find(|p| p.name == name)
     }
 
     /// Returns the device with the given path starting from this device.
-    pub fn find_by_path(&self, path: &str) -> Option<&Device<'_>> {
+    pub fn find_by_path(self, devtree: &'arena DeviceTree, path: &str) -> Option<Device<'arena>> {
         let mut node = self;
         for component in path.trim_start_matches('/').split('/') {
-            node = node.children().find(|child| child.name.name == component)?;
+            node = node
+                .children(devtree)
+                .find(|child| child.name.name == component)?;
         }
         Some(node)
     }
 
-    pub fn cell_sizes(&self) -> CellSizes {
+    /// Effective `#address-cells`/`#size-cells` at this node, inheriting
+    /// from the closest ancestor that declares them.
+    pub fn cell_sizes(&self, devtree: &'arena DeviceTree) -> CellSizes {
         let address_cells = self
-            .property("#address-cells")
+            .property(devtree, "#address-cells")
             .and_then(|prop| prop.as_usize().ok());
         let size_cells = self
-            .property("#size-cells")
+            .property(devtree, "#size-cells")
             .and_then(|prop| prop.as_usize().ok());
 
         if let (Some(address_cells), Some(size_cells)) = (address_cells, size_cells) {
@@ -258,70 +386,80 @@ impl<'a> Device<'a> {
                 address_cells,
                 size_cells,
             }
-        } else if let Some(parent) = self.parent {
-            // Safety: tree construction ensures the parent ptr is always valid
-            unsafe { parent.as_ref() }.cell_sizes()
+        } else if let Some(parent) = self.parent(devtree) {
+            parent.cell_sizes(devtree)
         } else {
             CellSizes::default()
         }
     }
 
-    pub fn regs(&self) -> Option<fdt::Regs<'_>> {
-        self.properties()
-            .find(|p| p.name() == "reg")
-            .map(|prop| prop.inner.as_regs(self.cell_sizes()))
+    /// Decoded `reg` property iterator, using the inherited cell sizes.
+    pub fn regs(&self, devtree: &'arena DeviceTree) -> Option<fdt::Regs<'arena>> {
+        let prop = self.property(devtree, "reg")?;
+        Some(prop.as_fdt_property().as_regs(self.cell_sizes(devtree)))
     }
 
-    pub fn interrupt_cells(&self) -> Option<usize> {
-        self.property("#interrupt-cells")?.as_usize().ok()
+    /// `#interrupt-cells` declared on this node, if any.
+    pub fn interrupt_cells(&self, devtree: &'arena DeviceTree) -> Option<usize> {
+        self.property(devtree, "#interrupt-cells")?.as_usize().ok()
     }
 
-    pub fn interrupt_parent(&self, devtree: &'a DeviceTree) -> Option<&Device<'a>> {
-        self.properties()
-            .find(|p| p.name() == "interrupt-parent")
-            .and_then(|prop| devtree.find_by_phandle(prop.as_u32().ok()?))
+    /// Resolve the `interrupt-parent` property through `find_by_phandle`.
+    pub fn interrupt_parent(&self, devtree: &'arena DeviceTree) -> Option<Device<'arena>> {
+        let phandle = self.property(devtree, "interrupt-parent")?.as_u32().ok()?;
+        devtree.find_by_phandle(phandle)
     }
 
-    pub fn interrupts(&'a self, devtree: &'a DeviceTree) -> Option<Interrupts<'a>> {
-        let prop = self.property("interrupts")?;
-        let raw = prop.inner.raw.array_chunks::<4>();
+    /// Iterate the `interrupts` property as `(parent, IrqSource)` pairs.
+    pub fn interrupts(self, devtree: &'arena DeviceTree) -> Option<Interrupts<'arena>> {
+        let prop = self.property(devtree, "interrupts")?;
         let parent = self.interrupt_parent(devtree)?;
         Some(Interrupts {
             parent,
-            parent_cells: parent.interrupt_cells()?,
-            raw: raw.map(|chunk| u32::from_be_bytes(*chunk)),
+            parent_cells: parent.interrupt_cells(devtree)?,
+            raw: prop.raw.array_chunks::<4>().map(|b| u32::from_be_bytes(*b)),
         })
     }
 
+    /// Iterate the `interrupts-extended` property as `(parent, IrqSource)` pairs.
     pub fn interrupts_extended(
-        &'a self,
-        devtree: &'a DeviceTree,
-    ) -> Option<InterruptsExtended<'a>> {
-        let prop = self.property("interrupts-extended")?;
-        let raw = prop.inner.raw.array_chunks::<4>();
+        self,
+        devtree: &'arena DeviceTree,
+    ) -> Option<InterruptsExtended<'arena>> {
+        let prop = self.property(devtree, "interrupts-extended")?;
         Some(InterruptsExtended {
             devtree,
-            raw: raw.map(|chunk| u32::from_be_bytes(*chunk)),
+            raw: prop.raw.array_chunks::<4>().map(|b| u32::from_be_bytes(*b)),
         })
     }
+}
+
+/// A property of a device.
+#[derive(Copy, Clone)]
+pub struct Property<'arena> {
+    /// The property name.
+    pub name: &'arena str,
+    /// The raw property bytes.
+    pub raw: &'arena [u8],
+
+    next: Option<PropertyId>,
 }
 
 impl fmt::Debug for Property<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Property")
-            .field("name", &self.inner.name)
-            .field("raw", &self.inner.raw)
+            .field("name", &self.name)
+            .field("raw", &self.raw)
             .finish()
     }
 }
 
-impl<'a> Property<'a> {
-    pub fn name(&self) -> &'a str {
-        self.inner.name
-    }
-
-    pub fn raw(&self) -> &'a [u8] {
-        self.inner.raw
+impl<'arena> Property<'arena> {
+    fn as_fdt_property(&self) -> fdt::Property<'arena> {
+        fdt::Property {
+            name: self.name,
+            raw: self.raw,
+        }
     }
 
     /// Returns the property as a `u32`.
@@ -330,7 +468,7 @@ impl<'a> Property<'a> {
     ///
     /// Returns an error if the property is not a u32.
     pub fn as_u32(&self) -> Result<u32, Error> {
-        self.inner.as_u32()
+        self.as_fdt_property().as_u32()
     }
 
     /// Returns the property as a `u64`.
@@ -339,7 +477,7 @@ impl<'a> Property<'a> {
     ///
     /// Returns an error if the property is not a u64.
     pub fn as_u64(&self) -> Result<u64, Error> {
-        self.inner.as_u64()
+        self.as_fdt_property().as_u64()
     }
 
     /// Returns the property as a `usize`.
@@ -348,7 +486,7 @@ impl<'a> Property<'a> {
     ///
     /// Returns an error if the property is not a usize.
     pub fn as_usize(&self) -> Result<usize, Error> {
-        self.inner.as_usize()
+        self.as_fdt_property().as_usize()
     }
 
     /// Returns the property as a C string.
@@ -356,8 +494,8 @@ impl<'a> Property<'a> {
     /// # Errors
     ///
     /// Returns an error if the property is not a valid C string.
-    pub fn as_cstr(&self) -> Result<&'a CStr, Error> {
-        self.inner.as_cstr()
+    pub fn as_cstr(&self) -> Result<&'arena CStr, Error> {
+        self.as_fdt_property().as_cstr()
     }
 
     /// Returns the property as a string.
@@ -365,8 +503,8 @@ impl<'a> Property<'a> {
     /// # Errors
     ///
     /// Returns an error if the property is not a valid UTF-8 string.
-    pub fn as_str(&self) -> Result<&'a str, Error> {
-        self.inner.as_str()
+    pub fn as_str(&self) -> Result<&'arena str, Error> {
+        self.as_fdt_property().as_str()
     }
 
     /// Returns a fallible iterator over the strings in the property.
@@ -374,39 +512,62 @@ impl<'a> Property<'a> {
     /// # Errors
     ///
     /// Returns an error if the property is not a valid UTF-8 string.
-    pub fn as_strlist(&self) -> Result<StringList<'a>, Error> {
-        self.inner.as_strlist()
+    pub fn as_strlist(&self) -> Result<StringList<'arena>, Error> {
+        self.as_fdt_property().as_strlist()
     }
 }
 
+/// Iterator over an immediate-children list of a device.
 pub struct Children<'a> {
-    current: Link<Device<'a>>,
+    devtree: &'a DeviceTree,
+    current: Option<DeviceId>,
+}
+
+impl<'a> Children<'a> {
+    fn new(devtree: &'a DeviceTree, head: Option<DeviceId>) -> Self {
+        Self {
+            devtree,
+            current: head,
+        }
+    }
 }
 
 impl<'a> Iterator for Children<'a> {
-    type Item = &'a Device<'a>;
+    type Item = Device<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Safety: tree construction guarantees that the pointer is valid
-        let dev = unsafe { self.current?.as_ref() };
+        let id = self.current?;
+        let dev = self.devtree.arena.device(id);
         self.current = dev.next_sibling;
         Some(dev)
     }
 }
 
+/// Depth-first iterator over a device's descendants, yielding `(depth, device)`.
 pub struct Descendants<'a> {
     stack: SmallVec<[Children<'a>; 6]>,
     current: Children<'a>,
 }
 
+impl<'a> Descendants<'a> {
+    fn new(children: Children<'a>) -> Self {
+        Self {
+            stack: smallvec![],
+            current: children,
+        }
+    }
+}
+
 impl<'a> Iterator for Descendants<'a> {
-    type Item = (usize, &'a Device<'a>);
+    type Item = (usize, Device<'a>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.current.next() {
             let depth = self.stack.len();
             if next.first_child.is_some() {
-                let parent = mem::replace(&mut self.current, next.children());
+                let devtree = self.current.devtree;
+                let parent =
+                    mem::replace(&mut self.current, Children::new(devtree, next.first_child));
                 self.stack.push(parent);
             }
             Some((depth, next))
@@ -417,18 +578,29 @@ impl<'a> Iterator for Descendants<'a> {
     }
 }
 
+/// Iterator over a device's property list.
 pub struct Properties<'a> {
-    current: Link<Property<'a>>,
+    devtree: &'a DeviceTree,
+    current: Option<PropertyId>,
+}
+
+impl<'a> Properties<'a> {
+    fn new(devtree: &'a DeviceTree, head: Option<PropertyId>) -> Self {
+        Self {
+            devtree,
+            current: head,
+        }
+    }
 }
 
 impl<'a> Iterator for Properties<'a> {
-    type Item = &'a Property<'a>;
+    type Item = Property<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Safety: list construction guarantees that the pointer is valid
-        let dev = unsafe { self.current?.as_ref() };
-        self.current = dev.next;
-        Some(dev)
+        let id = self.current?;
+        let prop = self.devtree.arena.property(id);
+        self.current = prop.next;
+        Some(prop)
     }
 }
 
@@ -440,12 +612,12 @@ pub enum IrqSource {
 
 #[expect(clippy::type_complexity, reason = "this is not thaaat complex")]
 pub struct Interrupts<'a> {
-    parent: &'a Device<'a>,
+    parent: Device<'a>,
     parent_cells: usize,
     raw: iter::Map<slice::ArrayChunks<'a, u8, 4>, fn(&[u8; 4]) -> u32>,
 }
 impl<'a> Iterator for Interrupts<'a> {
-    type Item = (&'a Device<'a>, IrqSource);
+    type Item = (Device<'a>, IrqSource);
 
     fn next(&mut self) -> Option<Self::Item> {
         Some((
@@ -461,12 +633,12 @@ pub struct InterruptsExtended<'a> {
     raw: iter::Map<slice::ArrayChunks<'a, u8, 4>, fn(&[u8; 4]) -> u32>,
 }
 impl<'a> Iterator for InterruptsExtended<'a> {
-    type Item = (&'a Device<'a>, IrqSource);
+    type Item = (Device<'a>, IrqSource);
 
     fn next(&mut self) -> Option<Self::Item> {
         let parent_phandle = self.raw.next()?;
         let parent = self.devtree.find_by_phandle(parent_phandle)?;
-        let parent_interrupt_cells = parent.interrupt_cells()?;
+        let parent_interrupt_cells = parent.interrupt_cells(self.devtree)?;
         Some((
             parent,
             interrupt_address(&mut self.raw, parent_interrupt_cells)?,
@@ -485,121 +657,183 @@ fn interrupt_address(
     }
 }
 
-fn unflatten_root<'a>(fdt: &Fdt, alloc: &'a Bump) -> crate::Result<NonNull<Device<'a>>> {
-    let mut compatible: Option<&str> = None;
+// ===== construction =====
 
-    let mut props_head: Link<Property> = None;
-    let mut props_tail: Link<Property> = None;
+/// Scoped builder that owns the in-flight `BumpVec`s. After `parse` finishes
+/// pushing nodes/properties, [`Builder::finish`] converts each vec to a
+/// `&'bump [T]` slice via `into_bump_slice` and erases the `'bump` lifetime
+/// to `NonNull<[T]>` so the resulting `Arena` has no lifetime parameter.
+struct Builder<'bump> {
+    bump: &'bump Bump,
+    devices: BumpVec<'bump, DeviceNode>,
+    properties: BumpVec<'bump, PropertyNode>,
+    phandle_index: BumpVec<'bump, (u32, DeviceId)>,
+}
+
+impl<'bump> Builder<'bump> {
+    fn new(bump: &'bump Bump) -> Self {
+        Self {
+            bump,
+            devices: BumpVec::new_in(bump),
+            properties: BumpVec::new_in(bump),
+            phandle_index: BumpVec::new_in(bump),
+        }
+    }
+
+    fn alloc_str(&self, s: &str) -> BumpStr {
+        let s: &mut str = self.bump.alloc_str(s);
+        let len = s.len();
+        let ptr = NonNull::from(s.as_bytes()).cast::<u8>();
+        BumpStr { ptr, len }
+    }
+
+    fn alloc_bytes(&self, b: &[u8]) -> BumpBytes {
+        let b: &mut [u8] = self.bump.alloc_slice_copy(b);
+        let len = b.len();
+        let ptr = NonNull::from(&*b).cast::<u8>();
+        BumpBytes { ptr, len }
+    }
+
+    fn push_device(&mut self, n: DeviceNode) -> DeviceId {
+        self.devices.push(n);
+        let id = u32::try_from(self.devices.len())
+            .expect("device tree contains more than u32::MAX devices");
+        DeviceId(NonZeroU32::new(id).unwrap())
+    }
+
+    fn push_property(&mut self, p: PropertyNode) -> PropertyId {
+        self.properties.push(p);
+        let id = u32::try_from(self.properties.len())
+            .expect("device tree contains more than u32::MAX properties");
+        PropertyId(NonZeroU32::new(id).unwrap())
+    }
+
+    fn register_phandle(&mut self, phandle: u32, id: DeviceId) {
+        self.phandle_index.push((phandle, id));
+    }
+
+    /// Consume the builder, sort the phandle index, and erase the
+    /// `'bump` lifetime on the backing slices.
+    fn finish(
+        self,
+    ) -> (
+        NonNull<[DeviceNode]>,
+        NonNull<[PropertyNode]>,
+        NonNull<[(u32, DeviceId)]>,
+    ) {
+        let mut phandle_index = self.phandle_index;
+        phandle_index.sort_unstable_by_key(|&(p, _)| p);
+        let d = NonNull::from(self.devices.into_bump_slice());
+        let p = NonNull::from(self.properties.into_bump_slice());
+        let h = NonNull::from(phandle_index.into_bump_slice());
+        (d, p, h)
+    }
+}
+
+fn unflatten_root(fdt: &Fdt, b: &mut Builder<'_>) -> crate::Result<DeviceId> {
+    let mut compatible: Option<BumpStr> = None;
+
+    let mut props_head: Option<PropertyId> = None;
+    let mut props_tail: Option<PropertyId> = None;
 
     let mut props = fdt.properties();
     while let Some(prop) = props.next()? {
         if prop.name == "compatible" {
-            compatible = Some(alloc.alloc_str(prop.as_str()?));
+            compatible = Some(b.alloc_str(prop.as_str()?));
         } else {
-            unflatten_property(prop, &mut props_head, &mut props_tail, alloc);
+            unflatten_property(prop, &mut props_head, &mut props_tail, b);
         }
     }
 
-    let ptr = NonNull::from(alloc.alloc(Device {
-        name: NodeName {
-            name: "",
-            unit_address: None,
-        },
-        compatible: compatible.unwrap_or_default(),
+    let empty = b.alloc_str("");
+    Ok(b.push_device(DeviceNode {
+        name: empty,
+        unit_address: None,
+        compatible: compatible.unwrap_or(empty),
         phandle: None,
         properties: props_head,
         parent: None,
         first_child: None,
         next_sibling: None,
-    }));
-
-    Ok(ptr)
+    }))
 }
 
-fn unflatten_node<'a>(
+fn unflatten_node(
     node: fdt::Node,
-    phandle2ptr: &mut HashMap<u32, NonNull<Device<'a>>>,
-    mut parent: NonNull<Device<'a>>,
-    prev_sibling: Link<Device<'a>>,
-    alloc: &'a Bump,
-) -> crate::Result<NonNull<Device<'a>>> {
-    let mut compatible: Option<&'a str> = None;
+    parent: DeviceId,
+    prev_sibling: Option<DeviceId>,
+    b: &mut Builder<'_>,
+) -> crate::Result<DeviceId> {
+    let mut compatible: Option<BumpStr> = None;
     let mut phandle: Option<u32> = None;
 
-    let mut props_head: Link<Property> = None;
-    let mut props_tail: Link<Property> = None;
+    let mut props_head: Option<PropertyId> = None;
+    let mut props_tail: Option<PropertyId> = None;
 
     let mut props = node.properties();
     while let Some(prop) = props.next()? {
         if prop.name == "compatible" {
-            compatible = Some(alloc.alloc_str(prop.as_str()?));
+            compatible = Some(b.alloc_str(prop.as_str()?));
         } else if prop.name == "phandle" {
             phandle = prop.as_u32().ok();
         } else {
-            unflatten_property(prop, &mut props_head, &mut props_tail, alloc);
+            unflatten_property(prop, &mut props_head, &mut props_tail, b);
         }
     }
 
     let name = node.name()?;
-    let node = NonNull::from(alloc.alloc(Device {
-        name: NodeName {
-            name: alloc.alloc_str(name.name),
-            unit_address: name.unit_address.map(|addr| &*alloc.alloc_str(addr)),
-        },
-        compatible: compatible.unwrap_or_default(),
+    let name_str = b.alloc_str(name.name);
+    let unit_address = name.unit_address.map(|addr| b.alloc_str(addr));
+    let compatible = compatible.unwrap_or_else(|| b.alloc_str(""));
+
+    let id = b.push_device(DeviceNode {
+        name: name_str,
+        unit_address,
+        compatible,
         phandle,
         properties: props_head,
         parent: Some(parent),
         first_child: None,
         next_sibling: None,
-    }));
+    });
 
     if let Some(phandle) = phandle {
-        phandle2ptr.insert(phandle, node);
+        b.register_phandle(phandle, id);
     }
 
-    // update the parents `first_child` pointer if necessary
-    // Safety: callers responsibility to ensure that the parent pointer is valid
-    unsafe {
-        parent.as_mut().first_child.get_or_insert(node);
+    // Splice into the parent's first_child slot if it's still empty.
+    if b.devices[parent.idx()].first_child.is_none() {
+        b.devices[parent.idx()].first_child = Some(id);
     }
 
-    // update the previous sibling's `next_sibling` pointer if necessary
-    if let Some(mut sibling) = prev_sibling {
-        // Safety: callers responsibility to ensure that the parent pointer is valid
-        unsafe {
-            sibling.as_mut().next_sibling = Some(node);
-        }
+    // Append to the previous sibling, if any.
+    if let Some(prev_id) = prev_sibling {
+        b.devices[prev_id.idx()].next_sibling = Some(id);
     }
 
-    Ok(node)
+    Ok(id)
 }
 
-fn unflatten_property<'a>(
+fn unflatten_property(
     prop: fdt::Property,
-    head: &mut Link<Property<'a>>,
-    tail: &mut Link<Property<'a>>,
-    alloc: &'a Bump,
+    head: &mut Option<PropertyId>,
+    tail: &mut Option<PropertyId>,
+    b: &mut Builder<'_>,
 ) {
-    let prop = NonNull::from(alloc.alloc(Property {
-        inner: fdt::Property {
-            name: alloc.alloc_str(prop.name),
-            raw: alloc.alloc_slice_copy(prop.raw),
-        },
+    let name = b.alloc_str(prop.name);
+    let raw = b.alloc_bytes(prop.raw);
+    let id = b.push_property(PropertyNode {
+        name,
+        raw,
         next: None,
-    }));
+    });
 
-    // if there already is a tail node append the new node to it
-    if let &mut Some(mut tail) = tail {
-        // Safety: tail is either `None` or a valid pointer we allocated in a previous call below
-        let tail = unsafe { tail.as_mut() };
-        tail.next = Some(prop);
+    if let Some(tail_id) = *tail {
+        b.properties[tail_id.idx()].next = Some(id);
     } else {
-        // otherwise the list is empty, so update the head pointer
         debug_assert!(head.is_none());
-        *head = Some(prop);
+        *head = Some(id);
     }
 
-    // update the tail pointer so we will become the new tail in the next iteration
-    *tail = Some(prop);
+    *tail = Some(id);
 }

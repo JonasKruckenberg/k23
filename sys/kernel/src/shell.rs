@@ -80,11 +80,15 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
     let s = devtree.find_by_path("/soc/serial").unwrap();
     assert!(s.is_compatible(["ns16550a"]));
 
-    let clock_freq = s.property("clock-frequency").unwrap().as_u32().unwrap();
-    let mut regs = s.regs().unwrap();
+    let clock_freq = s
+        .property(devtree, "clock-frequency")
+        .unwrap()
+        .as_u32()
+        .unwrap();
+    let mut regs = s.regs(devtree).unwrap();
     let reg = regs.next().unwrap().unwrap();
     assert!(regs.next().unwrap().is_none());
-    let irq_num = s.property("interrupts").unwrap().as_u32().unwrap();
+    let irq_num = s.property(devtree, "interrupts").unwrap().as_u32().unwrap();
 
     let mmap = with_kernel_aspace(|aspace| {
         // FIXME: this is gross, we're using the PhysicalAddress as an alignment utility :/

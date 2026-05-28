@@ -51,7 +51,7 @@ impl Cpu {
             .expect("required /cpus node not in device tree");
 
         let cpu = cpus
-            .children()
+            .children(devtree)
             .find(|dev| {
                 let name = dev.name.name;
                 let unit_addr =
@@ -63,18 +63,18 @@ impl Cpu {
             .expect("CPU node not found in device tree");
 
         let cbop_block_size = cpu
-            .property("riscv,cbop-block-size")
+            .property(devtree, "riscv,cbop-block-size")
             .map(|prop| prop.as_usize().unwrap());
 
         let cboz_block_size = cpu
-            .property("riscv,cboz-block-size")
+            .property(devtree, "riscv,cboz-block-size")
             .map(|prop| prop.as_usize().unwrap());
 
         let cbom_block_size = cpu
-            .property("riscv,cbom-block-size")
+            .property(devtree, "riscv,cbom-block-size")
             .map(|prop| prop.as_usize().unwrap());
 
-        let extensions = match cpu.property("riscv,isa-extensions") {
+        let extensions = match cpu.property(devtree, "riscv,isa-extensions") {
             Some(prop) => {
                 let extensions = prop.as_strlist()?;
                 parse_riscv_extensions(extensions)
@@ -84,7 +84,7 @@ impl Cpu {
 
         // TODO find CLINT associated with this core
         let hlic_node = cpu
-            .children()
+            .children(devtree)
             .find(|c| c.name.name == "interrupt-controller")
             .unwrap();
         tracing::trace!("CPU interrupt controller: {:?}", hlic_node);
@@ -92,7 +92,7 @@ impl Cpu {
         let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
         plic.irq_unmask(10);
 
-        let clock = device::clock::new(cpu)?;
+        let clock = device::clock::new(devtree, cpu)?;
 
         Ok(Self {
             clock,

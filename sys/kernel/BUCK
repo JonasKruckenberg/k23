@@ -38,7 +38,6 @@ _DEPS = [
     "//third-party:hashbrown",
     "//third-party:gimli",
     "//third-party:bumpalo",
-    "//third-party:ouroboros",
     "//third-party:mycelium-bitfield",
     "//third-party:tracing",
     "//third-party:tracing-core",
