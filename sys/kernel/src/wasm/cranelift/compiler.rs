@@ -182,17 +182,29 @@ impl Compiler for CraneliftCompiler {
 
         // set up stack limit
         let vmctx = context.func.create_global_value(GlobalValueData::VMContext);
+        let store_context_flags = context
+            .func
+            .dfg
+            .mem_flags
+            .insert(MemFlagsData::trusted().with_readonly())
+            .unwrap();
         let store_context = context.func.create_global_value(ir::GlobalValueData::Load {
             base: vmctx,
             offset: Offset32::new(i32::from(StaticVMShape.vmctx_store_context())),
             global_type: isa.pointer_type(),
-            flags: MemFlagsData::trusted().with_readonly(),
+            flags: store_context_flags,
         });
+        let stack_limit_flags = context
+            .func
+            .dfg
+            .mem_flags
+            .insert(MemFlagsData::trusted())
+            .unwrap();
         let stack_limit = context.func.create_global_value(ir::GlobalValueData::Load {
             base: store_context,
             offset: Offset32::new(u32_offset_of!(VMStoreContext, stack_limit) as i32),
             global_type: isa.pointer_type(),
-            flags: MemFlagsData::trusted(),
+            flags: stack_limit_flags,
         });
         context.func.stack_limit = Some(stack_limit);
 

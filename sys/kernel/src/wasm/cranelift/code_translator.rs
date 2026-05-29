@@ -30,6 +30,7 @@ use crate::wasm::cranelift::env::TranslationEnvironment;
 use crate::wasm::cranelift::state::{ControlStackFrame, ElseData, FuncTranslationState};
 use crate::wasm::cranelift::utils::{
     block_with_params, blocktype_params_results, f32_translation, f64_translation,
+    table_alias_region,
 };
 use crate::wasm::indices::{
     DataIndex, ElemIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TypeIndex,
@@ -655,7 +656,7 @@ pub fn translate_operator(
                     let addr = builder.ins().global_value(env.pointer_type(), gv);
                     let mut flags = MemFlagsData::trusted();
                     // Put globals in the "table" abstract mem category as well.
-                    flags.set_alias_region(Some(ir::AliasRegion::Table));
+                    flags.set_alias_region(Some(table_alias_region(builder.func)));
                     builder.ins().load(ty, flags, addr, offset)
                 }
                 CraneliftGlobal::Custom => {
@@ -672,7 +673,7 @@ pub fn translate_operator(
                     let addr = builder.ins().global_value(env.pointer_type(), gv);
                     let mut flags = MemFlagsData::trusted();
                     // Put globals in the "table" abstract mem category as well.
-                    flags.set_alias_region(Some(ir::AliasRegion::Table));
+                    flags.set_alias_region(Some(table_alias_region(builder.func)));
                     let mut val = state.pop1();
                     // Ensure SIMD values are cast to their default Cranelift type, I8x16.
                     if ty.is_vector() {
@@ -2795,6 +2796,7 @@ fn translate_load(
             Reachability::Reachable((f, i, b)) => (f, i, b),
         };
 
+    let flags = builder.func.dfg.mem_flags.insert(flags).unwrap();
     let (load, dfg) = builder
         .ins()
         .Load(opcode, result_ty, flags, Offset32::new(0), base);
@@ -2823,6 +2825,7 @@ fn translate_store(
         mem.prepare_addr(builder, index, mem_op_size, memarg, env)
     );
 
+    let flags = builder.func.dfg.mem_flags.insert(flags).unwrap();
     builder
         .ins()
         .Store(opcode, val_ty, flags, Offset32::new(0), val, base);

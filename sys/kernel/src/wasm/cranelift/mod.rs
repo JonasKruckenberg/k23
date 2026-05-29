@@ -21,6 +21,7 @@ use cranelift_codegen::ir::immediates::Imm64;
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData};
 use cranelift_frontend::FunctionBuilder;
 
+use crate::wasm::cranelift::utils::table_alias_region;
 use crate::wasm::trap::TRAP_TABLE_OUT_OF_BOUNDS;
 
 /// The value of a WebAssembly global variable.
@@ -96,7 +97,7 @@ impl CraneliftTable {
 
         let base_flags = MemFlagsData::new()
             .with_aligned()
-            .with_alias_region(Some(ir::AliasRegion::Table));
+            .with_alias_region(Some(table_alias_region(builder.func)));
 
         if spectre_mitigations_enabled {
             // Short-circuit the computed table element address to a null pointer
