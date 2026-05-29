@@ -75,19 +75,19 @@
               targets = {
                 "aarch64-darwin" = {
                   target = "aarch64-apple-darwin";
-                  hash = "sha256:699029b7e498f44813f59077eeef9614253e75c15688aa4a30d2de4e47ed0ca7";
+                  hash = "sha256:7d4ef790f16a74978efd3436361d6d6d3742fdde61eeee8e6658cfb92c3d0441";
                 };
                 "x86_64-darwin" = {
                   target = "x86_64-apple-darwin";
-                  hash = "sha256:2bd9a01d80e337afd8e4b742082cba23e704ef81a5f2816327341dbc78e6a801";
+                  hash = "sha256:fcc0df4347acde32ce87261d00680efaa80aa653bc5ef16667255f79339d1f3e";
                 };
                 "aarch64-linux" = {
                   target = "aarch64-unknown-linux-gnu";
-                  hash = "sha256:8eed72add2bd61412c8e6bc3d09ce3af8cf41bdde725c7b118ce56870e9f8865";
+                  hash = "sha256:0650eb4cf7c617a017617c699b2970e56dfdf149724238d5dbbfadc24030a233";
                 };
                 "x86_64-linux" = {
                   target = "x86_64-unknown-linux-gnu";
-                  hash = "sha256:b495e91684031ccdad60c21e9b3cbe60ec28e71056397495f332523e9f317384";
+                  hash = "sha256:84b0d88554a04c885071abcf27026ef72e26282a310101891c3196180f10edd5";
                 };
               };
               info = targets.${pkgs.stdenv.hostPlatform.system};
@@ -122,19 +122,19 @@
               targets = {
                 "aarch64-darwin" = {
                   target = "aarch64-apple-darwin";
-                  hash = "sha256:13afe8066b422246c7844db5c622c5d9e00294221549f5782837bf6b971e98d3";
+                  hash = "sha256:5914aa111bce7961456437faa97606941a93156e18fb2e19092bd4dd163d9654";
                 };
                 "x86_64-darwin" = {
                   target = "x86_64-apple-darwin";
-                  hash = "sha256:73297c33e483ba758ad15d4840aa1e5b7635eaf26b2063369ea22c546f1ee4fa";
+                  hash = "sha256:7b037be2061cf0fe3a2b91e94f6c7708cbf39cfc53205ecb4b469dc9193e3c62";
                 };
                 "aarch64-linux" = {
                   target = "aarch64-unknown-linux-gnu";
-                  hash = "sha256:3e21d658db3f011c4fb703daabc8077d7aa2a091606a9ca30e9df890a6d6af46";
+                  hash = "sha256:29823d55ef811ad8f2d39c4756897642fb08c67680d0997fd2654a171f927ea3";
                 };
                 "x86_64-linux" = {
                   target = "x86_64-unknown-linux-gnu";
-                  hash = "sha256:a48b78b2e1a642bfcc3d6d194758770fbcc9bcbe0a7ac0a5411d32787452e914";
+                  hash = "sha256:7cf69a229ec30358dfd1c8c7bcb04259a045a884988fa756a6839f3bce708aa1";
                 };
               };
               info = targets.${pkgs.stdenv.hostPlatform.system};
