@@ -145,3 +145,25 @@ pub fn index_type_to_ir_type(index_type: IndexType) -> ir::Type {
         IndexType::I64 => types::I64,
     }
 }
+
+// Alias regions are disjoint memory categories: analysis assumes accesses in
+// different regions never alias. Cranelift dedups them by `user_id`, so a fixed
+// id per category yields one shared region. We only split heap from the rest.
+const HEAP_ALIAS_REGION_ID: u32 = 0;
+const TABLE_ALIAS_REGION_ID: u32 = 1;
+
+/// Intern the alias region for guest linear-memory (heap) accesses.
+pub fn heap_alias_region(func: &mut ir::Function) -> ir::AliasRegion {
+    func.dfg.alias_regions.insert(ir::AliasRegionData {
+        user_id: HEAP_ALIAS_REGION_ID,
+        description: "heap".into(),
+    })
+}
+
+/// Intern the alias region for table accesses; globals share it.
+pub fn table_alias_region(func: &mut ir::Function) -> ir::AliasRegion {
+    func.dfg.alias_regions.insert(ir::AliasRegionData {
+        user_id: TABLE_ALIAS_REGION_ID,
+        description: "table".into(),
+    })
+}

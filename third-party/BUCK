@@ -9,9 +9,9 @@ load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")
 load("@prelude//rust:cargo_package.bzl", "cargo")
 
 git_fetch(
-    name = "wasmtime-babe873e45b57824.git",
-    repo = "https://github.com/JonasKruckenberg/wasmtime.git",
-    rev = "e5fda766c236418d7526ff08fc2a242597582bc3",
+    name = "wasmtime-9b6dd1b062260ad0.git",
+    repo = "https://github.com/bytecodealliance/wasmtime.git",
+    rev = "9c49989a2e71382fd8639288088472f150f2f534",
     sub_targets = [
         "cranelift/assembler-x64",
         "cranelift/codegen",
@@ -801,9 +801,9 @@ cargo.rust_library(
 
 cargo.rust_library(
     name = "cranelift-assembler-x64-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_assembler_x64",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/assembler-x64/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/assembler-x64/src/lib.rs",
     edition = "2024",
     env = {
         "OUT_DIR": "$(location :cranelift-assembler-x64-0.133-build-script-run[out_dir])",
@@ -814,9 +814,9 @@ cargo.rust_library(
 
 cargo.rust_binary(
     name = "cranelift-assembler-x64-0.133-build-script-build",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "build_script_build",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/assembler-x64/build.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/assembler-x64/build.rs",
     edition = "2024",
     visibility = [],
     deps = [":cranelift-assembler-x64-meta-0.133"],
@@ -826,15 +826,15 @@ buildscript_run(
     name = "cranelift-assembler-x64-0.133-build-script-run",
     package_name = "cranelift-assembler-x64",
     buildscript_rule = ":cranelift-assembler-x64-0.133-build-script-build",
-    manifest_dir = ":wasmtime-babe873e45b57824.git[cranelift/assembler-x64]",
+    manifest_dir = ":wasmtime-9b6dd1b062260ad0.git[cranelift/assembler-x64]",
     version = "0.133.0",
 )
 
 cargo.rust_library(
     name = "cranelift-assembler-x64-meta-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_assembler_x64_meta",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/assembler-x64/meta/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/assembler-x64/meta/src/lib.rs",
     edition = "2024",
     visibility = [],
     deps = [":cranelift-srcgen-0.133"],
@@ -842,9 +842,9 @@ cargo.rust_library(
 
 cargo.rust_library(
     name = "cranelift-bforest-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_bforest",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/bforest/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/bforest/src/lib.rs",
     edition = "2024",
     named_deps = {
         "wasmtime_core": ":wasmtime-internal-core-46",
@@ -855,9 +855,9 @@ cargo.rust_library(
 
 cargo.rust_library(
     name = "cranelift-bitset-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_bitset",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/bitset/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/bitset/src/lib.rs",
     edition = "2024",
     named_deps = {
         "wasmtime_core": ":wasmtime-internal-core-46",
@@ -873,14 +873,14 @@ alias(
 
 cargo.rust_library(
     name = "cranelift-codegen-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_codegen",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/codegen/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/codegen/src/lib.rs",
     edition = "2024",
     env = {
         "CARGO_BIN_NAME": "cranelift_codegen",
         "CARGO_CRATE_NAME": "cranelift_codegen",
-        "CARGO_MANIFEST_DIR": "wasmtime-babe873e45b57824",
+        "CARGO_MANIFEST_DIR": "wasmtime-9b6dd1b062260ad0",
         "CARGO_PKG_AUTHORS": "The Cranelift Project Developers",
         "CARGO_PKG_DESCRIPTION": "Low-level code generator library",
         "CARGO_PKG_HOMEPAGE": "",
@@ -941,14 +941,14 @@ cargo.rust_library(
 
 cargo.rust_binary(
     name = "cranelift-codegen-0.133-build-script-build",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "build_script_build",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/codegen/build.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/codegen/build.rs",
     edition = "2024",
     env = {
         "CARGO_BIN_NAME": "build-script-build",
         "CARGO_CRATE_NAME": "build_script_build",
-        "CARGO_MANIFEST_DIR": "wasmtime-babe873e45b57824",
+        "CARGO_MANIFEST_DIR": "wasmtime-9b6dd1b062260ad0",
         "CARGO_PKG_AUTHORS": "The Cranelift Project Developers",
         "CARGO_PKG_DESCRIPTION": "Low-level code generator library",
         "CARGO_PKG_HOMEPAGE": "",
@@ -1011,7 +1011,7 @@ buildscript_run(
         "riscv64",
         "unwind",
     ],
-    manifest_dir = ":wasmtime-babe873e45b57824.git[cranelift/codegen]",
+    manifest_dir = ":wasmtime-9b6dd1b062260ad0.git[cranelift/codegen]",
     platform = {
         "linux-arm64": dict(
             features = ["std"],
@@ -1031,9 +1031,9 @@ buildscript_run(
 
 cargo.rust_library(
     name = "cranelift-codegen-meta-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_codegen_meta",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/codegen/meta/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/codegen/meta/src/lib.rs",
     edition = "2024",
     visibility = [],
     deps = [
@@ -1046,14 +1046,14 @@ cargo.rust_library(
 
 cargo.rust_library(
     name = "cranelift-codegen-shared-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_codegen_shared",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/codegen/shared/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/codegen/shared/src/lib.rs",
     edition = "2024",
     env = {
         "CARGO_BIN_NAME": "cranelift_codegen_shared",
         "CARGO_CRATE_NAME": "cranelift_codegen_shared",
-        "CARGO_MANIFEST_DIR": "wasmtime-babe873e45b57824",
+        "CARGO_MANIFEST_DIR": "wasmtime-9b6dd1b062260ad0",
         "CARGO_PKG_AUTHORS": "The Cranelift Project Developers",
         "CARGO_PKG_DESCRIPTION": "For code shared between cranelift-codegen-meta and cranelift-codegen",
         "CARGO_PKG_HOMEPAGE": "",
@@ -1072,9 +1072,9 @@ cargo.rust_library(
 
 cargo.rust_library(
     name = "cranelift-control-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_control",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/control/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/control/src/lib.rs",
     edition = "2024",
     platform = {
         "linux-arm64": dict(
@@ -1105,9 +1105,9 @@ alias(
 
 cargo.rust_library(
     name = "cranelift-entity-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_entity",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/entity/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/entity/src/lib.rs",
     edition = "2024",
     named_deps = {
         "wasmtime_core": ":wasmtime-internal-core-46",
@@ -1124,14 +1124,14 @@ alias(
 
 cargo.rust_library(
     name = "cranelift-frontend-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_frontend",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/frontend/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/frontend/src/lib.rs",
     edition = "2024",
     env = {
         "CARGO_BIN_NAME": "cranelift_frontend",
         "CARGO_CRATE_NAME": "cranelift_frontend",
-        "CARGO_MANIFEST_DIR": "wasmtime-babe873e45b57824",
+        "CARGO_MANIFEST_DIR": "wasmtime-9b6dd1b062260ad0",
         "CARGO_PKG_AUTHORS": "The Cranelift Project Developers",
         "CARGO_PKG_DESCRIPTION": "Cranelift IR builder helper",
         "CARGO_PKG_HOMEPAGE": "",
@@ -1172,9 +1172,9 @@ cargo.rust_library(
 
 cargo.rust_library(
     name = "cranelift-isle-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_isle",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/isle/isle/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/isle/isle/src/lib.rs",
     edition = "2024",
     features = ["default"],
     visibility = [],
@@ -1182,9 +1182,9 @@ cargo.rust_library(
 
 cargo.rust_library(
     name = "cranelift-srcgen-0.133",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "cranelift_srcgen",
-    crate_root = "wasmtime-babe873e45b57824/cranelift/srcgen/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/cranelift/srcgen/src/lib.rs",
     edition = "2024",
     visibility = [],
 )
@@ -4992,23 +4992,23 @@ cargo.rust_library(
 
 alias(
     name = "wasmparser",
-    actual = ":wasmparser-0.249",
+    actual = ":wasmparser-0.251",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "wasmparser-0.249.0.crate",
-    sha256 = "30538cae9a794215f490b532df01c557e2e2bfac92569482554acd0992a102ea",
-    strip_prefix = "wasmparser-0.249.0",
-    urls = ["https://static.crates.io/crates/wasmparser/0.249.0/download"],
+    name = "wasmparser-0.251.0.crate",
+    sha256 = "437970b35b1a85cfde9c74b2398352d8d653f3bd8e3a3db0c063ea8f5b4b36ff",
+    strip_prefix = "wasmparser-0.251.0",
+    urls = ["https://static.crates.io/crates/wasmparser/0.251.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "wasmparser-0.249",
-    srcs = [":wasmparser-0.249.0.crate"],
+    name = "wasmparser-0.251",
+    srcs = [":wasmparser-0.251.0.crate"],
     crate = "wasmparser",
-    crate_root = "wasmparser-0.249.0.crate/src/lib.rs",
+    crate_root = "wasmparser-0.251.0.crate/src/lib.rs",
     edition = "2024",
     features = [
         "features",
@@ -5021,9 +5021,9 @@ cargo.rust_library(
 
 cargo.rust_library(
     name = "wasmtime-internal-core-46",
-    srcs = [":wasmtime-babe873e45b57824.git"],
+    srcs = [":wasmtime-9b6dd1b062260ad0.git"],
     crate = "wasmtime_internal_core",
-    crate_root = "wasmtime-babe873e45b57824/crates/core/src/lib.rs",
+    crate_root = "wasmtime-9b6dd1b062260ad0/crates/core/src/lib.rs",
     edition = "2024",
     visibility = [],
     deps = [

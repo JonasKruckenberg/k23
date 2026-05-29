@@ -117,22 +117,32 @@ impl<'module_env> TranslationEnvironment<'module_env> {
         } else {
             let from_offset =
                 self.vmshape.vmctx_vmglobal_import(index) + u32_offset_of!(VMGlobalImport, from);
+            let flags = func
+                .dfg
+                .mem_flags
+                .insert(MemFlagsData::trusted().with_readonly())
+                .unwrap();
             let global = func.create_global_value(GlobalValueData::Load {
                 base: vmctx,
                 offset: Offset32::new(i32::try_from(from_offset).unwrap()),
                 global_type: self.pointer_type(),
-                flags: MemFlagsData::trusted().with_readonly(),
+                flags,
             });
             (global, 0)
         }
     }
 
     fn load_pointer(&self, func: &mut Function, value: GlobalValue, offset: u32) -> GlobalValue {
+        let flags = func
+            .dfg
+            .mem_flags
+            .insert(MemFlagsData::trusted().with_readonly())
+            .unwrap();
         func.create_global_value(ir::GlobalValueData::Load {
             base: value,
             offset: Offset32::new(i32::try_from(offset).unwrap()),
             global_type: self.pointer_type(),
-            flags: MemFlagsData::trusted().with_readonly(),
+            flags,
         })
     }
 
@@ -265,22 +275,32 @@ impl TranslationEnvironment<'_> {
         } else {
             let from_offset =
                 self.vmshape.vmctx_vmtable_import(index) + u32_offset_of!(VMTableImport, from);
+            let flags = func
+                .dfg
+                .mem_flags
+                .insert(MemFlagsData::trusted().with_readonly())
+                .unwrap();
             let table = func.create_global_value(ir::GlobalValueData::Load {
                 base: vmctx,
                 offset: Offset32::new(i32::try_from(from_offset).unwrap()),
                 global_type: pointer_type,
-                flags: MemFlagsData::trusted().with_readonly(),
+                flags,
             });
             let base_offset = u32_offset_of!(VMTableDefinition, base);
 
             (table, base_offset)
         };
 
+        let table_base_flags = func
+            .dfg
+            .mem_flags
+            .insert(MemFlagsData::trusted().with_readonly())
+            .unwrap();
         let table_base = func.create_global_value(GlobalValueData::Load {
             base,
             offset: Offset32::from(base_offset as i32),
             global_type: pointer_type,
-            flags: MemFlagsData::trusted().with_readonly(),
+            flags: table_base_flags,
         });
 
         let element_size = if table.element_type.is_vmgcref_type() {
@@ -328,11 +348,16 @@ impl TranslationEnvironment<'_> {
             }
         };
 
+        let heap_base_flags = func
+            .dfg
+            .mem_flags
+            .insert(MemFlagsData::trusted().with_readonly())
+            .unwrap();
         let heap_base = func.create_global_value(GlobalValueData::Load {
             base,
             offset: Offset32::new(base_offset as i32),
             global_type: self.pointer_type(),
-            flags: MemFlagsData::trusted().with_readonly(),
+            flags: heap_base_flags,
         });
 
         let min_size = plan.minimum_byte_size().unwrap_or_else(|_| {

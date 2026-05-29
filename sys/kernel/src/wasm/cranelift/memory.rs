@@ -14,7 +14,7 @@ use wasmparser::MemArg;
 
 use crate::wasm::cranelift::code_translator::Reachability;
 use crate::wasm::cranelift::env::TranslationEnvironment;
-use crate::wasm::cranelift::utils::index_type_to_ir_type;
+use crate::wasm::cranelift::utils::{heap_alias_region, index_type_to_ir_type};
 use crate::wasm::translate::IndexType;
 use crate::wasm::trap::TRAP_HEAP_MISALIGNED;
 
@@ -84,7 +84,7 @@ impl CraneliftMemory {
                 // state. This may allow alias analysis to merge redundant loads,
                 // etc. when heap accesses occur interleaved with other (table,
                 // vmctx, stack) accesses.
-                flags.set_alias_region(Some(ir::AliasRegion::Heap));
+                flags.set_alias_region(Some(heap_alias_region(builder.func)));
 
                 Reachability::Reachable((flags, index, addr))
             }
