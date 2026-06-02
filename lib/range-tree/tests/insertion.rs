@@ -1,5 +1,4 @@
 #![feature(allocator_api)]
-#![feature(new_range_api)]
 
 mod common;
 
@@ -43,7 +42,7 @@ fn smoke() {
 
     for (idx, range) in shuffled {
         tracing::debug!("inserting range {range:?}");
-        tree.insert(range.clone(), idx).unwrap();
+        tree.insert(range, idx).unwrap();
 
         tree.assert_valid();
     }
@@ -54,7 +53,7 @@ fn smoke() {
     assert_eq!(
         input
             .iter()
-            .map(|(_, range)| range.clone())
+            .map(|(_, range)| range)
             .collect::<Vec<_>>(),
         ranges
     );

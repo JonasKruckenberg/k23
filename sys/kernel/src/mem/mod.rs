@@ -20,7 +20,7 @@ use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use core::num::NonZeroUsize;
-use core::ops::Range;
+use core::range::Range;
 use core::{fmt, slice};
 
 pub use address_space::{AddressSpace, Batch};
@@ -87,7 +87,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
     // reserve the physical memory map
     aspace
         .reserve(
-            boot_info.physical_memory_map.clone(),
+            boot_info.physical_memory_map,
             Permissions::READ | Permissions::WRITE,
             Some("Physical Memory Map".to_string()),
             flush,

@@ -33,7 +33,7 @@ mod tracing;
 mod util;
 mod wasm;
 
-use core::ops::Range;
+use core::range::Range;
 use core::slice;
 use core::time::Duration;
 
@@ -226,7 +226,7 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     let temp: ArrayVec<Range<PhysicalAddress>, 16> = boot_info
         .memory_regions
         .iter()
-        .filter_map(|region| region.kind.is_usable().then_some(region.range.clone()))
+        .filter_map(|region| region.kind.is_usable().then_some(region.range))
         .collect();
 
     // merge adjacent regions
@@ -263,5 +263,5 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
 
     // Safety: we need to trust the bootinfo data is correct
     let slice = unsafe { slice::from_raw_parts(base, fdt.range.len()) };
-    (slice, fdt.range.clone())
+    (slice, fdt.range)
 }

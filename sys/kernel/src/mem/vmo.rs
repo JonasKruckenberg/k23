@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use alloc::sync::Arc;
-use core::ops::Range;
+use core::range::Range;
 
 use anyhow::ensure;
 use mem_core::{AddressRangeExt, PhysicalAddress};
@@ -74,7 +74,7 @@ impl PhysVmo {
             self.range
         );
 
-        Ok(start..end)
+        Ok(Range::from(start..end))
     }
 }
 

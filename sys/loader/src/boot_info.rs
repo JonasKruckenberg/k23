@@ -7,7 +7,7 @@
 
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
-use core::ops::Range;
+use core::range::Range;
 use core::slice;
 
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
@@ -41,8 +41,8 @@ pub fn prepare_boot_info(
         frame_alloc,
         fdt_phys,
         loader_phys,
-        kernel_phys.clone(),
-        kernel_debuginfo_phys.clone(),
+        kernel_phys,
+        kernel_debuginfo_phys,
     );
 
     let mut boot_info = BootInfo::new(memory_regions);
@@ -115,7 +115,7 @@ fn init_boot_info_memory_regions(
         let mut holes = [kernel_phys, kernel_debuginfo_phys];
         holes.sort_unstable_by_key(|r| r.start);
 
-        let start = loader_phys.start..holes[0].start;
+        let start = Range::from(loader_phys.start..holes[0].start);
         if !start.is_empty() {
             push_region(MemoryRegion {
                 range: start,
@@ -123,7 +123,7 @@ fn init_boot_info_memory_regions(
             });
         }
 
-        let mid = holes[0].end..holes[1].start;
+        let mid = Range::from(holes[0].end..holes[1].start);
         if !mid.is_empty() {
             push_region(MemoryRegion {
                 range: mid,
@@ -131,7 +131,7 @@ fn init_boot_info_memory_regions(
             });
         }
 
-        let end = holes[1].end..loader_phys.end;
+        let end = Range::from(holes[1].end..loader_phys.end);
         if !end.is_empty() {
             push_region(MemoryRegion {
                 range: end,

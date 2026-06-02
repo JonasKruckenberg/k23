@@ -5,7 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::ops::{Deref, DerefMut, Range};
+use core::ops::{Deref, DerefMut};
+use core::range::Range;
 use core::{fmt, slice};
 
 use mem_core::{PhysicalAddress, VirtualAddress};

@@ -124,6 +124,8 @@ DENY_ON_CHECK = [
     # docs
     "clippy::missing_panics_doc",
     "clippy::missing_errors_doc",
+
+    "clippy::disallowed_types",
 ]
 
 ALLOW = [

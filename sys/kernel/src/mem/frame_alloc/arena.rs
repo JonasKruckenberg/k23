@@ -7,8 +7,8 @@
 
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
-use core::ops::Range;
 use core::ptr::NonNull;
+use core::range::Range;
 use core::{cmp, fmt, mem, slice};
 
 use cordyceps::List;
@@ -248,7 +248,7 @@ impl FallibleIterator for ArenaSelections {
             return Ok(None);
         };
 
-        let mut hull = seed.clone();
+        let mut hull = seed;
         let mut regions: SmallVec<[Range<PhysicalAddress>; 4]> = SmallVec::new();
         regions.push(seed);
 
@@ -290,7 +290,7 @@ impl FallibleIterator for ArenaSelections {
             return Err(SelectionError { range: arena });
         };
         let bookkeeping_start = host.end.sub(need).align_down(arch::PAGE_SIZE);
-        let bookkeeping = bookkeeping_start..host.end;
+        let bookkeeping = Range::from(bookkeeping_start..host.end);
         host.end = bookkeeping_start;
         regions.retain(|r| !r.is_empty());
 

@@ -1,5 +1,4 @@
 #![feature(allocator_api)]
-#![feature(new_range_api)]
 
 mod common;
 
@@ -15,7 +14,9 @@ use range_tree::RangeTree;
 
 struct Ranges {
     num_ranges: SizeRange,
+    #[expect(clippy::disallowed_types, reason = "proptest impls Strategy for core::ops::Range, not core::range::Range")]
     size: ops::Range<u64>,
+    #[expect(clippy::disallowed_types, reason = "proptest impls Strategy for core::ops::Range, not core::range::Range")]
     gap: ops::Range<u64>,
     shuffled: bool,
 }

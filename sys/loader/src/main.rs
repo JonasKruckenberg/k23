@@ -10,7 +10,7 @@
 
 use core::ffi::c_void;
 use core::mem;
-use core::ops::Range;
+use core::range::Range;
 
 use arrayvec::ArrayVec;
 use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
@@ -100,7 +100,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     );
 
     // Initialize the frame allocator
-    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys.clone());
+    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys);
     log::debug!("allocatable memory regions {allocatable_memories:#x?}");
     let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
 
@@ -180,9 +180,9 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         frame_alloc,
         phys_off,
         phys_map,
-        kernel_virt.clone(),
+        kernel_virt,
         maybe_tls_alloc.as_ref().map(|alloc| alloc.template.clone()),
-        self_regions.executable.start..self_regions.read_write.end,
+        Range::from(self_regions.executable.start..self_regions.read_write.end),
         kernel.phys_range(),
         kernel.debuginfo_phys_range(),
         fdt_phys,
@@ -254,8 +254,8 @@ fn allocatable_memory_regions(
                 // remove region
                 continue;
             } else if region.contains(&to_exclude.start) && region.contains(&to_exclude.end) {
-                temp.push(region.start..to_exclude.start);
-                temp.push(to_exclude.end..region.end);
+                temp.push(Range::from(region.start..to_exclude.start));
+                temp.push(Range::from(to_exclude.end..region.end));
             } else if to_exclude.contains(&region.start) {
                 region.start = to_exclude.end;
                 temp.push(region);
@@ -268,7 +268,9 @@ fn allocatable_memory_regions(
         }
     };
 
-    exclude(self_regions.executable.start..self_regions.read_write.end);
+    exclude(Range::from(
+        self_regions.executable.start..self_regions.read_write.end,
+    ));
 
     exclude(fdt);
 

@@ -7,8 +7,8 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
-use core::ops::Range;
 use core::ptr::NonNull;
+use core::range::Range;
 use core::slice;
 
 use anyhow::Context;
@@ -96,7 +96,7 @@ impl CodeObject {
     pub fn text_range(&self) -> Range<VirtualAddress> {
         let start = self.mmap.range().start;
 
-        start..start.add(self.len)
+        Range::from(start..start.add(self.len))
     }
 
     pub fn resolve_function_loc(&self, func_loc: FunctionLoc) -> usize {

@@ -9,7 +9,7 @@ use std::alloc::Layout;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
-use std::ops::Range;
+use std::range::Range;
 use std::sync::Arc;
 use std::{cmp, fmt};
 
@@ -421,7 +421,7 @@ impl<A: Arch> Cpu<A> {
 
         self.reload_map(
             asid,
-            VirtualAddress::MIN..VirtualAddress::MAX.align_down(A::GRANULE_SIZE),
+            Range::from(VirtualAddress::MIN..VirtualAddress::MAX.align_down(A::GRANULE_SIZE)),
             0,
             self.page_table.unwrap(),
             memory,

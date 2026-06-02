@@ -6,9 +6,9 @@ use std::collections::{BTreeMap, Bound};
 use std::hint::black_box;
 use std::mem::offset_of;
 use std::num::NonZeroU64;
-use std::ops::Range;
 use std::pin::Pin;
 use std::ptr::NonNull;
+use std::range::Range;
 
 use brie_tree::BTree;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
@@ -76,7 +76,7 @@ fn wavl_insertions(insertions: &[Range<u64>]) {
     let mut map: WAVLTree<WAVLEntry> = WAVLTree::new();
 
     for range in insertions {
-        map.insert(Box::pin(WAVLEntry::new(range.clone())));
+        map.insert(Box::pin(WAVLEntry::new(*range)));
     }
 
     black_box(map);
@@ -115,7 +115,7 @@ fn bench_insertions(c: &mut Criterion) {
     for num_entries in (10..1000).step_by(100) {
         let mut ranges = (1..num_entries * 2 * MIB)
             .step_by(usize::try_from(2 * MIB).unwrap())
-            .map(|base| base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap()))
+            .map(|base| Range::from(base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap())))
             .collect::<Vec<_>>();
 
         ranges.shuffle(&mut rng);
@@ -190,7 +190,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
     for num_entries in (10..1000).step_by(100) {
         let mut ranges = (1..num_entries * 2 * MIB)
             .step_by(usize::try_from(2 * MIB).unwrap())
-            .map(|base| base..base + rng.sample(Uniform::new(1, 2 * MIB).unwrap()))
+            .map(|base| Range::from(base..base + rng.sample(Uniform::new(1, 2 * MIB).unwrap())))
             .collect::<Vec<_>>();
 
         ranges.shuffle(&mut rng);
@@ -221,7 +221,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
             let mut map: WAVLTree<WAVLEntry> = WAVLTree::new();
 
             for range in &ranges {
-                map.insert(Box::pin(WAVLEntry::new(range.clone())));
+                map.insert(Box::pin(WAVLEntry::new(*range)));
             }
 
             group.bench_with_input(
@@ -275,7 +275,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
 //     for num_entries in (10..10_000).step_by(1000) {
 //         let mut ranges = (0..num_entries * 2 * MIB)
 //             .step_by(usize::try_from(2 * MIB).unwrap())
-//             .map(|base| base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap()))
+//             .map(|base| Range::from(base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap())))
 //             .collect::<Vec<_>>();
 //
 //         ranges.shuffle(&mut rng);
@@ -331,7 +331,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
 //             let mut map: WAVLTree<WAVLEntry> = WAVLTree::new();
 //
 //             for range in &ranges {
-//                 map.insert(Box::pin(WAVLEntry::new(range.clone())));
+//                 map.insert(Box::pin(WAVLEntry::new(*range)));
 //             }
 //
 //             group.bench_with_input(

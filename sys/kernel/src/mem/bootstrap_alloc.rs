@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
-use core::ops::Range;
+use core::range::Range;
 use core::{iter, ptr, slice};
 
 use mem_core::{AddressRangeExt, PhysicalAddress};
@@ -30,7 +30,7 @@ impl<'a> BootstrapAllocator<'a> {
     pub fn free_regions(&self) -> FreeRegions<'_> {
         FreeRegions {
             offset: self.offset,
-            inner: self.regions.iter().rev().cloned(),
+            inner: self.regions.iter().rev().copied(),
         }
     }
 
@@ -97,10 +97,7 @@ impl<'a> BootstrapAllocator<'a> {
         // Safety: we just allocated the frame
         unsafe {
             ptr::write_bytes::<u8>(
-                arch::KERNEL_ASPACE_RANGE
-                    .start()
-                    .add(addr.get())
-                    .as_mut_ptr(),
+                arch::KERNEL_ASPACE_RANGE.start.add(addr.get()).as_mut_ptr(),
                 0,
                 requested_size,
             );
@@ -111,7 +108,7 @@ impl<'a> BootstrapAllocator<'a> {
 
 pub struct FreeRegions<'a> {
     offset: usize,
-    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
+    inner: iter::Copied<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
 }
 
 impl Iterator for FreeRegions<'_> {

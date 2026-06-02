@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::fmt::Formatter;
-use core::ops::Range;
+use core::range::Range;
 use core::{fmt, slice};
 
 use loader_api::LoaderConfig;

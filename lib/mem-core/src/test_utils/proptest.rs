@@ -8,14 +8,19 @@
 //! `proptest` strategies for virtual memory subsystem tests
 
 use std::alloc::Layout;
-use std::ops::Range;
+use std::ops;
+use std::range::Range;
 
 use proptest::prelude::{Just, Strategy};
 
 use crate::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 /// Produces `VirtualAddress`s in the given range
-pub fn virt(range: Range<usize>) -> impl Strategy<Value = VirtualAddress> {
+#[expect(
+    clippy::disallowed_types,
+    reason = "proptest's Strategy is implemented for core::ops::Range, not core::range::Range"
+)]
+pub fn virt(range: ops::Range<usize>) -> impl Strategy<Value = VirtualAddress> {
     range.prop_map(|raw| VirtualAddress::new(raw))
 }
 
@@ -28,7 +33,11 @@ pub fn aligned_virt(
 }
 
 /// Produces `PhysicalAddress`s in the given range
-pub fn phys(range: Range<usize>) -> impl Strategy<Value = PhysicalAddress> {
+#[expect(
+    clippy::disallowed_types,
+    reason = "proptest's Strategy is implemented for core::ops::Range, not core::range::Range"
+)]
+pub fn phys(range: ops::Range<usize>) -> impl Strategy<Value = PhysicalAddress> {
     range.prop_map(|raw| PhysicalAddress::new(raw))
 }
 
@@ -40,8 +49,12 @@ pub fn aligned_phys(
     addr.prop_map(move |value| value.align_down(alignment))
 }
 
+#[expect(
+    clippy::disallowed_types,
+    reason = "proptest's vec() size argument requires Into<SizeRange>, implemented for core::ops::Range"
+)]
 pub fn region_layouts(
-    num_regions: Range<usize>,
+    num_regions: ops::Range<usize>,
     alignment: usize,
     max_region_size: usize,
 ) -> impl Strategy<Value = Vec<Layout>> {
@@ -68,8 +81,12 @@ pub fn region_layouts(
 
 /// Produces a set of *sorted*, *non-overlapping* regions of physical memory aligned to `alignment`.
 /// Most useful for initializing an emulated machine.
+#[expect(
+    clippy::disallowed_types,
+    reason = "proptest's vec() size argument requires Into<SizeRange>, implemented for core::ops::Range"
+)]
 pub fn regions_phys(
-    num_regions: Range<usize>,
+    num_regions: ops::Range<usize>,
     alignment: usize,
     max_region_size: usize,
     max_gap_size: usize,
@@ -132,8 +149,12 @@ pub fn pick_address_in_regions(
 }
 
 /// Produces a set of *sorted*, *non-overlapping* regions of virtual memory aligned to `alignment`.
+#[expect(
+    clippy::disallowed_types,
+    reason = "proptest's vec() size argument requires Into<SizeRange>, implemented for core::ops::Range"
+)]
 pub fn regions_virt(
-    num_regions: Range<usize>,
+    num_regions: ops::Range<usize>,
     alignment: usize,
     max_region_size: usize,
     max_gap_size: usize,

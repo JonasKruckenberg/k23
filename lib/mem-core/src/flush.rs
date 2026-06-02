@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::mem;
-use core::ops::Range;
+use core::range::Range;
 
 use arrayvec::ArrayVec;
 

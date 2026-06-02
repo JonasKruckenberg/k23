@@ -151,10 +151,16 @@ genrule(
     ]),
 )
 
+export_file(
+    name = "clippy.toml",
+    src = "clippy.toml",
+)
+
 rust_toolchain(
     name = "rust",
     rustc = ":rust_toolchain[rustc]",
     clippy = ":rust_toolchain[clippy-driver]",
+    clippy_toml = ":clippy.toml",
     rustdoc = ":rust_toolchain[rustdoc]",
     miri_driver = ":rust_toolchain[miri]",
     miri_sysroot_path = ":miri_sysroot",

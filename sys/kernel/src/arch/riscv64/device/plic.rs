@@ -9,8 +9,9 @@ use alloc::string::ToString;
 use core::alloc::Layout;
 use core::mem::{MaybeUninit, offset_of};
 use core::num::NonZero;
-use core::ops::{BitAnd, BitOr, Not, Range};
+use core::ops::{BitAnd, BitOr, Not};
 use core::ptr;
+use core::range::Range;
 
 use fallible_iterator::FallibleIterator;
 use mem_core::{AddressRangeExt, PhysicalAddress};
@@ -122,7 +123,7 @@ impl Plic {
                     Permissions::READ | Permissions::WRITE,
                     |range, perms, batch| {
                         let region = AddressSpaceRegion::new_phys(
-                            range.clone(),
+                            range,
                             perms,
                             mmio_range,
                             Some("PLIC".to_string()),
@@ -133,7 +134,6 @@ impl Plic {
                 )
                 .unwrap()
                 .range
-                .clone()
         });
 
         // Specifies how many external interrupts are supported by this controller.

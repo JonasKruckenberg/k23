@@ -8,7 +8,7 @@
 use core::cmp::Ordering;
 use core::ffi::{CStr, c_void};
 use core::fmt::Formatter;
-use core::ops::Range;
+use core::range::Range;
 use core::str::FromStr;
 use core::{fmt, mem};
 
@@ -122,8 +122,8 @@ impl MachineInfo<'_> {
                     // remove region
                     continue;
                 } else if region.contains(&entry.start) && region.contains(&entry.end) {
-                    memories.push(region.start..entry.start);
-                    memories.push(entry.end..region.end);
+                    memories.push(Range::from(region.start..entry.start));
+                    memories.push(Range::from(entry.end..region.end));
                 } else if entry.contains(&region.start) {
                     region.start = entry.end;
                     memories.push(region);
@@ -161,7 +161,7 @@ impl MachineInfo<'_> {
         // page-align all memory regions, this will waste some physical memory in the process,
         // but we can't make use of it either way
         memories.iter_mut().for_each(|region| {
-            *region = region.clone().align_in(PAGE_SIZE);
+            *region = region.align_in(PAGE_SIZE);
         });
 
         // ensure the memory regions are sorted.
@@ -198,7 +198,7 @@ impl MachineInfo<'_> {
         let min_addr = self.memories.first().map(|r| r.start).unwrap_or_default();
         let max_addr = self.memories.last().map(|r| r.end).unwrap_or_default();
 
-        min_addr..max_addr
+        Range::from(min_addr..max_addr)
     }
 }
 

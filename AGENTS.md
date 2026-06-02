@@ -81,7 +81,7 @@ Breaking these is a soundness or security regression. SAFETY comments relying on
 
 - `third-party/BUCK` — generated. Edit `third-party/Cargo.toml`, regenerate; `just reindeer-clean` fails on drift.
 - `buck-out/` — gitignored; don't edit, but useful to *read*: holds the BUCK2 prelude, intermediate build artifacts, and the unpacked source of third-party crates.
-- `lib/range-tree/`, `lib/sharded-slab/`, `lib/wast/` — vendored; license-header-exempt; don't reformat.
+- `lib/sharded-slab/`, `lib/wast/` — vendored; license-header-exempt; don't reformat.
 - `rust-toolchain.toml`, `flake.lock`, `Cargo.lock` — change deliberately only; touching them triggers full CI.
 
 ## Further reading
