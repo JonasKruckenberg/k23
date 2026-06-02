@@ -18,7 +18,8 @@ const S: &str = r#"
 use alloc::string::{String, ToString};
 use core::fmt;
 use core::fmt::Write;
-use core::ops::{DerefMut, Range};
+use core::ops::DerefMut;
+use core::range::Range;
 
 use fallible_iterator::FallibleIterator;
 use kasync::executor::Executor;
@@ -107,7 +108,7 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
         )
         .unwrap();
 
-        mmap.commit(aspace.lock().deref_mut(), 0..size, true)
+        mmap.commit(aspace.lock().deref_mut(), Range::from(0..size), true)
             .unwrap();
 
         mmap

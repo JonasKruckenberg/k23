@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::marker::PhantomData;
-use core::ops::{Range, RangeInclusive};
+use core::range::{Range, RangeInclusive, RangeInclusiveIter};
 
 use crate::VirtualAddress;
 use crate::arch::{Arch, PageTableLevel};
@@ -18,7 +18,10 @@ pub fn page_table_entries_for<A: Arch>(
     level: &PageTableLevel,
 ) -> PageTableEntries<A> {
     PageTableEntries {
-        iter: level.pte_index_of(range.start)..=level.pte_index_of(range.end.sub(1)),
+        iter: RangeInclusive::from(
+            level.pte_index_of(range.start)..=level.pte_index_of(range.end.sub(1)),
+        )
+        .into_iter(),
         page_start: range.start,
         max: range.end,
         page_size: level.page_size(),
@@ -28,7 +31,7 @@ pub fn page_table_entries_for<A: Arch>(
 
 #[derive(Debug)]
 pub struct PageTableEntries<A> {
-    iter: RangeInclusive<u16>,
+    iter: RangeInclusiveIter<u16>,
     page_start: VirtualAddress,
     max: VirtualAddress,
     page_size: usize,
@@ -41,8 +44,9 @@ impl<A: Arch> Iterator for PageTableEntries<A> {
     fn next(&mut self) -> Option<Self::Item> {
         let entry_index = self.iter.next()?;
 
-        let page_range =
-            self.page_start..self.page_start.saturating_add(self.page_size).min(self.max);
+        let page_range = Range::from(
+            self.page_start..self.page_start.saturating_add(self.page_size).min(self.max),
+        );
 
         if page_range.is_empty() {
             return None;

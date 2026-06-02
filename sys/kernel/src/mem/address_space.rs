@@ -12,9 +12,10 @@ use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::fmt;
 use core::num::NonZeroUsize;
-use core::ops::{Bound, DerefMut, Range, RangeBounds, RangeInclusive};
+use core::ops::{Bound, DerefMut, RangeBounds};
 use core::pin::Pin;
 use core::ptr::NonNull;
+use core::range::{Range, RangeInclusive};
 
 use anyhow::{bail, ensure};
 use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
@@ -139,8 +140,8 @@ impl AddressSpace {
             layout.pad_to_align().size()
                 <= self
                     .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
+                    .last
+                    .offset_from_unsigned(self.max_range.start)
         );
         ensure!(layout.align() <= self.frame_alloc.max_alignment(),);
         ensure!(permissions.is_valid());
@@ -183,8 +184,8 @@ impl AddressSpace {
             range.len()
                 <= self
                     .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
+                    .last
+                    .offset_from_unsigned(self.max_range.start)
         );
         ensure!(permissions.is_valid());
         // ensure the entire address space range is free
@@ -217,8 +218,8 @@ impl AddressSpace {
             range.len()
                 <= self
                     .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
+                    .last
+                    .offset_from_unsigned(self.max_range.start)
         );
 
         // ensure the entire range is mapped and doesn't cover any holes
@@ -227,7 +228,7 @@ impl AddressSpace {
         // We do that by adding up their sizes checking that their total size is at least as large
         // as the requested range.
         let mut bytes_seen = 0;
-        self.for_each_region_in_range(range.clone(), |region| {
+        self.for_each_region_in_range(range, |region| {
             bytes_seen += region.range.len();
             Ok(())
         })?;
@@ -243,8 +244,8 @@ impl AddressSpace {
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
             let mut region = c.remove().unwrap();
-            let range = region.range.clone();
-            Pin::as_mut(&mut region).unmap(range.clone())?;
+            let range = region.range;
+            Pin::as_mut(&mut region).unmap(range)?;
             bytes_remaining -= range.len();
         }
 
@@ -273,8 +274,8 @@ impl AddressSpace {
             range.len()
                 <= self
                     .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
+                    .last
+                    .offset_from_unsigned(self.max_range.start)
         );
         ensure!(new_permissions.is_valid());
 
@@ -286,7 +287,7 @@ impl AddressSpace {
         // Along the way we also check for each region that the new permissions are a subset of the
         // current ones.
         let mut bytes_seen = 0;
-        self.for_each_region_in_range(range.clone(), |region| {
+        self.for_each_region_in_range(range, |region| {
             bytes_seen += region.range.len();
 
             ensure!(region.permissions.contains(new_permissions),);
@@ -398,8 +399,8 @@ impl AddressSpace {
             range.len()
                 <= self
                     .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
+                    .last
+                    .offset_from_unsigned(self.max_range.start)
         );
         ensure!(permissions.is_valid());
 
@@ -408,7 +409,7 @@ impl AddressSpace {
             ensure!(prev.range.end <= range.start);
         }
 
-        let region = AddressSpaceRegion::new_wired(range.clone(), permissions, name);
+        let region = AddressSpaceRegion::new_wired(range, permissions, name);
         let region = self.regions.insert(Box::pin(region));
 
         // eagerly materialize any possible changes, we do this eagerly for the entire range here
@@ -442,8 +443,8 @@ impl AddressSpace {
             range.len()
                 <= self
                     .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start()),
+                    .last
+                    .offset_from_unsigned(self.max_range.start),
         );
 
         let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
@@ -451,7 +452,7 @@ impl AddressSpace {
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
             let region = c.get_mut().unwrap();
-            let clamped = range.clone().intersect(region.range.clone());
+            let clamped = range.intersect(region.range);
             region.commit(&mut batch, clamped, will_write)?;
 
             bytes_remaining -= range.len();
@@ -593,11 +594,11 @@ impl AddressSpace {
         // if the tree is empty, treat max_range as the gap
         if self.regions.is_empty() {
             let aligned_gap = Range {
-                start: self.max_range.start().align_up(layout.align()),
-                end: self.max_range.end().sub(1).align_down(layout.align()),
+                start: self.max_range.start.align_up(layout.align()),
+                end: self.max_range.last.sub(1).align_down(layout.align()),
             };
 
-            let spot_count = spots_in_range(layout, aligned_gap.clone());
+            let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
                 tracing::trace!("tree is empty, chose gap {aligned_gap:?}");
@@ -611,8 +612,8 @@ impl AddressSpace {
         // see if there is a suitable gap between the start of the address space and the first mapping
         if let Some(root) = self.regions.root().get() {
             let aligned_gap =
-                (*self.max_range.start()..root.max_range.start).align_in(layout.align());
-            let spot_count = spots_in_range(layout, aligned_gap.clone());
+                Range::from(self.max_range.start..root.max_range.start).align_in(layout.align());
+            let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
                 tracing::trace!("found gap left of tree in {aligned_gap:?}");
@@ -637,9 +638,9 @@ impl AddressSpace {
                     }
 
                     let aligned_gap =
-                        (left.max_range.end..node.range.start).align_in(layout.align());
+                        Range::from(left.max_range.end..node.range.start).align_in(layout.align());
 
-                    let spot_count = spots_in_range(layout, aligned_gap.clone());
+                    let spot_count = spots_in_range(layout, aligned_gap);
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
@@ -655,9 +656,9 @@ impl AddressSpace {
                     let right = unsafe { right.as_ref() };
 
                     let aligned_gap =
-                        (node.range.end..right.max_range.start).align_in(layout.align());
+                        Range::from(node.range.end..right.max_range.start).align_in(layout.align());
 
-                    let spot_count = spots_in_range(layout, aligned_gap.clone());
+                    let spot_count = spots_in_range(layout, aligned_gap);
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
@@ -680,8 +681,9 @@ impl AddressSpace {
 
         // see if there is a suitable gap between the end of the last mapping and the end of the address space
         if let Some(root) = self.regions.root().get() {
-            let aligned_gap = (root.max_range.end..*self.max_range.end()).align_in(layout.align());
-            let spot_count = spots_in_range(layout, aligned_gap.clone());
+            let aligned_gap =
+                Range::from(root.max_range.end..self.max_range.last).align_in(layout.align());
+            let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
                 tracing::trace!("found gap right of tree in {aligned_gap:?}");

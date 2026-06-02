@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
-use core::ops::Range;
+use core::range::Range;
 use core::{cmp, ptr, slice};
 
 use bitflags::bitflags;
@@ -45,7 +45,7 @@ pub fn identity_map_self(
     identity_map_range(
         root_pgtable,
         frame_alloc,
-        self_regions.executable.clone(),
+        self_regions.executable,
         Flags::READ | Flags::EXECUTE,
     )?;
 
@@ -56,7 +56,7 @@ pub fn identity_map_self(
     identity_map_range(
         root_pgtable,
         frame_alloc,
-        self_regions.read_only.clone(),
+        self_regions.read_only,
         Flags::READ,
     )?;
 
@@ -67,7 +67,7 @@ pub fn identity_map_self(
     identity_map_range(
         root_pgtable,
         frame_alloc,
-        self_regions.read_write.clone(),
+        self_regions.read_write,
         Flags::READ | Flags::WRITE,
     )?;
 
@@ -621,7 +621,7 @@ impl StacksAllocation {
     pub fn region_for_cpu(&self, cpuid: usize) -> Range<VirtualAddress> {
         let end = self.virt.end.add(self.per_cpu_size_with_guard * cpuid);
 
-        end.sub(self.per_cpu_size)..end
+        Range::from(end.sub(self.per_cpu_size)..end)
     }
 }
 

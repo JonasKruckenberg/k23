@@ -7,7 +7,7 @@
 
 use core::cmp;
 use core::num::NonZeroIsize;
-use core::ops::Range;
+use core::range::Range;
 
 use crate::{PhysicalAddress, VirtualAddress};
 
@@ -63,7 +63,7 @@ impl PhysMap {
             let start = physmap_start.get() as u128;
             let end = start + max_addr.offset_from_unsigned(min_addr) as u128;
 
-            start..end
+            Range::from(start..end)
         };
 
         Self {
@@ -97,7 +97,7 @@ impl PhysMap {
         let start = self.phys_to_virt(phys.start);
         let end = self.phys_to_virt(phys.end);
 
-        start..end
+        Range::from(start..end)
     }
 }
 
@@ -124,7 +124,7 @@ mod tests {
             #[cfg(debug_assertions)]
             prop_assert_eq!(
                 map.range,
-                Some(base.get() as u128..base.add(region_size).get() as u128)
+                Some(Range::from(base.get() as u128..base.add(region_size).get() as u128))
             )
         }
 
@@ -165,7 +165,9 @@ mod tests {
     fn phys_to_virt_lower_half() {
         let map = PhysMap::new(
             VirtualAddress::new(0x0),
-            [PhysicalAddress::new(0x00007f87024d9000)..PhysicalAddress::new(0x00007fc200e17000)],
+            [Range::from(
+                PhysicalAddress::new(0x00007f87024d9000)..PhysicalAddress::new(0x00007fc200e17000),
+            )],
         );
 
         println!("{map:?}");
@@ -178,7 +180,9 @@ mod tests {
     fn phys_to_virt_upper_half() {
         let map = PhysMap::new(
             VirtualAddress::new(0xffffffc000000000),
-            [PhysicalAddress::new(0x00007f87024d9000)..PhysicalAddress::new(0x00007fc200e17000)],
+            [Range::from(
+                PhysicalAddress::new(0x00007f87024d9000)..PhysicalAddress::new(0x00007fc200e17000),
+            )],
         );
 
         println!("{map:?}");

@@ -8,7 +8,7 @@
 use core::alloc::Layout;
 use core::convert::Infallible;
 use core::marker::PhantomData;
-use core::ops::Range;
+use core::range::Range;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::flush::Flush;
@@ -147,7 +147,7 @@ impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
 
         for region_phys in regions {
             // NB: use the desired physmap (ie the one used after bootstrapping)
-            let region_virt = chosen_physmap.phys_to_virt_range(region_phys.clone());
+            let region_virt = chosen_physmap.phys_to_virt_range(region_phys);
 
             let mut flush = Flush::new();
 
@@ -696,7 +696,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
 #[cfg(test)]
 mod tests {
     use std::alloc::Layout;
-    use std::ops::Range;
+    use std::range::Range;
 
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;

@@ -9,7 +9,7 @@ mod bump;
 
 use core::alloc::Layout;
 use core::fmt;
-use core::ops::Range;
+use core::range::Range;
 
 pub use bump::{BumpAllocator, DEFAULT_MAX_REGIONS};
 
@@ -92,7 +92,7 @@ pub unsafe trait FrameAllocator {
         let blocks = self.allocate(layout)?;
 
         let blocks = blocks.inspect(|block_phys| {
-            let block_virt = physmap.phys_to_virt_range(block_phys.clone());
+            let block_virt = physmap.phys_to_virt_range(*block_phys);
             debug_assert_eq!(block_phys.len(), block_virt.len());
 
             // Safety: we just allocated the block

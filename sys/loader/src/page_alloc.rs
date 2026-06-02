@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
-use core::ops::Range;
+use core::range::Range;
 
 use mem_core::{AddressRangeExt, VirtualAddress};
 use rand::distr::{Distribution, Uniform};

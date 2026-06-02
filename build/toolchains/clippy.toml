@@ -1,0 +1,8 @@
+# `disallowed-types` to enforce the migration off
+# `core::ops::Range*` types onto the `core::range::Range*`
+# types stabilized in Rust 1.96 (`new_range_api`).
+disallowed-types = [
+    { path = "core::ops::Range", reason = "use core::range::Range (new_range_api; Copy, IntoIterator)" },
+    { path = "core::ops::RangeInclusive", reason = "use core::range::RangeInclusive (new_range_api)" },
+    { path = "core::ops::RangeFrom", reason = "use core::range::RangeFrom (new_range_api)" },
+]

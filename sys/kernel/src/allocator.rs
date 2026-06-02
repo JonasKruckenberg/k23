@@ -14,7 +14,7 @@
 //! `KERNEL_ASPACE` (mapping into the kernel address space itself allocates from the heap).
 
 use core::alloc::Layout;
-use core::ops::Range;
+use core::range::Range;
 
 use arrayvec::ArrayVec;
 use loader_api::BootInfo;

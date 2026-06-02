@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::ops::Range;
+use core::range::Range;
 
 use riscv::satp;
 use riscv::sbi::rfence::{sfence_vma, sfence_vma_asid};

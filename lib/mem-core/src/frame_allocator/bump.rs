@@ -8,7 +8,7 @@
 use core::alloc::Layout;
 use core::cmp::Ordering;
 use core::num::NonZeroUsize;
-use core::ops::Range;
+use core::range::Range;
 use core::{cmp, fmt, iter};
 
 use arrayvec::ArrayVec;
@@ -111,7 +111,7 @@ where
             .lock()
             .arenas
             .iter()
-            .map(|arena| arena.region.clone())
+            .map(|arena| arena.region)
             .collect()
     }
 
@@ -343,13 +343,13 @@ impl Arena {
     /// Returns the used (allocated) slice of the physical memory region managed by this arena
     #[inline]
     pub fn used(&self) -> Range<PhysicalAddress> {
-        self.ptr..self.region.end
+        Range::from(self.ptr..self.region.end)
     }
 
     /// Returns the free (not allocated) slice of the physical memory region managed by this arena
     #[inline]
     pub fn free(&self) -> Range<PhysicalAddress> {
-        self.region.start..self.ptr
+        Range::from(self.region.start..self.ptr)
     }
 
     /// Deallocates a given memory block IF it is the last block that was allocated from this arena.

@@ -8,8 +8,8 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
-use core::ops::{Range, RangeInclusive};
 use core::ptr::NonNull;
+use core::range::{Range, RangeInclusive};
 use core::{fmt, slice};
 
 use bitflags::bitflags;
@@ -24,14 +24,16 @@ use crate::mem::frame_alloc::{Frame, FrameAllocator};
 
 pub const DEFAULT_ASID: u16 = 0;
 
-pub const KERNEL_ASPACE_RANGE: RangeInclusive<VirtualAddress> =
-    VirtualAddress::new(0xffffffc000000000)..=VirtualAddress::MAX;
+pub const KERNEL_ASPACE_RANGE: RangeInclusive<VirtualAddress> = RangeInclusive {
+    start: VirtualAddress::new(0xffffffc000000000),
+    last: VirtualAddress::MAX,
+};
 
-const_assert_eq!(KERNEL_ASPACE_RANGE.start().get(), CANONICAL_ADDRESS_MASK);
+const_assert_eq!(KERNEL_ASPACE_RANGE.start.get(), CANONICAL_ADDRESS_MASK);
 const_assert_eq!(
     KERNEL_ASPACE_RANGE
-        .end()
-        .offset_from_unsigned(*KERNEL_ASPACE_RANGE.start()),
+        .last
+        .offset_from_unsigned(KERNEL_ASPACE_RANGE.start),
     !CANONICAL_ADDRESS_MASK
 );
 
@@ -40,8 +42,10 @@ const_assert_eq!(
 /// The first 2MiB are reserved for catching null pointer dereferences, but this might
 /// change in the future if we decide that the null-checking performed by the WASM runtime
 /// is sufficiently robust.
-pub const USER_ASPACE_RANGE: RangeInclusive<VirtualAddress> =
-    VirtualAddress::new(0x0000000000200000)..=VirtualAddress::new((1 << VIRT_ADDR_BITS) - 1);
+pub const USER_ASPACE_RANGE: RangeInclusive<VirtualAddress> = RangeInclusive {
+    start: VirtualAddress::new(0x0000000000200000),
+    last: VirtualAddress::new((1 << VIRT_ADDR_BITS) - 1),
+};
 
 pub const PAGE_SIZE: usize = 4096;
 pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
@@ -75,7 +79,7 @@ pub fn init() {
 
 #[must_use]
 pub fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-    KERNEL_ASPACE_RANGE.start().add(phys.get())
+    KERNEL_ASPACE_RANGE.start.add(phys.get())
 }
 
 pub const fn is_canonical(virt: VirtualAddress) -> bool {
@@ -94,7 +98,7 @@ pub const fn is_user_address(virt: VirtualAddress) -> bool {
 /// Return whether the given virtual address is in the kernel address space half.
 #[inline]
 pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
-    KERNEL_ASPACE_RANGE.start().get() <= virt.get() && virt.get() < KERNEL_ASPACE_RANGE.end().get()
+    KERNEL_ASPACE_RANGE.start.get() <= virt.get() && virt.get() < KERNEL_ASPACE_RANGE.last.get()
 }
 
 /// Invalidate address translation caches for the given `address_range` in the given `address_space`.
@@ -284,7 +288,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                     // mark this PTE as a valid leaf node pointing to the physical frame
                     pte.replace_address_and_flags(phys, PTEFlags::VALID | flags);
 
-                    flush.extend_range(self.asid, virt..virt.add(page_size))?;
+                    flush.extend_range(self.asid, Range::from(virt..virt.add(page_size)))?;
                     virt = virt.add(page_size);
                     phys = phys.add(page_size);
                     remaining_bytes -= page_size;
@@ -513,7 +517,7 @@ impl AddressSpace {
     fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<PageTableEntry> {
         NonNull::new(
             KERNEL_ASPACE_RANGE
-                .start()
+                .start
                 .add(phys.get())
                 .as_mut_ptr()
                 .cast(),

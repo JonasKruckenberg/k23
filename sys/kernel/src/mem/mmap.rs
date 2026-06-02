@@ -9,7 +9,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
-use core::ops::Range;
+use core::range::Range;
 use core::{ptr, slice};
 
 use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
@@ -76,8 +76,7 @@ impl Mmap {
                     ))
                 },
             )?
-            .range
-            .clone();
+            .range;
         drop(aspace_);
 
         tracing::trace!("new_zeroed: {len} {range:?}");
@@ -119,15 +118,11 @@ impl Mmap {
                 Permissions::READ | Permissions::WRITE,
                 |range_virt, perms, _batch| {
                     Ok(AddressSpaceRegion::new_phys(
-                        range_virt,
-                        perms,
-                        range_phys.clone(),
-                        name,
+                        range_virt, perms, range_phys, name,
                     ))
                 },
             )?
-            .range
-            .clone();
+            .range;
         drop(aspace_);
 
         tracing::trace!("new_phys: {len} {range:?} => {range_phys:?}");
@@ -139,7 +134,7 @@ impl Mmap {
     }
 
     pub fn range(&self) -> Range<VirtualAddress> {
-        self.range.clone()
+        self.range
     }
 
     pub fn copy_from_userspace(
@@ -171,7 +166,7 @@ impl Mmap {
     where
         F: FnOnce(&[u8]),
     {
-        self.commit(aspace, range.clone(), false)?;
+        self.commit(aspace, range, false)?;
 
         // Safety: checked by caller
         unsafe {
@@ -192,7 +187,7 @@ impl Mmap {
     where
         F: FnOnce(&mut [u8]),
     {
-        self.commit(aspace, range.clone(), true)?;
+        self.commit(aspace, range, true)?;
         // Safety: user aspace also includes kernel mappings in higher half
         unsafe {
             aspace.arch.activate();
@@ -319,7 +314,7 @@ impl Drop for Mmap {
         // A `None` means the Mmap got created through `Mmap::new_empty` so there is nothing to unmap
         if let Some(aspace) = &self.aspace {
             let mut aspace = aspace.lock();
-            aspace.unmap(self.range.clone()).unwrap();
+            aspace.unmap(self.range).unwrap();
         }
     }
 }

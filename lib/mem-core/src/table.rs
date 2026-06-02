@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::marker::PhantomData;
-use core::ops::Range;
+use core::range::Range;
 
 use arrayvec::ArrayVec;
 
@@ -198,7 +198,7 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
                 // Safety: `page_table_entries_for` yields only in-bound indices
                 let mut entry = unsafe { frame.table.get(entry_index, physmap, arch) };
 
-                visit_entry(&mut entry, range.clone(), frame.table.level())?;
+                visit_entry(&mut entry, range, frame.table.level())?;
 
                 // Safety: `page_table_entries_for` yields only in-bound indices
                 unsafe {

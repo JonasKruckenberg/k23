@@ -9,6 +9,7 @@ use alloc::sync::Arc;
 use core::cmp::max;
 use core::marker::PhantomData;
 use core::ops::Deref;
+use core::range::Range;
 use core::slice;
 
 use anyhow::Context;
@@ -114,7 +115,7 @@ impl<T> MmapVec<T> {
             .copy_to_userspace(
                 aspace,
                 src,
-                self.len * size_of::<T>()..(self.len + other.len()) * size_of::<T>(),
+                Range::from(self.len * size_of::<T>()..(self.len + other.len()) * size_of::<T>()),
             )
             .unwrap();
         self.len += other.len();
@@ -127,7 +128,7 @@ impl<T> MmapVec<T> {
         assert!(self.len() + count <= self.capacity());
 
         self.mmap
-            .with_user_slice_mut(aspace, self.len..self.len + count, |dst| {
+            .with_user_slice_mut(aspace, Range::from(self.len..self.len + count), |dst| {
                 // "Transmute" the slice to a byte slice
                 // Safety: we're just converting the slice to a byte slice of the same length
                 let dst =

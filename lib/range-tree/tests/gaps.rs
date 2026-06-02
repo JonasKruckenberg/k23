@@ -1,5 +1,3 @@
-#![feature(new_range_api)]
-
 mod common;
 
 use std::num::NonZeroU32;
