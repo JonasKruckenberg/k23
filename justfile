@@ -3,16 +3,25 @@ set unstable
 platform := ""
 # --skip-incompatible-targets drops riscv-only and host-only targets that
 # don't match the active platform instead of erroring out.
+[private]
 _platform_args := "--skip-incompatible-targets" + if platform != "" { f" --target-platforms {{platform}}" } else { "" }
 
+[private]
 _buck2 := require("buck2")
+[private]
 _typos := require("typos")
+[private]
 _supertd := require("supertd")
+[private]
 _reindeer := require("reindeer")
+[private]
 _rust_project := require("rust-project")
+[private]
 _cargo_deny := require("cargo-deny")
+[private]
 _jq := require("jq")
 
+[private]
 _docstring := "
 justfile for k23
 see https://just.systems/man/en/
@@ -24,7 +33,7 @@ _default:
     @just --list
 
 run target buck2_args="" *qemu_args="":
-    {{ _buck2 }} run {{target}} {{buck2_args}} {{qemu_args}}
+    {{ _buck2 }} run {{ target }} {{ buck2_args }} {{ qemu_args }}
 
 # quick check for development.
 # The prelude's [diag.json] action is infallible by design; gate on the
@@ -32,7 +41,7 @@ run target buck2_args="" *qemu_args="":
 check targets="" *buck2_args:
     #!/usr/bin/env bash
     set -euo pipefail
-    out=$({{ _buck2 }} build {{append("[diag.json]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}} --show-simple-output | xargs {{ _jq }} -r 'select(.level=="error") | .rendered')
+    out=$({{ _buck2 }} build {{ append("[diag.json]", _uquery(_q_buildables(_targets_query(targets)))) }} {{ _platform_args }} {{ buck2_args }} --show-simple-output | xargs {{ _jq }} -r 'select(.level=="error") | .rendered')
     [ -z "$out" ] || { printf '%s' "$out" >&2; exit 1; }
 
 # One CI lane locally. Default is the host lane. With `platform=X` it's the
@@ -44,7 +53,7 @@ preflight targets="" *buck2_args: (lint targets buck2_args) (_host_tests targets
 _host_tests targets="" *buck2_args: (unittests targets buck2_args) (miri targets buck2_args) (loom targets buck2_args)
 
 # run linters on a crate or the entire workspace.
-lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) (typos)
+lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) typos
 
 # ===== linting =====
 
@@ -54,7 +63,7 @@ lint targets="" *buck2_args: (clippy targets buck2_args) (check-fmt targets buck
 clippy targets="" *buck2_args:
     #!/usr/bin/env bash
     set -euo pipefail
-    out=$({{ _buck2 }} build {{append("[clippy.json]", _uquery(_q_buildables(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}} --show-simple-output | xargs {{ _jq }} -r 'select(.level=="error") | .rendered')
+    out=$({{ _buck2 }} build {{ append("[clippy.json]", _uquery(_q_buildables(_targets_query(targets)))) }} {{ _platform_args }} {{ buck2_args }} --show-simple-output | xargs {{ _jq }} -r 'select(.level=="error") | .rendered')
     [ -z "$out" ] || { printf '%s' "$out" >&2; exit 1; }
 
 # check the workspace for typos
@@ -65,21 +74,21 @@ clippy targets="" *buck2_args:
 # rust-analyzer auto-loads rust-project.json from the repo root.
 # Re-run after adding/removing crates or changing BUCK deps.
 rust-project arch="riscv64":
-    {{ _rust_project }} develop --pretty --prefer-rustup-managed-toolchain '--rustc-target={{ _rustc_target(arch) }}' '--mode=--target-platforms=//platforms:{{arch}}' 'root//sys/...' 'root//lib/...'
+    {{ _rust_project }} develop --pretty --prefer-rustup-managed-toolchain '--rustc-target={{ _rustc_target(arch) }}' '--mode=--target-platforms=//platforms:{{ arch }}' 'root//sys/...' 'root//lib/...'
 
 # ===== testing =====
 
 # run unit tests for a crate or the entire workspace.
 @unittests targets="" *buck2_args:
-    {{ _buck2 }} test {{_uquery(_q_unit_tests(_targets_query(targets)))}} {{_platform_args}} {{buck2_args}}
+    {{ _buck2 }} test {{ _uquery(_q_unit_tests(_targets_query(targets))) }} {{ _platform_args }} {{ buck2_args }}
 
 # run miri tests for a crate or the entire workspace.
 @miri targets="" *buck2_args:
-    {{ _buck2 }} test {{append("[miri]", _uquery(_q_unit_tests(_targets_query(targets))))}} {{_platform_args}} {{buck2_args}}
+    {{ _buck2 }} test {{ append("[miri]", _uquery(_q_unit_tests(_targets_query(targets)))) }} {{ _platform_args }} {{ buck2_args }}
 
 # run loom tests for a crate or the entire workspace.
 @loom targets="" *buck2_args:
-    {{ _buck2 }} test {{_uquery(_q_loom_tests(_targets_query(targets)))}} {{_platform_args}} {{buck2_args}}
+    {{ _buck2 }} test {{ _uquery(_q_loom_tests(_targets_query(targets))) }} {{ _platform_args }} {{ buck2_args }}
 
 # Override `fuzz_args` to forward flags to each fuzz binary; pass complete
 # `--test-arg=…` items (one per binary arg). Example:
@@ -88,29 +97,29 @@ fuzz_args := ""
 
 # run fuzz tests for a crate or the entire workspace.
 @fuzz targets="" *buck2_args:
-    {{ _buck2 }} test {{_uquery(_q_fuzz_tests(_targets_query(targets)))}} {{_platform_args}} {{buck2_args}} {{if fuzz_args == "" { "" } else { "-- " + fuzz_args }}}
+    {{ _buck2 }} test {{ _uquery(_q_fuzz_tests(_targets_query(targets))) }} {{ _platform_args }} {{ buck2_args }} {{ if fuzz_args == "" { "" } else { "-- " + fuzz_args } }}
 
 # run kernel selftests under qemu.
 # Pass kernel bootargs args after `--`, e.g.
-#   just selftests -- --format=json
+# just selftests -- --format=json
 @selftests *buck2_args:
-    {{ _buck2 }} test //sys:k23-qemu-riscv64-tests {{buck2_args}}
+    {{ _buck2 }} test //sys:k23-qemu-riscv64-tests {{ buck2_args }}
 
 # ===== formatting =====
 
 # check formatting for a crate or the entire workspace.
 @check-fmt targets="" *buck2_args:
-    {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 --check {{ _uquery(_q_inputs(_q_buildables(_targets_query(targets)))) }} {{buck2_args}}
+    {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 --check {{ _uquery(_q_inputs(_q_buildables(_targets_query(targets)))) }} {{ buck2_args }}
 
 # format a crate or the entire workspace.
 @fmt targets="" *buck2_args:
-    {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 {{ _uquery(_q_inputs(_q_buildables(_targets_query(targets)))) }} {{buck2_args}}
+    {{ _buck2 }} run 'toolchains//:rust_toolchain[rustfmt]' -- --edition 2024 {{ _uquery(_q_inputs(_q_buildables(_targets_query(targets)))) }} {{ buck2_args }}
 
 # ===== documentation =====
 
 # build the documentation for a crate or the entire workspace.
 @doc targets="" *buck2_args:
-    {{ _buck2 }} build {{append("[doc]", _uquery(_q_buildables(_targets_query(targets))))}} --show-output {{_platform_args}} {{buck2_args}}
+    {{ _buck2 }} build {{ append("[doc]", _uquery(_q_buildables(_targets_query(targets)))) }} --show-output {{ _platform_args }} {{ buck2_args }}
 
 manual:
     {{ _buck2 }} run //manual:manual
@@ -120,8 +129,8 @@ manual:
 benchmark targets="" *buck2_args:
     #!/usr/bin/env bash
     set -euo pipefail
-    for t in {{_uquery(_q_benchmarks(_targets_query(targets)))}}; do
-        {{ _buck2 }} run "$t" {{_platform_args}} {{buck2_args}}
+    for t in {{ _uquery(_q_benchmarks(_targets_query(targets))) }}; do
+        {{ _buck2 }} run "$t" {{ _platform_args }} {{ buck2_args }}
     done
 
 # ===== audit / freshness =====
@@ -144,12 +153,13 @@ benchmark targets="" *buck2_args:
 @unused-third-party *buck2_args:
     #!/usr/bin/env bash
     set -euo pipefail
-    out=$({{ _buck2 }} uquery "kind(rust_library, //third-party/...) except deps({{_default_query}})" {{buck2_args}})
+    out=$({{ _buck2 }} uquery "kind(rust_library, //third-party/...) except deps({{ _default_query }})" {{ buck2_args }})
     [ -z "$out" ] || { echo "$out" >&2; exit 1; }
 
 # Space-separated buck target patterns whose source files are exempt from
 # `check-license-headers` (e.g. vendored crates outside //third-party/...).
 license_header_excluded := "//lib/range-tree: //lib/sharded-slab: //lib/wast:"
+[private]
 _license_header_excl := if license_header_excluded == "" { "" } else { f" except inputs(set({{license_header_excluded}}))" }
 
 # fail if any first-party Rust source file lacks the canonical license header
@@ -158,7 +168,7 @@ _license_header_excl := if license_header_excluded == "" { "" } else { f" except
     #!/usr/bin/env bash
     set -euo pipefail
     n=$(wc -c < build/license-header.txt | tr -d ' ')
-    files=$({{ _buck2 }} uquery "filter('\\.rs$', inputs({{_default_query}})){{_license_header_excl}}" {{buck2_args}})
+    files=$({{ _buck2 }} uquery "filter('\\.rs$', inputs({{ _default_query }})){{ _license_header_excl }}" {{ buck2_args }})
     bad=$(for f in $files; do cmp -s <(head -c "$n" "$f") build/license-header.txt || echo "$f"; done)
     [ -z "$bad" ] || { echo "::error::license header missing or mismatched:" >&2; echo "$bad" >&2; exit 1; }
 
@@ -169,35 +179,36 @@ _license_header_excl := if license_header_excluded == "" { "" } else { f" except
 # buckification (Cargo.toml/Cargo.lock + reindeer) or change toolchains/Buck
 # cells globally. Entries ending in `/` are treated as directory prefixes so
 # that any file under them (e.g. a new `.bzl` defining a toolchain) is caught.
+[private]
 _pessimistic_paths := "Cargo.toml Cargo.lock third-party/Cargo.toml third-party/Cargo.lock flake.nix flake.lock rust-toolchain.toml .buckconfig PACKAGE justfile build/toolchains/"
 
 # emit the jj summary between BASE and the working copy (raw, for --changes input)
 changed-targets-diff BASE:
-    jj diff --summary --from {{BASE}} --to @
+    jj diff --summary --from {{ BASE }} --to @
 
 # print impacted Rust targets, or `__ALL__` if a pessimistic file changed
 changed-targets CHANGES BASE_JSONL UNIVERSE='root//...':
     #!/usr/bin/env bash
     set -euo pipefail
-    if awk -v paths="{{_pessimistic_paths}}" '
+    if awk -v paths="{{ _pessimistic_paths }}" '
         BEGIN { n = split(paths, p, " ") }
         {
             for (i = 1; i <= n; i++)
                 if (p[i] ~ /\/$/ ? index($2, p[i]) == 1 : $2 == p[i]) { found=1; exit }
         }
         END { exit !found }
-    ' {{CHANGES}}; then
+    ' {{ CHANGES }}; then
         echo __ALL__
         exit 0
     fi
     {{ _supertd }} audit cell > cells.json
     {{ _supertd }} audit config > config.json
     {{ _supertd }} btd \
-        --changes {{CHANGES}} \
-        --base {{BASE_JSONL}} \
+        --changes {{ CHANGES }} \
+        --base {{ BASE_JSONL }} \
         --cells cells.json \
         --config config.json \
-        --universe {{UNIVERSE}} \
+        --universe {{ UNIVERSE }} \
       | awk '/^[[:space:]]+root\/\// { sub(/^[[:space:]]+/, ""); print }' \
       | sort -u \
       | tr '\n' ' '
@@ -215,6 +226,7 @@ _rustc_target(arch) := if arch == "riscv64" { "riscv64gc-unknown-none-elf" } els
 
 # Default workspace target set: rust binaries, libraries, and benchmark runners (no third-party).
 # _default_query := "(kind(rust_binary, '//...') + kind(rust_library, '//...') + kind(_rust_benchmark_runner, '//...')) except '//third-party/...'"
+[private]
 _default_query := "'//...' except '//third-party/...'"
 
 # Build a query expression from the recipe's `targets` argument.
@@ -228,12 +240,12 @@ _targets_query(targets) := if targets == "" { _default_query } else { f"(set({{t
 # the underlying `rust_library`. Building the underlying directly would fail
 # under non-host --target-platforms.
 _q_buildables(q) := f"kind(rust_binary, {{q}}) + (kind(rust_library, {{q}}) except attrfilter(proc_macro, True, {{q}})) + kind(rust_proc_macro_alias, {{q}})"
-_q_tests(q)      := f"kind(rust_test, {{q}}) + kind(rust_test, testsof({{q}}))"
+_q_tests(q) := f"kind(rust_test, {{q}}) + kind(rust_test, testsof({{q}}))"
 _q_unit_tests(q) := f"nattrfilter(labels, loom, ({{_q_tests(q)}}))"
 _q_loom_tests(q) := f"attrfilter(labels, loom, ({{_q_tests(q)}}))"
 _q_fuzz_tests(q) := f"kind(rust_fuzz, {{q}}) + kind(rust_fuzz, testsof({{q}}))"
 _q_benchmarks(q) := f"kind(_rust_benchmark_runner, {{q}}) + kind(_rust_benchmark_runner, testsof({{q}}))"
-_q_inputs(q)     := f"inputs({{q}})"
+_q_inputs(q) := f"inputs({{q}})"
 
 # Resolve a query expression into a space-separated list of targets.
 _uquery(q) := _replace_newlines(shell('buck2 uquery "$1"', q))

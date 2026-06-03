@@ -1,21 +1,23 @@
 name: changed-targets
 
-# Reusable workflow that computes the set of Buck2 targets impacted by a PR.
-# Outputs a `mode` sentinel and uploads an `impacted-targets` artifact for
-# consumption by downstream jobs in the calling workflow:
-#   - "filter": run only the targets listed in impacted-targets.txt
-#   - "all":    pessimistic fallback (a high-level file changed); run full suite
-#   - "noop":   no impacted targets; downstream jobs short-circuit to success
+# Reusable workflow that computes the set of Buck2 targets impacted by a PR and
+# exposes them to downstream jobs as two outputs:
+#   - `impacted`: space-separated target list. EMPTY means "run the full suite"
+#                 (an empty `targets` arg is the whole workspace in the justfile)
+#   - `skip`:     "true" only when nothing is impacted, so a downstream job knows
+#                 an empty `impacted` means "run nothing" rather than "run all".
 #
-# Intended to be invoked on `pull_request` events only — there is no useful
-# base ref on push to main.
+# Intended to be invoked on `pull_request` events only.
 
 on:
   workflow_call:
     outputs:
-      mode:
-        description: "filter | all | noop"
-        value: ${{ jobs.changed-targets.outputs.mode }}
+      impacted:
+        description: "space-separated impacted targets; empty = run the full suite"
+        value: ${{ jobs.changed-targets.outputs.impacted }}
+      skip:
+        description: "true when no targets are impacted (downstream jobs must not run)"
+        value: ${{ jobs.changed-targets.outputs.skip }}
 
 permissions:
   contents: read
@@ -25,7 +27,8 @@ jobs:
     name: Determine changed targets
     runs-on: ubuntu-latest
     outputs:
-      mode: ${{ steps.compute.outputs.mode }}
+      impacted: ${{ steps.compute.outputs.impacted }}
+      skip: ${{ steps.compute.outputs.skip }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -72,12 +75,15 @@ jobs:
 
       - name: Compute impacted targets
         id: compute
+        # Run the `just changed-targets-diff` command to establish the diff, then runs `just changed-targets`
+        # to produce the list of impacted buck2 targets from that.
+        #
+        # Emits the two outputs (`impacted` and `skip`) at the end depending on outcome.
         run: |
+          full_run() { echo "impacted=" >> "$GITHUB_OUTPUT"; echo "skip=false" >> "$GITHUB_OUTPUT"; }
           if [ ! -s base.jsonl ]; then
             echo "No base.jsonl available — falling back to full suite"
-            echo "mode=all" >> "$GITHUB_OUTPUT"
-            : > impacted-targets.txt
-            exit 0
+            full_run; exit 0
           fi
           nix develop .#ci --command just changed-targets-diff "${{ steps.base.outputs.sha }}" > changes.txt
           set +e
@@ -86,27 +92,18 @@ jobs:
           set -e
           if [ "$rc" -ne 0 ]; then
             echo "::error::changed-targets failed (exit $rc) — falling back to full suite"
-            echo "mode=all" >> "$GITHUB_OUTPUT"
-            : > impacted-targets.txt
-            exit 0
+            full_run; exit 0
           fi
           IMPACTED=$(printf '%s' "$IMPACTED" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
           if [ "$IMPACTED" = "__ALL__" ]; then
             echo "Pessimistic fallback: a high-level file changed — full suite"
-            echo "mode=all" >> "$GITHUB_OUTPUT"
-            : > impacted-targets.txt
+            full_run
           elif [ -z "$IMPACTED" ]; then
-            echo "No impacted targets"
-            echo "mode=noop" >> "$GITHUB_OUTPUT"
-            : > impacted-targets.txt
+            echo "No impacted targets — downstream jobs skip"
+            echo "impacted=" >> "$GITHUB_OUTPUT"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "Impacted: $IMPACTED"
-            echo "mode=filter" >> "$GITHUB_OUTPUT"
-            printf '%s\n' "$IMPACTED" > impacted-targets.txt
+            echo "impacted=$IMPACTED" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: impacted-targets
-          path: impacted-targets.txt
-          if-no-files-found: error

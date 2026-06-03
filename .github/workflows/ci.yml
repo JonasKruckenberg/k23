@@ -53,7 +53,7 @@ jobs:
     name: check (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [changed-targets]
-    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
+    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -65,11 +65,6 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - name: fetch impacted targets
-        if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          name: impacted-targets
       - uses: actions/cache@v5
         with:
           path: buck-out
@@ -78,7 +73,7 @@ jobs:
             buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: ./.github/workflows/run-filtered.sh check '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}' platform=${{ matrix.platform }}
+      - run: nix develop .#ci --command just platform=${{ matrix.platform }} check '${{ needs.changed-targets.outputs.impacted }}'
 
   clippy:
     strategy:
@@ -94,7 +89,7 @@ jobs:
     name: clippy (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [changed-targets]
-    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
+    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -106,11 +101,6 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - name: fetch impacted targets
-        if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          name: impacted-targets
       - uses: actions/cache@v5
         with:
           path: buck-out
@@ -119,12 +109,12 @@ jobs:
             buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: ./.github/workflows/run-filtered.sh clippy '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}' platform=${{ matrix.platform }}
+      - run: nix develop .#ci --command just platform=${{ matrix.platform }} clippy '${{ needs.changed-targets.outputs.impacted }}'
 
   unittests:
     runs-on: ubuntu-latest
     needs: [changed-targets]
-    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
+    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -136,11 +126,6 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - name: fetch impacted targets
-        if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          name: impacted-targets
       - uses: actions/cache@v5
         with:
           path: buck-out
@@ -148,12 +133,12 @@ jobs:
           restore-keys: |
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: ./.github/workflows/run-filtered.sh unittests '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
+      - run: nix develop .#ci --command just unittests '${{ needs.changed-targets.outputs.impacted }}'
 
   miri:
     runs-on: ubuntu-latest
     needs: [changed-targets]
-    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
+    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -165,11 +150,6 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - name: fetch impacted targets
-        if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          name: impacted-targets
       - uses: actions/cache@v5
         with:
           path: buck-out
@@ -177,12 +157,12 @@ jobs:
           restore-keys: |
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: ./.github/workflows/run-filtered.sh miri '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
+      - run: nix develop .#ci --command just miri '${{ needs.changed-targets.outputs.impacted }}'
 
   loom:
     runs-on: ubuntu-latest
     needs: [changed-targets]
-    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
+    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -194,11 +174,6 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - name: fetch impacted targets
-        if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          name: impacted-targets
       - uses: actions/cache@v5
         with:
           path: buck-out
@@ -206,11 +181,10 @@ jobs:
           restore-keys: |
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: ./.github/workflows/run-filtered.sh loom '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
+      - run: nix develop .#ci --command just loom '${{ needs.changed-targets.outputs.impacted }}'
 
+  # TODO rework this once we have more on-target tests types
   selftests:
-    # Matrix scaffolding for per-arch qemu_test targets; aarch64/x86_64 entries
-    # land once those qemu_test targets exist.
     strategy:
       fail-fast: false
       matrix:
@@ -219,7 +193,18 @@ jobs:
     name: selftests (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [changed-targets]
-    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
+    # selftest filtering:
+    # - IF `changed-targets` failed, was cancelled, or produced `skip = true` => skip
+    # - IF `changed-targets` determined a full run OR the impacted list contains the //sys:k23-qemu-riscv64-tests target
+    #     => run
+    #
+    # we hardcode this here for now to avoid complicating the justfile
+    if: >-
+      ${{ !cancelled()
+          && needs.changed-targets.result != 'failure'
+          && needs.changed-targets.outputs.skip != 'true'
+          && (needs.changed-targets.outputs.impacted == ''
+              || contains(needs.changed-targets.outputs.impacted, 'root//sys:k23-qemu-riscv64-tests')) }}
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -231,11 +216,6 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - name: fetch impacted targets
-        if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          name: impacted-targets
       - uses: actions/cache@v5
         with:
           path: buck-out
@@ -244,7 +224,7 @@ jobs:
             buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: ./.github/workflows/run-filtered.sh selftests '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
+      - run: nix develop .#ci --command just selftests
 
   cargo-deny:
     name: Cargo deny

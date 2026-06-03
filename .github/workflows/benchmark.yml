@@ -33,13 +33,13 @@ jobs:
     #
     # PRs will only run affected benchmarks by default, pushes to main or manual dispatches run everything
     if: |
-      always() && (
+      ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' && (
         github.event_name == 'push' ||
         github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'pull_request'
           && contains(github.event.pull_request.labels.*.name, 'bench')
           && needs.changed-targets.result == 'success')
-      )
+      ) }}
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -51,11 +51,6 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - name: fetch impacted targets
-        if: needs.changed-targets.result == 'success'
-        uses: actions/download-artifact@v8
-        with:
-          name: impacted-targets
       # Always restore the latest baseline so PRs compare against main.
       # Saving is gated to push-on-main below so PRs cannot poison the baseline.
       - name: restore criterion baseline
@@ -65,7 +60,7 @@ jobs:
           key: bench-${{ github.sha }}
           restore-keys: |
             bench-
-      - run: ./.github/workflows/run-filtered.sh benchmark '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
+      - run: nix develop .#ci --command just benchmark '${{ needs.changed-targets.outputs.impacted }}'
       - name: save criterion baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v5
