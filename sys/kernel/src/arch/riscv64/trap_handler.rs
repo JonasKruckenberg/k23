@@ -20,7 +20,7 @@ use riscv::{
 
 use crate::arch::PAGE_SIZE;
 use crate::arch::trap::Trap;
-use crate::backtrace::Backtrace;
+use crate::backtrace::{Backtrace, BacktraceStyle};
 use crate::state::{cpu_local, global};
 use crate::{TRAP_STACK_SIZE_PAGES, irq};
 
@@ -368,7 +368,11 @@ fn handle_kernel_exception(
     regs.gp[2] = sscratch::read();
 
     match Backtrace::<32>::from_registers(regs.clone(), epc) {
-        Ok(bt) => tracing::error!("{bt}"),
+        // always capture a _full_ backtrace here because taking an unrecoverable fault
+        // means things have gone _really_ wrong.
+        // NB: we're also not guaranteed that `__rust_start_short_backtrace`/`__rust_end_short_backtrace` neatly bracket
+        // our frames as they do with orderly panics.
+        Ok(bt) => tracing::error!("{}", bt.with_backtrace_style(BacktraceStyle::Full)),
         Err(e) => tracing::error!("backtrace unavailable: {e}; epc={epc}"),
     }
 
@@ -398,9 +402,12 @@ fn handle_recursive_fault(frame: &unwind::Registers, epc: VirtualAddress) -> ! {
 
     // `epc` may land in code without DWARF unwind info (asm trampolines,
     // SBI shims, etc.). Log the error and continue instead of unwrapping;
-    // panicking here would only feed back through this same path.
     match Backtrace::<32>::from_registers(regs.clone(), epc) {
-        Ok(bt) => tracing::error!("{bt}"),
+        // always capture a _full_ backtrace here because taking an unrecoverable fault
+        // means things have gone _really_ wrong.
+        // NB: we're also not guaranteed that `__rust_start_short_backtrace`/`__rust_end_short_backtrace` neatly bracket
+        // our frames as they do with orderly panics.
+        Ok(bt) => tracing::error!("{}", bt.with_backtrace_style(BacktraceStyle::Full)),
         Err(e) => tracing::error!("backtrace unavailable: {e}; epc={epc}"),
     }
 

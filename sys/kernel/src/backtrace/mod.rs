@@ -57,7 +57,7 @@ pub struct Backtrace<'a, const MAX_FRAMES: usize> {
     symbolize_ctx: Option<&'a SymbolizeContext<'static>>,
     pub frames: ArrayVec<usize, MAX_FRAMES>,
     pub frames_omitted: bool,
-    style: BacktraceStyle,
+    backtrace_style: BacktraceStyle,
 }
 
 // === impl BacktraceInfo ===
@@ -132,6 +132,11 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
         Self::new_inner(iter)
     }
 
+    pub fn with_backtrace_style(mut self, backtrace_style: BacktraceStyle) -> Self {
+        self.backtrace_style = backtrace_style;
+        self
+    }
+
     fn new_inner(iter: FrameIter) -> Result<Self, unwind::Error> {
         let mut frames = ArrayVec::new();
 
@@ -146,7 +151,7 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
             symbolize_ctx: BACKTRACE_INFO.get().map(BacktraceInfo::symbolize_context),
             frames,
             frames_omitted,
-            style: BACKTRACE_INFO
+            backtrace_style: BACKTRACE_INFO
                 .get()
                 .map(|info| info.backtrace_style)
                 .unwrap_or_default(),
@@ -161,7 +166,7 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
         let style = if f.alternate() {
             BacktraceStyle::Full
         } else {
-            self.style
+            self.backtrace_style
         };
 
         let mut bt_fmt = BacktraceFmt::new(f, style);
