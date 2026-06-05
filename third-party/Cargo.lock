@@ -322,8 +322,8 @@ name = "cranelift-bforest"
 version = "0.133.0"
 source = "git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534#9c49989a2e71382fd8639288088472f150f2f534"
 dependencies = [
- "cranelift-entity",
- "wasmtime-internal-core",
+ "cranelift-entity 0.133.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534)",
+ "wasmtime-internal-core 46.0.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534)",
 ]
 
 [[package]]
@@ -331,7 +331,15 @@ name = "cranelift-bitset"
 version = "0.133.0"
 source = "git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534#9c49989a2e71382fd8639288088472f150f2f534"
 dependencies = [
- "wasmtime-internal-core",
+ "wasmtime-internal-core 46.0.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534)",
+]
+
+[[package]]
+name = "cranelift-bitset"
+version = "0.133.0"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?rev=b4b23fe583173131a047141947a785b4c1c646ae#b4b23fe583173131a047141947a785b4c1c646ae"
+dependencies = [
+ "wasmtime-internal-core 46.0.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=b4b23fe583173131a047141947a785b4c1c646ae)",
 ]
 
 [[package]]
@@ -342,11 +350,11 @@ dependencies = [
  "bumpalo",
  "cranelift-assembler-x64",
  "cranelift-bforest",
- "cranelift-bitset",
+ "cranelift-bitset 0.133.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534)",
  "cranelift-codegen-meta",
  "cranelift-codegen-shared",
  "cranelift-control",
- "cranelift-entity",
+ "cranelift-entity 0.133.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534)",
  "cranelift-isle",
  "gimli",
  "hashbrown 0.17.1",
@@ -357,7 +365,7 @@ dependencies = [
  "serde",
  "smallvec",
  "target-lexicon",
- "wasmtime-internal-core",
+ "wasmtime-internal-core 46.0.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534)",
 ]
 
 [[package]]
@@ -389,8 +397,17 @@ name = "cranelift-entity"
 version = "0.133.0"
 source = "git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534#9c49989a2e71382fd8639288088472f150f2f534"
 dependencies = [
- "cranelift-bitset",
- "wasmtime-internal-core",
+ "cranelift-bitset 0.133.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534)",
+ "wasmtime-internal-core 46.0.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534)",
+]
+
+[[package]]
+name = "cranelift-entity"
+version = "0.133.0"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?rev=b4b23fe583173131a047141947a785b4c1c646ae#b4b23fe583173131a047141947a785b4c1c646ae"
+dependencies = [
+ "cranelift-bitset 0.133.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=b4b23fe583173131a047141947a785b4c1c646ae)",
+ "wasmtime-internal-core 46.0.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=b4b23fe583173131a047141947a785b4c1c646ae)",
 ]
 
 [[package]]
@@ -836,7 +853,7 @@ dependencies = [
  "clap",
  "cordyceps",
  "cranelift-codegen",
- "cranelift-entity",
+ "cranelift-entity 0.133.0 (git+https://github.com/bytecodealliance/wasmtime.git?rev=b4b23fe583173131a047141947a785b4c1c646ae)",
  "cranelift-frontend",
  "criterion",
  "errno",
@@ -1897,6 +1914,15 @@ dependencies = [
 name = "wasmtime-internal-core"
 version = "46.0.0"
 source = "git+https://github.com/bytecodealliance/wasmtime.git?rev=9c49989a2e71382fd8639288088472f150f2f534#9c49989a2e71382fd8639288088472f150f2f534"
+dependencies = [
+ "hashbrown 0.17.1",
+ "libm",
+]
+
+[[package]]
+name = "wasmtime-internal-core"
+version = "46.0.0"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?rev=b4b23fe583173131a047141947a785b4c1c646ae#b4b23fe583173131a047141947a785b4c1c646ae"
 dependencies = [
  "hashbrown 0.17.1",
  "libm",
