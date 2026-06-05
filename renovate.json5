@@ -32,5 +32,13 @@
             groupName: 'GitHub Actions',
             groupSlug: 'github-actions',
         },
+        // The cranelift crates are all git-pinned to the same wasmtime repo, so
+        // a single commit bump moves all of them. Group their digest updates
+        // (matched by the shared packageName) into one PR instead of three.
+        {
+            matchPackageNames: ['https://github.com/bytecodealliance/wasmtime.git'],
+            groupName: 'cranelift',
+            groupSlug: 'cranelift',
+        },
     ],
 }
