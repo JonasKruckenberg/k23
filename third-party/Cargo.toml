@@ -48,7 +48,7 @@ hashbrown = { version = "0.17", default-features = false, features = [
 ] }
 wasmparser = { version = "0.251", default-features = false, features = ["features", "validate", "simd"] }
 target-lexicon = { version = "0.13.3", default-features = false }
-cranelift-codegen = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "9c49989a2e71382fd8639288088472f150f2f534", default-features = false, features = ["core", "riscv64"] }
+cranelift-codegen = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "b4b23fe583173131a047141947a785b4c1c646ae", default-features = false, features = ["core", "riscv64"] }
 cranelift-frontend = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "9c49989a2e71382fd8639288088472f150f2f534", default-features = false, features = ["core"] }
 cranelift-entity = { git = "https://github.com/bytecodealliance/wasmtime.git", rev = "9c49989a2e71382fd8639288088472f150f2f534", default-features = false }
 wasmtime-slab = "34.0.0"
