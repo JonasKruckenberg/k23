@@ -8,7 +8,6 @@
 - [IDE Setup with rust-analyzer](building/rust-analyzer.md)
 - [Debugging k23](building/debugging.md)
 - [Boot Arguments](building/boot-args.md)
-- [Cloud & VM Image Formats](building/cloud-images.md)
 - [The buck2 build system](building/buck2.md)
  
  # Contributing to k23
