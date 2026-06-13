@@ -33,7 +33,7 @@ futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
 unicode-width = { version = "0.2.0" }
 memchr = { version = "2.7.4", default-features = false }
 leb128fmt = { version = "0.1.0", default-features = false }
-wasm-encoder = { version = "0.249.0", default-features = false }
+wasm-encoder = { version = "0.251.0", default-features = false }
 anyhow = { version = "1.0.98", default-features = false }
 libtest-mimic = "0.8.1"
 
