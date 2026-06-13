@@ -360,18 +360,18 @@ alias(
 )
 
 http_archive(
-    name = "bitflags-2.11.1.crate",
-    sha256 = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3",
-    strip_prefix = "bitflags-2.11.1",
-    urls = ["https://static.crates.io/crates/bitflags/2.11.1/download"],
+    name = "bitflags-2.13.0.crate",
+    sha256 = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8",
+    strip_prefix = "bitflags-2.13.0",
+    urls = ["https://static.crates.io/crates/bitflags/2.13.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "bitflags-2",
-    srcs = [":bitflags-2.11.1.crate"],
+    srcs = [":bitflags-2.13.0.crate"],
     crate = "bitflags",
-    crate_root = "bitflags-2.11.1.crate/src/lib.rs",
+    crate_root = "bitflags-2.13.0.crate/src/lib.rs",
     edition = "2021",
     platform = {
         "linux-arm64": dict(
@@ -2259,9 +2259,9 @@ alias(
 )
 
 http_archive(
-    name = "libfuzzer-sys-0.4.12.crate",
-    sha256 = "f12a681b7dd8ce12bff52488013ba614b869148d54dd79836ab85aafdd53f08d",
-    strip_prefix = "libfuzzer-sys-0.4.12",
+    name = "libfuzzer-sys-0.4.13.crate",
+    sha256 = "a9fd2f41a1cba099f79a0b6b6c35656cf7c03351a7bae8ff0f28f25270f929d2",
+    strip_prefix = "libfuzzer-sys-0.4.13",
     sub_targets = [
         "libfuzzer/FuzzerBuiltins.h",
         "libfuzzer/FuzzerBuiltinsMsvc.h",
@@ -2313,15 +2313,15 @@ http_archive(
         "libfuzzer/FuzzerUtilWindows.cpp",
         "libfuzzer/FuzzerValueBitMap.h",
     ],
-    urls = ["https://static.crates.io/crates/libfuzzer-sys/0.4.12/download"],
+    urls = ["https://static.crates.io/crates/libfuzzer-sys/0.4.13/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "libfuzzer-sys-0.4",
-    srcs = [":libfuzzer-sys-0.4.12.crate"],
+    srcs = [":libfuzzer-sys-0.4.13.crate"],
     crate = "libfuzzer_sys",
-    crate_root = "libfuzzer-sys-0.4.12.crate/src/lib.rs",
+    crate_root = "libfuzzer-sys-0.4.13.crate/src/lib.rs",
     edition = "2018",
     features = [
         "default",
@@ -2337,57 +2337,57 @@ cargo.rust_library(
 cxx_library(
     name = "libfuzzer-sys-0.4-libfuzzer",
     srcs = [
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerCrossOver.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDataFlowTrace.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDriver.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctionsDlsym.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctionsWeak.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctionsWindows.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtraCounters.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtraCountersDarwin.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtraCountersWindows.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerFork.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerIO.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerIOPosix.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerIOWindows.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerInterceptors.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerLoop.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMain.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMerge.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMutate.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerSHA1.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerTracePC.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtil.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilDarwin.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilFuchsia.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilLinux.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilPosix.cpp]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtilWindows.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerCrossOver.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerDataFlowTrace.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerDriver.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerExtFunctionsDlsym.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerExtFunctionsWeak.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerExtFunctionsWindows.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerExtraCounters.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerExtraCountersDarwin.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerExtraCountersWindows.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerFork.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerIO.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerIOPosix.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerIOWindows.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerInterceptors.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerLoop.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerMain.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerMerge.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerMutate.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerSHA1.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerTracePC.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerUtil.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerUtilDarwin.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerUtilFuchsia.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerUtilLinux.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerUtilPosix.cpp]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerUtilWindows.cpp]",
     ],
     headers = [
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerBuiltins.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerBuiltinsMsvc.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerCommand.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerCorpus.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDataFlowTrace.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDefs.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerDictionary.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctions.def]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerExtFunctions.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerFlags.def]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerFork.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerIO.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerInterface.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerInternal.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMerge.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerMutate.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerOptions.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerPlatform.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerRandom.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerSHA1.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerTracePC.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerUtil.h]",
-        ":libfuzzer-sys-0.4.12.crate[libfuzzer/FuzzerValueBitMap.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerBuiltins.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerBuiltinsMsvc.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerCommand.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerCorpus.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerDataFlowTrace.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerDefs.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerDictionary.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerExtFunctions.def]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerExtFunctions.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerFlags.def]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerFork.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerIO.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerInterface.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerInternal.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerMerge.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerMutate.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerOptions.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerPlatform.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerRandom.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerSHA1.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerTracePC.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerUtil.h]",
+        ":libfuzzer-sys-0.4.13.crate[libfuzzer/FuzzerValueBitMap.h]",
     ],
     compatible_with = [
         "prelude//os/constraints:linux",
@@ -2518,18 +2518,18 @@ alias(
 )
 
 http_archive(
-    name = "log-0.4.30.crate",
-    sha256 = "616ec5685824bcc94416c6d4a7a446eea774a31efd7062c8480ba6fd06d7a6e5",
-    strip_prefix = "log-0.4.30",
-    urls = ["https://static.crates.io/crates/log/0.4.30/download"],
+    name = "log-0.4.32.crate",
+    sha256 = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a",
+    strip_prefix = "log-0.4.32",
+    urls = ["https://static.crates.io/crates/log/0.4.32/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "log-0.4",
-    srcs = [":log-0.4.30.crate"],
+    srcs = [":log-0.4.32.crate"],
     crate = "log",
-    crate_root = "log-0.4.30.crate/src/lib.rs",
+    crate_root = "log-0.4.32.crate/src/lib.rs",
     edition = "2021",
     platform = {
         "linux-arm64": dict(
@@ -3925,6 +3925,23 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "semver-1.0.28.crate",
+    sha256 = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd",
+    strip_prefix = "semver-1.0.28",
+    urls = ["https://static.crates.io/crates/semver/1.0.28/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "semver-1",
+    srcs = [":semver-1.0.28.crate"],
+    crate = "semver",
+    crate_root = "semver-1.0.28.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+)
+
+http_archive(
     name = "serde-1.0.228.crate",
     sha256 = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e",
     strip_prefix = "serde-1.0.228",
@@ -4486,18 +4503,18 @@ alias(
 )
 
 http_archive(
-    name = "test-log-0.2.20.crate",
-    sha256 = "2f46bf474f0a4afebf92f076d54fd5e63423d9438b8c278a3d2ccb0f47f7cdb3",
-    strip_prefix = "test-log-0.2.20",
-    urls = ["https://static.crates.io/crates/test-log/0.2.20/download"],
+    name = "test-log-0.2.21.crate",
+    sha256 = "9b9c218384242b5c89b68303ab6f6fc53a312d923f0c14dc6bb860c6aeee40f1",
+    strip_prefix = "test-log-0.2.21",
+    urls = ["https://static.crates.io/crates/test-log/0.2.21/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "test-log-0.2",
-    srcs = [":test-log-0.2.20.crate"],
+    srcs = [":test-log-0.2.21.crate"],
     crate = "test_log",
-    crate_root = "test-log-0.2.20.crate/src/lib.rs",
+    crate_root = "test-log-0.2.21.crate/src/lib.rs",
     edition = "2021",
     features = [
         "color",
@@ -4514,18 +4531,18 @@ cargo.rust_library(
 )
 
 http_archive(
-    name = "test-log-core-0.2.20.crate",
-    sha256 = "37d4d41320b48bc4a211a9021678fcc0c99569b594ea31c93735b8e517102b4c",
-    strip_prefix = "test-log-core-0.2.20",
-    urls = ["https://static.crates.io/crates/test-log-core/0.2.20/download"],
+    name = "test-log-core-0.2.21.crate",
+    sha256 = "c26ef8b00e4d382e59f6a8ddb3cd790b3a5bb29f21a358a9a69ea2f29f13f27b",
+    strip_prefix = "test-log-core-0.2.21",
+    urls = ["https://static.crates.io/crates/test-log-core/0.2.21/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "test-log-core-0.2",
-    srcs = [":test-log-core-0.2.20.crate"],
+    srcs = [":test-log-core-0.2.21.crate"],
     crate = "test_log_core",
-    crate_root = "test-log-core-0.2.20.crate/src/lib.rs",
+    crate_root = "test-log-core-0.2.21.crate/src/lib.rs",
     edition = "2021",
     features = [
         "log",
@@ -4540,18 +4557,18 @@ cargo.rust_library(
 )
 
 http_archive(
-    name = "test-log-macros-0.2.20.crate",
-    sha256 = "9beb9249a81e430dffd42400a49019bcf548444f1968ff23080a625de0d4d320",
-    strip_prefix = "test-log-macros-0.2.20",
-    urls = ["https://static.crates.io/crates/test-log-macros/0.2.20/download"],
+    name = "test-log-macros-0.2.21.crate",
+    sha256 = "944ad38adcbb71eaa682c56bceeb079e4ca82b4b3edc2a0fde5cb297b77dac8d",
+    strip_prefix = "test-log-macros-0.2.21",
+    urls = ["https://static.crates.io/crates/test-log-macros/0.2.21/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "test-log-macros-0.2",
-    srcs = [":test-log-macros-0.2.20.crate"],
+    srcs = [":test-log-macros-0.2.21.crate"],
     crate = "test_log_macros",
-    crate_root = "test-log-macros-0.2.20.crate/src/lib.rs",
+    crate_root = "test-log-macros-0.2.21.crate/src/lib.rs",
     edition = "2021",
     features = [
         "log",
@@ -4946,46 +4963,50 @@ cargo.rust_library(
 
 alias(
     name = "wasm-encoder",
-    actual = ":wasm-encoder-0.249",
+    actual = ":wasm-encoder-0.251",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "wasm-encoder-0.249.0.crate",
-    sha256 = "69830ccbbf41c55eb585991659fb70867ef628193af3a495f09a6956f7615e59",
-    strip_prefix = "wasm-encoder-0.249.0",
-    urls = ["https://static.crates.io/crates/wasm-encoder/0.249.0/download"],
+    name = "wasm-encoder-0.251.0.crate",
+    sha256 = "5a879a421bd17c528b74721b2abf4c62e8f1d1889c2ba8c3c50d02deaf2ce395",
+    strip_prefix = "wasm-encoder-0.251.0",
+    urls = ["https://static.crates.io/crates/wasm-encoder/0.251.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "wasm-encoder-0.249",
-    srcs = [":wasm-encoder-0.249.0.crate"],
+    name = "wasm-encoder-0.251",
+    srcs = [":wasm-encoder-0.251.0.crate"],
     crate = "wasm_encoder",
-    crate_root = "wasm-encoder-0.249.0.crate/src/lib.rs",
+    crate_root = "wasm-encoder-0.251.0.crate/src/lib.rs",
     edition = "2024",
-    visibility = [],
-    deps = [":leb128fmt-0.1"],
-)
-
-http_archive(
-    name = "wasm-encoder-0.250.0.crate",
-    sha256 = "2271adb766023046af314460f1fae02cc34ea16d736d93404d3b65be44270923",
-    strip_prefix = "wasm-encoder-0.250.0",
-    urls = ["https://static.crates.io/crates/wasm-encoder/0.250.0/download"],
-    visibility = [],
-)
-
-cargo.rust_library(
-    name = "wasm-encoder-0.250",
-    srcs = [":wasm-encoder-0.250.0.crate"],
-    crate = "wasm_encoder",
-    crate_root = "wasm-encoder-0.250.0.crate/src/lib.rs",
-    edition = "2024",
-    features = [
-        "component-model",
-        "std",
-    ],
+    platform = {
+        "linux-arm64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+        ),
+        "linux-x86_64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+        ),
+        "macos-arm64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+        ),
+        "macos-x86_64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+        ),
+    },
     visibility = [],
     deps = [":leb128fmt-0.1"],
 )
@@ -5015,6 +5036,36 @@ cargo.rust_library(
         "simd",
         "validate",
     ],
+    platform = {
+        "linux-arm64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+            deps = [":semver-1"],
+        ),
+        "linux-x86_64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+            deps = [":semver-1"],
+        ),
+        "macos-arm64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+            deps = [":semver-1"],
+        ),
+        "macos-x86_64": dict(
+            features = [
+                "component-model",
+                "std",
+            ],
+            deps = [":semver-1"],
+        ),
+    },
     visibility = [],
     deps = [":bitflags-2"],
 )
@@ -5056,18 +5107,18 @@ cargo.rust_library(
 )
 
 http_archive(
-    name = "wast-250.0.0.crate",
-    sha256 = "69e9294a1f0204aeb5c47e95165517f43ef3cc895918c4f3e939380d4c290f4a",
-    strip_prefix = "wast-250.0.0",
-    urls = ["https://static.crates.io/crates/wast/250.0.0/download"],
+    name = "wast-251.0.0.crate",
+    sha256 = "5cc7467dda0a96142eb2c980329dfb62480b1e1d3622fdeb1a44e2bca6ceed74",
+    strip_prefix = "wast-251.0.0",
+    urls = ["https://static.crates.io/crates/wast/251.0.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "wast-250",
-    srcs = [":wast-250.0.0.crate"],
+    name = "wast-251",
+    srcs = [":wast-251.0.0.crate"],
     crate = "wast",
-    crate_root = "wast-250.0.0.crate/src/lib.rs",
+    crate_root = "wast-251.0.0.crate/src/lib.rs",
     edition = "2024",
     features = [
         "component-model",
@@ -5079,7 +5130,7 @@ cargo.rust_library(
         ":leb128fmt-0.1",
         ":memchr-2",
         ":unicode-width-0.2",
-        ":wasm-encoder-0.250",
+        ":wasm-encoder-0.251",
     ],
 )
 
@@ -5090,25 +5141,25 @@ alias(
 )
 
 http_archive(
-    name = "wat-1.250.0.crate",
-    sha256 = "0a549ed329a70e444e0f7796391ab2a87d0aef30ddde9f60e16e429224fafd02",
-    strip_prefix = "wat-1.250.0",
-    urls = ["https://static.crates.io/crates/wat/1.250.0/download"],
+    name = "wat-1.251.0.crate",
+    sha256 = "81b1086c9e85b95bd6a229a928bc6c6d0662e42af0250c88d067b418831ea4d4",
+    strip_prefix = "wat-1.251.0",
+    urls = ["https://static.crates.io/crates/wat/1.251.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "wat-1",
-    srcs = [":wat-1.250.0.crate"],
+    srcs = [":wat-1.251.0.crate"],
     crate = "wat",
-    crate_root = "wat-1.250.0.crate/src/lib.rs",
+    crate_root = "wat-1.251.0.crate/src/lib.rs",
     edition = "2024",
     features = [
         "component-model",
         "default",
     ],
     visibility = [],
-    deps = [":wast-250"],
+    deps = [":wast-251"],
 )
 
 alias(
@@ -5159,23 +5210,23 @@ alias(
 )
 
 http_archive(
-    name = "zerocopy-0.8.49.crate",
-    sha256 = "bce33a6288fa3f072a8c2c7d0f2fdbb90e28298f0135c1f99b96c3db2efcc60b",
-    strip_prefix = "zerocopy-0.8.49",
-    urls = ["https://static.crates.io/crates/zerocopy/0.8.49/download"],
+    name = "zerocopy-0.8.50.crate",
+    sha256 = "3b065d4f0e55f82fae73202e189638116a87c55ab6b8e6c2721e13dd9d854ad1",
+    strip_prefix = "zerocopy-0.8.50",
+    urls = ["https://static.crates.io/crates/zerocopy/0.8.50/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "zerocopy-0.8",
-    srcs = [":zerocopy-0.8.49.crate"],
+    srcs = [":zerocopy-0.8.50.crate"],
     crate = "zerocopy",
-    crate_root = "zerocopy-0.8.49.crate/src/lib.rs",
+    crate_root = "zerocopy-0.8.50.crate/src/lib.rs",
     edition = "2021",
     env = {
         "CARGO_BIN_NAME": "zerocopy",
         "CARGO_CRATE_NAME": "zerocopy",
-        "CARGO_MANIFEST_DIR": "zerocopy-0.8.49.crate",
+        "CARGO_MANIFEST_DIR": "zerocopy-0.8.50.crate",
         "CARGO_PKG_AUTHORS": "Joshua Liebow-Feeser <joshlf@google.com>:Jack Wrenn <jswrenn@amazon.com>",
         "CARGO_PKG_DESCRIPTION": "Zerocopy makes zero-cost memory manipulation effortless. We write \"unsafe\" so you don't have to.",
         "CARGO_PKG_HOMEPAGE": "",
@@ -5183,10 +5234,10 @@ cargo.rust_library(
         "CARGO_PKG_README": "README.md",
         "CARGO_PKG_REPOSITORY": "https://github.com/google/zerocopy",
         "CARGO_PKG_RUST_VERSION": "1.56.0",
-        "CARGO_PKG_VERSION": "0.8.49",
+        "CARGO_PKG_VERSION": "0.8.50",
         "CARGO_PKG_VERSION_MAJOR": "0",
         "CARGO_PKG_VERSION_MINOR": "8",
-        "CARGO_PKG_VERSION_PATCH": "49",
+        "CARGO_PKG_VERSION_PATCH": "50",
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
@@ -5225,18 +5276,18 @@ cargo.rust_library(
 )
 
 http_archive(
-    name = "zerocopy-derive-0.8.49.crate",
-    sha256 = "8fd425244944f4ab65ccff928e7323354c5a018c75838362fdce749dfad2ee1e",
-    strip_prefix = "zerocopy-derive-0.8.49",
-    urls = ["https://static.crates.io/crates/zerocopy-derive/0.8.49/download"],
+    name = "zerocopy-derive-0.8.50.crate",
+    sha256 = "0b631b19d36a892ab55420c92dbc83ccd79274f25be714855d3074aa71cab639",
+    strip_prefix = "zerocopy-derive-0.8.50",
+    urls = ["https://static.crates.io/crates/zerocopy-derive/0.8.50/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "zerocopy-derive-0.8",
-    srcs = [":zerocopy-derive-0.8.49.crate"],
+    srcs = [":zerocopy-derive-0.8.50.crate"],
     crate = "zerocopy_derive",
-    crate_root = "zerocopy-derive-0.8.49.crate/src/lib.rs",
+    crate_root = "zerocopy-derive-0.8.50.crate/src/lib.rs",
     edition = "2021",
     proc_macro = True,
     visibility = [],
