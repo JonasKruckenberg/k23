@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use std::alloc::Layout;
-use std::collections::BTreeMap;
 use std::ptr::NonNull;
 use std::range::Range;
 use std::{fmt, mem};
@@ -15,14 +14,17 @@ use crate::arch::Arch;
 use crate::{AddressRangeExt, PhysicalAddress};
 
 pub struct Memory {
-    regions: BTreeMap<PhysicalAddress, (PhysicalAddress, NonNull<[u8]>, Layout)>,
+    // Regions sorted ascending by end address. A `Vec` + linear scan is deliberate
+    // over a `BTreeMap`: there are only a handful of regions, and Miri interprets a
+    // flat scan far faster than B-tree node navigation, which dominated test time.
+    regions: Vec<(Range<PhysicalAddress>, NonNull<[u8]>, Layout)>,
 }
 
 impl Drop for Memory {
     fn drop(&mut self) {
         let regions = mem::take(&mut self.regions);
 
-        for (_end, (_start, region, layout)) in regions {
+        for (_range, region, layout) in regions {
             unsafe { host_dealloc(region, layout) }
         }
     }
@@ -30,7 +32,7 @@ impl Drop for Memory {
 
 impl Memory {
     pub fn new<A: Arch>(region_sizes: impl IntoIterator<Item = Layout>) -> Self {
-        let regions = region_sizes
+        let mut regions: Vec<(Range<PhysicalAddress>, NonNull<[u8]>, Layout)> = region_sizes
             .into_iter()
             .map(|layout| {
                 let region = host_alloc(layout);
@@ -38,29 +40,36 @@ impl Memory {
                 // Safety: we just allocated the ptr, we know it is valid
                 let Range { start, end } = Range::from(unsafe { region.as_ref() }.as_ptr_range());
 
-                (
-                    PhysicalAddress::from_ptr(end),
-                    (PhysicalAddress::from_ptr(start), region, layout),
-                )
+                let bounds =
+                    Range::from(PhysicalAddress::from_ptr(start)..PhysicalAddress::from_ptr(end));
+
+                (bounds, region, layout)
             })
             .collect();
+
+        // Sort by end so `get_region_containing` can take the first region whose
+        // end is past the requested start, matching the previous BTreeMap order.
+        regions.sort_unstable_by_key(|(bounds, ..)| bounds.end);
 
         Self { regions }
     }
 
     pub fn regions(&self) -> impl Iterator<Item = Range<PhysicalAddress>> {
-        self.regions
-            .iter()
-            .map(|(end, (start, _, _))| Range::from(*start..*end))
+        self.regions.iter().map(|(bounds, _, _)| *bounds)
     }
 
     fn get_region_containing(
         &self,
         range: Range<PhysicalAddress>,
     ) -> Option<(NonNull<[u8]>, usize)> {
-        let (_end, (start, region, _)) = self.regions.range(range.start.add(1)..).next()?;
+        // First region whose end is strictly past the start of the request,
+        // equivalent to the old `range(range.start.add(1)..).next()`.
+        let (bounds, region, _) = self
+            .regions
+            .iter()
+            .find(|(bounds, ..)| bounds.end > range.start)?;
 
-        let offset = range.start.get().checked_sub(start.get())?;
+        let offset = range.start.get().checked_sub(bounds.start.get())?;
 
         if offset + range.len() > region.len() {
             return None;
@@ -113,7 +122,11 @@ impl fmt::Debug for Memory {
         f.debug_struct("Memory")
             .field_with("regions", |f| {
                 f.debug_list()
-                    .entries(self.regions.iter().map(|(end, (start, _, _))| *start..*end))
+                    .entries(
+                        self.regions
+                            .iter()
+                            .map(|(bounds, _, _)| bounds.start..bounds.end),
+                    )
                     .finish()
             })
             .finish()

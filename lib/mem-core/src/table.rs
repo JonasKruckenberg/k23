@@ -58,16 +58,10 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
 
     /// Returns `true` when _all_ page table entries in this table are _vacant_.
     pub fn is_empty(&self, physmap: &PhysMap, arch: &A) -> bool {
-        let mut is_empty = true;
-
-        for entry_index in 0..self.level().entries() {
+        (0..self.level().entries()).all(|entry_index| {
             // Safety: we iterate through the entries for this level above, `entry_index` is always in-bounds
-            let entry = unsafe { self.get(entry_index, physmap, arch) };
-
-            is_empty |= entry.is_vacant();
-        }
-
-        is_empty
+            unsafe { self.get(entry_index, physmap, arch) }.is_vacant()
+        })
     }
 
     /// Returns the `A::PageTableEntry` at the given `index` without moving it. This leaves the entry
@@ -240,4 +234,65 @@ pub mod marker {
     pub struct Mut<'a>(PhantomData<&'a mut ()>);
     #[derive(Debug)]
     pub struct Immut<'a>(PhantomData<&'a ()>);
+}
+
+#[cfg(test)]
+mod tests {
+    use std::alloc::Layout;
+
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_utils::{Machine, MachineBuilder};
+    use crate::{MemoryAttributes, for_arch};
+
+    for_arch!(A in [
+        Riscv64Sv39,
+        #[cfg(not(miri))]
+        Riscv64Sv48,
+        #[cfg(not(miri))]
+        Riscv64Sv57,
+    ] {
+        proptest! {
+            /// Regression test for [`Table::is_empty`] (review Blocker: `|=` should be `&=`).
+            ///
+            /// `is_empty` must return `true` exactly when every entry is vacant. The buggy
+            /// `|=` accumulation makes it unconditionally report `true`.
+            #[test]
+            fn is_empty_iff_all_entries_vacant(
+                occupied in proptest::collection::hash_set(0u16..A::LEVELS[0].entries(), 0..32),
+            ) {
+                let machine: Machine<A> = MachineBuilder::new()
+                    .with_memory_regions([
+                        Layout::from_size_align(0x20000, A::GRANULE_SIZE).unwrap()
+                    ])
+                    .finish();
+
+                let (address_space, frame_allocator, physmap) =
+                    machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
+                let arch = address_space.arch();
+
+                let mut table =
+                    Table::allocate(frame_allocator.by_ref(), &physmap, arch).unwrap();
+
+                // Occupy the chosen entries with leaves. The leaf address is irrelevant —
+                // `is_empty` only inspects each entry's vacancy.
+                let leaf = <<A as Arch>::PageTableEntry as PageTableEntry>::new_leaf(
+                    PhysicalAddress::new(A::GRANULE_SIZE),
+                    MemoryAttributes::new().with(MemoryAttributes::READ, true),
+                );
+                for &index in &occupied {
+                    // Safety: `index` is in `0..A::LEVELS[0].entries()`, in-bounds for the root table.
+                    unsafe {
+                        table.borrow_mut().set(index, leaf, &physmap, arch);
+                    }
+                }
+
+                prop_assert_eq!(
+                    table.borrow().is_empty(&physmap, arch),
+                    occupied.is_empty(),
+                );
+            }
+        }
+    });
 }
