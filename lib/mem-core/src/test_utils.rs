@@ -14,79 +14,76 @@ pub use arch::EmulateArch;
 pub use machine::{Cpu, HasMemory, Machine, MachineBuilder, MissingMemory};
 pub use memory::Memory;
 
+/// Emit a copy of `$body` for each architecture in the list, aliasing `$arch` to
+/// that architecture's type inside a module named after it.
+///
+/// The architectures are listed explicitly at the call site rather than baked into
+/// the macro, so the matrix — including the `#[cfg(not(miri))]` gates that drop the
+/// extra paging modes under Miri — is visible while reading the test. (The page-walk
+/// logic is identical across paging modes; running all three only triples Miri's
+/// interpreter time without adding coverage.)
+///
+/// ```ignore
+/// for_arch!(A in [Riscv64Sv39, #[cfg(not(miri))] Riscv64Sv48] {
+///     #[test]
+///     fn it_works() { /* `A` is the concrete arch type here */ }
+/// });
+/// ```
 #[macro_export]
-macro_rules! for_every_arch {
-    ($arch:ident => {$($body:item)*}) => {
-        mod riscv64_sv39 {
-            use super::*;
-            type $arch = $crate::arch::riscv64::Riscv64Sv39;
-
-            $($body)*
-        }
-        mod riscv64_sv48 {
-            use super::*;
-            type $arch = $crate::arch::riscv64::Riscv64Sv48;
-
-            $($body)*
-        }
-        mod riscv64_sv57 {
-            use super::*;
-            type $arch = $crate::arch::riscv64::Riscv64Sv57;
-
-            $($body)*
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! archtest {
-    ($($(#[$meta:meta])* fn $test_name:ident$(<$ge:ident: $gen_ty:tt>)*() $body:block)*) => {
-        mod riscv64_sv39 {
-            use super::*;
-            $(
-                archtest! {
-                    arch: $crate::arch::riscv64::Riscv64Sv39,
-                    meta: $($meta)*,
-                    test_name: $test_name,
-                    generics: $($ge: $gen_ty)*,
-                    body: $body
-                }
-            )*
-        }
-        mod riscv64_sv48 {
-            use super::*;
-            $(
-                archtest! {
-                    arch: $crate::arch::riscv64::Riscv64Sv48,
-                    meta: $($meta)*,
-                    test_name: $test_name,
-                    generics: $($ge: $gen_ty)*,
-                    body: $body
-                }
-            )*
-        }
-        mod riscv64_sv57 {
-            use super::*;
-            $(
-                archtest! {
-                    arch: $crate::arch::riscv64::Riscv64Sv57,
-                    meta: $($meta)*,
-                    test_name: $test_name,
-                    generics: $($ge: $gen_ty)*,
-                    body: $body
-                }
-            )*
-        }
-    };
-
-    (arch: $arch:ty, meta: $($($meta:meta)*, test_name: $test_name:ident, generics: $($ge:ident: $gen_ty:tt)*, body: $body:block)*) => {
+macro_rules! for_arch {
+    ($arch:ident in [ $( $(#[$meta:meta])* $archty:ident ),+ $(,)? ] $body:tt) => {
         $(
             $(#[$meta])*
-            fn $test_name() {
-                fn $test_name$(<$ge: $gen_ty>)*() $body
+            #[expect(non_snake_case, reason = "test module named after the arch it instantiates")]
+            mod $archty {
+                use super::*;
+                type $arch = $crate::arch::riscv64::$archty;
 
-                $test_name::<$arch>()
+                // The body is re-emitted verbatim per arch; capturing it as one `tt`
+                // and unwrapping it here avoids `macro_rules!` zipping the body items
+                // against the (independent) arch list.
+                $crate::for_arch!(@items $body);
+            }
+        )+
+    };
+    (@items { $($body:item)* }) => { $($body)* };
+}
+
+/// Like [`for_arch!`], but for generic test functions: each `fn name<A: Arch>()`
+/// is instantiated once per architecture in the list. The arch list (and its Miri
+/// `#[cfg]` gates) is spelled out at the call site for the same reason — see
+/// [`for_arch!`].
+///
+/// ```ignore
+/// archtest!([Riscv64Sv39, #[cfg(not(miri))] Riscv64Sv48] {
+///     #[test]
+///     fn it_works<A: Arch>() { /* instantiated once per arch */ }
+/// });
+/// ```
+#[macro_export]
+macro_rules! archtest {
+    ([ $( $(#[$meta:meta])* $archty:ident ),+ $(,)? ] $body:tt) => {
+        $(
+            $(#[$meta])*
+            #[expect(non_snake_case, reason = "test module named after the arch it instantiates")]
+            mod $archty {
+                use super::*;
+
+                // See [`for_arch!`]: the body is captured as one `tt` and
+                // unwrapped here so it isn't zipped against the arch list.
+                $crate::archtest!(@fns $archty $body);
+            }
+        )+
+    };
+    (@fns $archty:ident {
+        $( $(#[$tmeta:meta])* fn $test_name:ident<$ge:ident: $gen_ty:tt>() $body:block )*
+    }) => {
+        $(
+            $(#[$tmeta])*
+            fn $test_name() {
+                fn $test_name<$ge: $gen_ty>() $body
+                $test_name::<$crate::arch::riscv64::$archty>()
             }
         )*
-    }
+    };
 }

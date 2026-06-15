@@ -85,7 +85,7 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
-    use crate::for_every_arch;
+    use crate::for_arch;
 
     /// A page table level paired with a granule-aligned, non-empty virtual range
     /// contained within a single table at that level and within the canonical
@@ -115,7 +115,13 @@ mod tests {
         })
     }
 
-    for_every_arch!(A => {
+    for_arch!(A in [
+        Riscv64Sv39,
+        #[cfg(not(miri))]
+        Riscv64Sv48,
+        #[cfg(not(miri))]
+        Riscv64Sv57,
+    ] {
         proptest! {
             /// Regression test for [`PageTableEntries`] (review Blocker: `PageTableEntries::next`).
             ///
@@ -163,8 +169,10 @@ mod tests {
             let table_span = level.entries() as usize * level.page_size();
 
             // Straddle the boundary between the first two tables.
-            let range = Range::from(VirtualAddress::new(table_span - A::GRANULE_SIZE)
-                ..VirtualAddress::new(table_span + A::GRANULE_SIZE));
+            let range = Range::from(
+                VirtualAddress::new(table_span - A::GRANULE_SIZE)
+                    ..VirtualAddress::new(table_span + A::GRANULE_SIZE),
+            );
 
             let _ = page_table_entries_for::<A>(range, level);
         }

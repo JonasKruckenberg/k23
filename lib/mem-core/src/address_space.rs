@@ -720,7 +720,11 @@ mod tests {
     use crate::test_utils::{Machine, MachineBuilder};
     use crate::{MemoryAttributes, VirtualAddress, WriteOrExecute, archtest};
 
-    archtest! {
+    archtest!([
+        Riscv64Sv39,
+        #[cfg(not(miri))] Riscv64Sv48,
+        #[cfg(not(miri))] Riscv64Sv57,
+    ] {
         #[test]
         fn map<A: Arch>() {
             let machine: Machine<A> = MachineBuilder::new()
@@ -883,5 +887,5 @@ mod tests {
             assert_eq!(attrs.allows_execution(), true);
             assert_eq!(lvl.page_size(), 4096);
         }
-    }
+    });
 }

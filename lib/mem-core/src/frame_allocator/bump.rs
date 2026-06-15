@@ -524,7 +524,11 @@ mod tests {
         assert!(frame.iter().all(|byte| *byte == 0));
     }
 
-    archtest! {
+    archtest!([
+        Riscv64Sv39,
+        #[cfg(not(miri))] Riscv64Sv48,
+        #[cfg(not(miri))] Riscv64Sv57,
+    ] {
         // Assert that the BumpAllocator can allocate frames
         #[test_log::test]
         fn allocate_contiguous_smoke<A: Arch>() {
@@ -794,7 +798,7 @@ mod tests {
                 assert!(block.start.is_aligned_to(1 * GIB));
             }
         }
-    }
+    });
 }
 
 // The tests below allocate GiBs of regions and go through every frame. Takes
@@ -808,12 +812,14 @@ mod proptests {
 
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;
-    use crate::for_every_arch;
+    use crate::for_arch;
     use crate::frame_allocator::{BumpAllocator, DEFAULT_MAX_REGIONS, FrameAllocator};
     use crate::test_utils::proptest::region_layouts;
     use crate::test_utils::{Machine, MachineBuilder};
 
-    for_every_arch!(A => {
+    // The enclosing `mod proptests` is already `#[cfg(not(miri))]`, so all three
+    // paging modes run here — no per-arch Miri gating needed.
+    for_arch!(A in [Riscv64Sv39, Riscv64Sv48, Riscv64Sv57] {
         proptest! {
             #[test_log::test]
             fn allocate(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 4*KIB, 16*GIB)) {
