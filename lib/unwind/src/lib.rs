@@ -220,10 +220,10 @@ where
 
     // Safety: intrinsic call
     unsafe {
-        if intrinsics::catch_unwind(do_call::<F, R>, data_ptr, do_catch::<F, R>) == 0 {
-            Ok(ManuallyDrop::into_inner(data.r))
-        } else {
+        if intrinsics::catch_unwind(do_call::<F, R>, data_ptr, do_catch::<F, R>) {
             Err(ManuallyDrop::into_inner(data.p))
+        } else {
+            Ok(ManuallyDrop::into_inner(data.r))
         }
     }
 }
