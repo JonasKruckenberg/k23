@@ -30,5 +30,5 @@ pub use address_space::{Active, Bootstrapping, HardwareAddressSpace};
 pub use arch::Arch;
 pub use flush::Flush;
 pub use frame_allocator::{AllocError, BumpAllocator, DEFAULT_MAX_REGIONS, FrameAllocator};
-pub use memory_attributes::{MemoryAttributes, WriteOrExecute};
+pub use memory_attributes::{MemoryAttributes, MemoryKind, WriteOrExecute};
 pub use physmap::PhysMap;
