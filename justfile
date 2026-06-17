@@ -35,6 +35,9 @@ _default:
 run target buck2_args="" *qemu_args="":
     {{ _buck2 }} run {{ target }} {{ _platform_args }} {{ buck2_args }} {{ qemu_args }}
 
+build target *buck2_args="":
+    {{ _buck2 }} build {{ target }} {{ _platform_args }} {{ buck2_args }}
+
 # quick check for development.
 # The prelude's [diag.json] action is infallible by design; gate on the
 # rendered diagnostics ourselves.
