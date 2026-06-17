@@ -21,7 +21,7 @@ use core::range::Range;
 use core::slice;
 use core::time::Duration;
 
-use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
+use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, UartInfo};
 use mem_core::{
     AddressRangeExt, Flush, HardwareAddressSpace, PhysMap, PhysicalAddress, VirtualAddress,
 };
@@ -88,6 +88,7 @@ fn init() -> Result<()> {
         256 * 4096,
         aspace.granule_size(),
         physical_memory_regions(&memory_map),
+        minfo.uart.map(|uart| uart.regs),
         aspace.granule_size(),
     );
     log::debug!("kernel address space layout {aspace_layout:?}");
@@ -149,6 +150,12 @@ fn init() -> Result<()> {
     )?;
     log::debug!("mapped boot info");
 
+    if let (Some(virt), Some(uart)) = (aspace_layout.uart, minfo.uart) {
+        log::debug!("mapping UART {} => {}...", uart.regs.start, virt.start);
+        mapping::map_uart(&mut aspace, virt, uart.regs, &identity_physmap, &mut flush)?;
+        log::debug!("mapped UART");
+    }
+
     log::debug!("mapping physical memory...");
     mapping::map_physical_memory(&mut aspace, &aspace_layout, &identity_physmap, &mut flush)?;
     log::debug!("mapped physical memory");
@@ -202,6 +209,7 @@ fn instantiate_boot_info(
     boot_info.acpi_rsdp = minfo.raw_rsdp;
     boot_info.fdt = minfo.raw_fdt;
     boot_info.smbios3 = minfo.raw_smbios3;
+    boot_info.uart = build_uart_info(minfo.uart, aspace_layout.uart, granule);
     boot_info.kernel_virt = aspace_layout.kernel_image.clone();
     boot_info.tls_template = kernel.tls_template().clone();
     boot_info.kernel_debuginfo_phys = kernel.debug_info_phys().clone();
@@ -210,6 +218,29 @@ fn instantiate_boot_info(
     log::debug!("{time:?} {rtc_caps:?}");
 
     Ok(boot_info)
+}
+
+/// Combine the discovered UART (physical register block + driver params) with
+/// the virtual range reserved for it into the [`UartInfo`] handed to the kernel.
+///
+/// The register block may start at a sub-page offset within its mapping; that
+/// offset is preserved so `regs.start` points at the actual registers.
+fn build_uart_info(
+    discovered: Option<machine_info::DiscoveredUart>,
+    virt: Option<Range<VirtualAddress>>,
+    granule: usize,
+) -> Option<UartInfo> {
+    let (discovered, virt) = discovered.zip(virt)?;
+    let page_offset = discovered.regs.start.get() - discovered.regs.start.align_down(granule).get();
+
+    Some(UartInfo {
+        regs: Range::from_start_len(virt.start.add(page_offset), discovered.regs.len()),
+        clock_frequency: discovered.clock_frequency,
+        baud_rate: discovered.baud_rate,
+        reg_shift: discovered.reg_shift,
+        reg_io_width: discovered.reg_io_width,
+        irq_num: discovered.irq_num,
+    })
 }
 
 fn physical_memory_regions<'a>(
@@ -301,6 +332,7 @@ struct KernelAspaceLayout {
     pub boot_hart_tls: Range<VirtualAddress>,
     pub boot_hart_stack: Range<VirtualAddress>,
     pub boot_info: Range<VirtualAddress>,
+    pub uart: Option<Range<VirtualAddress>>,
 }
 
 fn layout_kernel_aspace(
@@ -308,6 +340,7 @@ fn layout_kernel_aspace(
     boot_hart_stack_size: usize,
     stack_guard_region: usize,
     physical_memory_regions: impl Iterator<Item = Range<PhysicalAddress>>,
+    uart_phys: Option<Range<PhysicalAddress>>,
     granule: usize,
 ) -> KernelAspaceLayout {
     const BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
@@ -329,11 +362,17 @@ fn layout_kernel_aspace(
     )
     .align_out(granule);
 
+    let uart = uart_phys.map(|regs| {
+        let len = regs.align_out(granule).len();
+        Range::from_start_len(boot_info.end, len).align_out(granule)
+    });
+
     KernelAspaceLayout {
         physmap,
         kernel_image,
         boot_hart_tls,
         boot_hart_stack,
         boot_info,
+        uart,
     }
 }
