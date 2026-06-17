@@ -52,6 +52,8 @@ fn main() -> uefi::Status {
 }
 
 fn init() -> Result<()> {
+    arch::init();
+
     let boot_ticks = arch::get_ticks();
 
     // Step 1: discover basic machine information required for boot
