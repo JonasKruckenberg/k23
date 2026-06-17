@@ -55,6 +55,7 @@ pub struct BootInfo {
     pub handoff_trampoline_virt: Range<VirtualAddress>,
 
     pub physmap: PhysMap,
+    pub uart: Option<PhysicalAddress>,
 }
 
 impl BootInfo {
@@ -76,6 +77,7 @@ impl BootInfo {
             kernel_debuginfo_phys: None,
             handoff_trampoline_virt: Range::default(),
             physmap,
+            uart: None,
         }
     }
 }
