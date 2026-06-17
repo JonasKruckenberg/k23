@@ -378,10 +378,16 @@ fn handle_kernel_exception(
     // Unwinding runs on the kernel stack and never returns through the trap
     // epilogue, so restore the per-CPU trap invariants by hand before
     // leaving: `sscratch` must hold the trap-stack-top (next trap's
-    // `csrrw sp, sscratch, sp` depends on it), and `IN_TRAP` must be clear
-    // (next trap must not be classified as recursive).
+    // `csrrw sp, sscratch, sp` depends on it), `IN_TRAP` must be clear (next
+    // trap must not be classified as recursive), and `sstatus.SIE` must be
+    // restored from `SPIE` since we never `sret` to do it for us — otherwise
+    // interrupts stay masked on this hart after the caught fault.
     sscratch::set(trap_stack_top());
     IN_TRAP.set(false);
+    if sstatus::read().spie() {
+        // Safety: register access
+        unsafe { sstatus::set_sie() };
+    }
 
     // Safety: `regs` was captured on trap entry.
     unsafe { panic_unwind::begin_unwind(payload, regs, epc.add(1).get()) };
@@ -418,7 +424,7 @@ mod tests {
     use core::ptr;
 
     use gimli::RiscV;
-    use riscv::sscratch;
+    use riscv::{sscratch, sstatus};
 
     use super::{IN_TRAP, trap_stack_top};
     use crate::tests::wast::WastContext;
@@ -447,6 +453,10 @@ mod tests {
             sscratch::read(),
             trap_stack_top(),
             "{context}: sscratch not pointing at trap stack",
+        );
+        assert!(
+            sstatus::read().sie(),
+            "{context}: interrupts left masked after trap return",
         );
     }
 
