@@ -20,6 +20,11 @@ use crate::parser::{BigEndianToken, Parser, StringsBlock, StructsBlock};
 
 const DTB_MAGIC: u32 = 0xD00D_FEED;
 
+/// Maximum tree depth for which inherited `#address-cells` / `#size-cells` are
+/// tracked while walking. Protects against malformed input and means we can
+/// stack allocate the buffer.
+const MAX_TRACKED_DEPTH: usize = 32;
+
 pub struct Fdt<'dt> {
     data: &'dt [u32],
     reservations: &'dt [u32],
@@ -58,6 +63,9 @@ pub struct Node<'dt> {
     raw: &'dt [u32],
     strings: StringsBlock<'dt>,
     structs: StructsBlock<'dt>,
+    /// Cell counts governing this node's `reg`, inherited while walking the tree
+    /// (see [`Node::cell_sizes`]).
+    cell_sizes: CellSizes,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -184,7 +192,15 @@ impl<'dt> Fdt<'dt> {
             parser.parse_raw_property()?;
         }
 
-        Ok(NodesIter { parser, depth: 0 })
+        // Seed depth 0 with the root's child cells so depth-1 nodes inherit them.
+        let mut cells_stack = [CellSizes::default(); MAX_TRACKED_DEPTH];
+        cells_stack[0] = self.root.cell_sizes;
+
+        Ok(NodesIter {
+            parser,
+            depth: 0,
+            cells_stack,
+        })
     }
 
     /// Find a node by its absolute path (e.g. `/chosen`, `/cpus/cpu@0`).
@@ -295,6 +311,26 @@ impl<'dt> Node<'dt> {
     pub fn find_property(&self, name: &str) -> Result<Option<Property<'dt>>, Error> {
         self.properties().find(|p| Ok(p.name == name))
     }
+
+    /// The `#address-cells` / `#size-cells` that govern this node's `reg`.
+    ///
+    /// Resolved from the nearest ancestor that declares them, falling back to the
+    /// spec defaults (`1 / 2`).
+    #[must_use]
+    pub fn cell_sizes(&self) -> CellSizes {
+        self.cell_sizes
+    }
+
+    /// The node's `reg` decoded with its governing [`cell_sizes`](Self::cell_sizes).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if walking the node's properties fails.
+    pub fn reg(&self) -> Result<Option<Regs<'dt>>, Error> {
+        Ok(self
+            .find_property("reg")?
+            .map(|reg| reg.as_regs(self.cell_sizes)))
+    }
 }
 
 impl<'dt> Property<'dt> {
@@ -401,6 +437,9 @@ impl<'dt> Iterator for StringList<'dt> {
 pub struct NodesIter<'dt> {
     pub(crate) parser: Parser<'dt>,
     pub(crate) depth: usize,
+    /// `cells_stack[d]` is the child cell counts provided by the ancestor at
+    /// depth `d` (index 0 is the root).
+    pub(crate) cells_stack: [CellSizes; MAX_TRACKED_DEPTH],
 }
 impl<'dt> FallibleIterator for NodesIter<'dt> {
     type Item = (usize, Node<'dt>);
@@ -422,8 +461,16 @@ impl<'dt> FallibleIterator for NodesIter<'dt> {
         let name = self.parser.advance_cstr()?;
         let starting_data = self.parser.data();
 
-        while self.parser.peek_token()? == BigEndianToken::PROP {
-            self.parser.parse_raw_property()?;
+        // This node's `reg` uses its parent's child cells; its own declarations
+        // (parsed here) override them for its descendants.
+        let cell_sizes = self
+            .cells_stack
+            .get(self.depth - 1)
+            .copied()
+            .unwrap_or_default();
+        let child = self.parser.child_cell_sizes(cell_sizes)?;
+        if let Some(slot) = self.cells_stack.get_mut(self.depth) {
+            *slot = child;
         }
 
         Ok(Some((
@@ -433,6 +480,7 @@ impl<'dt> FallibleIterator for NodesIter<'dt> {
                 raw: starting_data,
                 strings: self.parser.strings,
                 structs: self.parser.structs,
+                cell_sizes,
             },
         )))
     }
