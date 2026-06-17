@@ -1,0 +1,58 @@
+name: Release
+
+# Nightly release: once a day, build the riscv64 ISO from the tip of `main` and
+# republish it as the `nightly` prerelease.
+
+on:
+  schedule:
+    - cron: "17 1 * * *" # 03:17 CEST/02:17CET daily (off-peak to avoid cron backlog)
+  workflow_dispatch:
+
+concurrency:
+  # One rolling release; if a manual run overlaps the scheduled one, keep the newest.
+  group: release-nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: write # create/overwrite the release and upload the ISO asset
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
+      - uses: actions/cache@v5
+        with:
+          path: buck-out
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
+          restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-
+            buck2-${{ runner.os }}-
+
+      # `--out` copies the target's default output (the ISO) to a stable path;
+      # buck-out paths are content-addressed and not safe to reference directly.
+      # A failed build fails the job here, so no release is published for it.
+      - name: build riscv64 ISO
+        run: nix develop .#ci --command buck2 build //sys:k23 --target-platforms //platforms:riscv64 --out k23-riscv64.iso
+
+      # Force-move the rolling `nightly` release/tag to this commit. Delete first
+      # so the tag does not keep pointing at the previous commit.
+      - name: publish rolling nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --cleanup-tag --yes || true
+          gh release create nightly k23-riscv64.iso \
+            --prerelease \
+            --target "${{ github.sha }}" \
+            --title "Nightly $(date -u +%F)" \
+            --notes "Rolling riscv64 build from ${{ github.sha }}."
