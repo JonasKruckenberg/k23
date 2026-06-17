@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::cmp::Ordering;
-use core::ffi::{CStr, c_void};
+use core::ffi::c_void;
 use core::fmt::Formatter;
 use core::range::Range;
 use core::{fmt, mem};
@@ -55,11 +55,15 @@ impl MachineInfo<'_> {
             let name = node.name()?;
 
             if name.name == "memory"
-                && find_cstr_property(node.properties(), "device_type")? == Some(c"memory")
+                && node
+                    .find_property("device_type")?
+                    .and_then(|p| p.as_cstr().ok())
+                    == Some(c"memory")
             {
                 // if the node is a memory node, add it to the list of available memory regions
 
-                let mut iter = find_property(node.properties(), "reg")?
+                let mut iter = node
+                    .find_property("reg")?
                     .unwrap()
                     .as_regs(stack[depth - 1].unwrap().1);
 
@@ -73,7 +77,8 @@ impl MachineInfo<'_> {
             } else if stack[depth - 1].is_some_and(|(s, _)| s == "reserved-memory") {
                 // if the node is a reserved-memory node, add it to the list of reserved memory regions
 
-                let mut iter = find_property(node.properties(), "reg")?
+                let mut iter = node
+                    .find_property("reg")?
                     .unwrap()
                     .as_regs(stack[depth - 1].unwrap().1);
                 while let Some(reg) = iter.next()? {
@@ -86,7 +91,7 @@ impl MachineInfo<'_> {
             } else if name.name == "chosen" {
                 // and finally if the node is the chosen node, extract the RNG seed
 
-                rng_seed = find_property(node.properties(), "rng-seed")?.map(|prop| prop.raw);
+                rng_seed = node.find_property("rng-seed")?.map(|prop| prop.raw);
             }
 
             // add the name and size_cells to the stack so we have it available for the next iteration
@@ -202,32 +207,6 @@ impl fmt::Display for MachineInfo<'_> {
         }
 
         Ok(())
-    }
-}
-
-fn find_property<'dt>(
-    mut props: PropertiesIter<'dt>,
-    name: &str,
-) -> crate::Result<Option<fdt::Property<'dt>>> {
-    props
-        .find_map(|prop| {
-            if prop.name == name {
-                Ok(Some(prop))
-            } else {
-                Ok(None)
-            }
-        })
-        .map_err(Into::into)
-}
-
-fn find_cstr_property<'dt>(
-    props: PropertiesIter<'dt>,
-    name: &str,
-) -> crate::Result<Option<&'dt CStr>> {
-    if let Some(prop) = find_property(props, name)? {
-        Ok(Some(CStr::from_bytes_until_nul(prop.raw).unwrap()))
-    } else {
-        Ok(None)
     }
 }
 
