@@ -18,5 +18,5 @@ mod info;
 pub use config::LoaderConfig;
 pub use info::{
     BOOT_INFO_VERSION, BootInfo, MAX_MEMORY_REGIONS, MemoryRegion, MemoryRegionKind, MemoryRegions,
-    TlsTemplate,
+    TlsTemplate, UartInfo,
 };

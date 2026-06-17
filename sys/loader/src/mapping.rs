@@ -9,7 +9,7 @@ use core::ptr;
 use core::range::Range;
 
 use mem_core::{
-    AddressRangeExt, Flush, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress,
+    AddressRangeExt, Flush, MemoryAttributes, MemoryKind, PhysMap, PhysicalAddress, VirtualAddress,
     WriteOrExecute,
 };
 
@@ -154,6 +154,39 @@ pub(crate) fn map_physical_memory(
             physmap,
             flush,
         )?
+    }
+
+    Ok(())
+}
+
+/// Map the firmware console UART register block into the kernel address space
+/// as device memory.
+///
+/// `phys` is the UART register block and `virt` the range reserved for it in
+/// [`KernelAspaceLayout`]; both are page-aligned defensively before mapping, so
+/// their lengths must match. Like [`map_physical_memory`] this maps an existing
+/// device region — no frames are allocated for it.
+pub(crate) fn map_uart(
+    aspace: &mut arch::InProgressKernelAspace,
+    virt: Range<VirtualAddress>,
+    phys: Range<PhysicalAddress>,
+    physmap: &PhysMap,
+    flush: &mut Flush,
+) -> crate::Result<()> {
+    let granule = aspace.granule_size();
+    let phys = phys.align_out(granule);
+    let virt = virt.align_out(granule);
+    debug_assert_eq!(virt.len(), phys.len());
+
+    let attrs = MemoryAttributes::new()
+        .with(MemoryAttributes::READ, true)
+        .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write)
+        .with(MemoryAttributes::KIND, MemoryKind::Device);
+
+    // Safety: `phys` is the firmware-described UART register block and `virt` is
+    // a fresh, unmapped range reserved for it in the kernel layout, of equal size.
+    unsafe {
+        aspace.map_contiguous(virt, phys.start, attrs, UefiFrameAlloc, physmap, flush)?;
     }
 
     Ok(())

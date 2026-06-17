@@ -55,7 +55,30 @@ pub struct BootInfo {
     pub handoff_trampoline_virt: Range<VirtualAddress>,
 
     pub physmap: PhysMap,
-    pub uart: Option<PhysicalAddress>,
+
+    /// Console UART discovered and mapped by the loader, or `None` if the
+    /// firmware declared no usable console.
+    pub uart: Option<UartInfo>,
+}
+
+/// Everything the kernel needs to drive the UART.
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct UartInfo {
+    /// Virtual range of the register block, mapped by the loader as device
+    /// memory. Directly dereferenceable once the kernel address space is active.
+    pub regs: Range<VirtualAddress>,
+    /// Input clock to the baud-rate generator in Hz (`clock-frequency`).
+    pub clock_frequency: u32,
+    /// Line speed in baud — from the `stdout-path` `:options` suffix, then
+    /// `current-speed`, defaulting to 115200.
+    pub baud_rate: u32,
+    /// `log2` of the byte stride between consecutive registers (`reg-shift`),
+    /// 0 when the registers are byte-adjacent.
+    pub reg_shift: u32,
+    /// Width of each register access in bytes (`reg-io-width`), 1 when absent.
+    pub reg_io_width: u32,
+    pub irq_num: u32,
 }
 
 impl BootInfo {
@@ -134,6 +157,16 @@ impl fmt::Display for BootInfo {
             writeln!(f, "{:<23} : {}", "SMBIOS", smbios3)?;
         } else {
             writeln!(f, "{:<23} : None", "SMBIOS")?;
+        }
+
+        if let Some(uart) = &self.uart {
+            writeln!(
+                f,
+                "{:<23} : {}..{} @ {} Hz, {} baud",
+                "UART", uart.regs.start, uart.regs.end, uart.clock_frequency, uart.baud_rate
+            )?;
+        } else {
+            writeln!(f, "{:<23} : None", "UART")?;
         }
 
         writeln!(

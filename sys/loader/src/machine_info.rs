@@ -5,11 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::range::Range;
 use core::slice;
 
 use fallible_iterator::FallibleIterator;
-use fdt::{CellSizes, Fdt};
-use mem_core::PhysicalAddress;
+use fdt::{Fdt, Node};
+use mem_core::{AddressRangeExt, PhysicalAddress};
 use uefi::boot::{self, AllocateType, MemoryType};
 use uefi::table::cfg::ConfigTableEntry;
 use uefi::{Guid, guid};
@@ -43,7 +44,27 @@ pub(crate) struct MachineInfo {
     /// SMBIOS3 entry point — opaque to the loader. Points at the loader-owned
     /// copy once [`Self::stage_tables`] has run.
     pub raw_smbios3: Option<PhysicalAddress>,
-    pub uart: Option<PhysicalAddress>,
+    /// Console UART resolved from `/chosen/stdout-path`, in physical space.
+    /// `None` when there is no FDT or it declares no usable console. The loader
+    /// maps this and hands the kernel a [`loader_api::UartInfo`] for it.
+    pub uart: Option<DiscoveredUart>,
+}
+
+/// A console UART resolved from the FDT, with its register block in *physical*
+/// space. The loader maps it before handoff; see [`loader_api::UartInfo`].
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DiscoveredUart {
+    /// Physical range of the UART register block (`reg`).
+    pub regs: Range<PhysicalAddress>,
+    /// Input clock to the baud-rate generator in Hz (`clock-frequency`).
+    pub clock_frequency: u32,
+    /// Line speed in baud (`stdout-path` options / `current-speed`, else 115200).
+    pub baud_rate: u32,
+    /// `log2` of the byte stride between registers (`reg-shift`), 0 when absent.
+    pub reg_shift: u32,
+    /// Width of each register access in bytes (`reg-io-width`), 1 when absent.
+    pub reg_io_width: u32,
+    pub irq_num: u32,
 }
 
 impl MachineInfo {
@@ -167,29 +188,8 @@ pub(crate) fn discover() -> Result<MachineInfo> {
         .or_else(|| fdt.as_ref().and_then(fdt_rng_seed))
         .ok_or(Error::NoRngSeed)?;
 
-    if let Some(fdt) = fdt {
-        let chosen = fdt.find_node("/chosen")?.unwrap();
-
-        let stdout_path = chosen.find_property("stdout-path")?.unwrap();
-
-        let uart = fdt.find_node(stdout_path.as_str()?)?.unwrap();
-
-        let address_cells = fdt.find_property("#address-cells")?.unwrap().as_usize()?;
-        let size_cells = fdt.find_property("#size-cells")?.unwrap().as_usize()?;
-
-        let compatible = uart.find_property("compatible")?.unwrap().as_str()?;
-        let reg = uart.find_property("reg")?.unwrap().as_regs(CellSizes {
-            address_cells,
-            size_cells,
-        });
-
-        uart.properties().for_each(|prop| {
-            log::debug!("name {}", prop.name);
-            Ok(())
-        });
-
-        log::debug!("chosen stdout compatible {compatible:?}");
-    }
+    let uart = fdt.as_ref().and_then(fdt_stdout_uart);
+    log::debug!("console UART: {uart:?}");
 
     Ok(MachineInfo {
         boot_hart_id,
@@ -197,8 +197,116 @@ pub(crate) fn discover() -> Result<MachineInfo> {
         raw_rsdp,
         raw_fdt,
         raw_smbios3,
-        uart: None,
+        uart,
     })
+}
+
+/// Resolve `/chosen/stdout-path` to the console UART and everything needed to
+/// drive it.
+///
+/// Per the DeviceTree spec (§3.6 *chosen*, §2.3.5 *reg*) the value may be an
+/// `/aliases` entry rather than a full path and may carry a `:options`
+/// baud/parity suffix (e.g. `serial0:115200n8`); both are handled. `reg` is
+/// decoded with the *parent's* cell counts.
+///
+/// Returns `None` — never panics, never aborts boot — if any step fails, since a
+/// missing console is not fatal to the loader.
+fn fdt_stdout_uart(fdt: &Fdt<'_>) -> Option<DiscoveredUart> {
+    let chosen = fdt.find_node("/chosen").ok()??;
+    // `linux,stdout-path` is the legacy spelling of the same property.
+    let spec = chosen
+        .find_property("stdout-path")
+        .ok()
+        .flatten()
+        .or_else(|| chosen.find_property("linux,stdout-path").ok().flatten())?
+        .as_str()
+        .ok()?;
+
+    // Split the node path from its optional `:options` tail; a leading `/` marks
+    // a full path, anything else is an `/aliases` entry to dereference.
+    let (head, mut options) = split_options(spec);
+    let path = if head.starts_with('/') {
+        head
+    } else {
+        let aliased = fdt
+            .find_node("/aliases")
+            .ok()??
+            .find_property(head)
+            .ok()??
+            .as_str()
+            .ok()?;
+        let (path, alias_options) = split_options(aliased);
+        options = options.or(alias_options);
+        path
+    };
+
+    let node = fdt.find_node(path).ok()??;
+
+    // `reg` → register block, decoded with the cell counts the `fdt` crate
+    // resolved for this node. Its decoder panics on counts outside these ranges,
+    // so reject them first.
+    let cells = node.cell_sizes();
+    if !matches!(cells.address_cells, 1 | 2) || cells.size_cells > 2 {
+        return None;
+    }
+    let reg = node.reg().ok()??.next().ok()??;
+    // Default to a single page when `reg` omits a size (`#size-cells = 0`).
+    let regs = Range::from_start_len(
+        PhysicalAddress::new(reg.starting_address),
+        reg.size.unwrap_or(uefi::boot::PAGE_SIZE),
+    );
+
+    // The baud divisor needs the input clock; without it we can't drive output.
+    let clock_frequency = u32_prop(&node, "clock-frequency")?;
+
+    // Baud rate: `stdout-path` options win, then `current-speed`, else 115200.
+    let baud_rate = options
+        .and_then(parse_baud)
+        .or_else(|| u32_prop(&node, "current-speed"))
+        .unwrap_or(115_200);
+
+    // Register layout; the defaults describe a byte-addressed 16550.
+    let reg_shift = u32_prop(&node, "reg-shift").unwrap_or(0);
+    let reg_io_width = u32_prop(&node, "reg-io-width").unwrap_or(1);
+
+    let irq_num = node
+        .find_property("interrupts")
+        .unwrap()
+        .unwrap()
+        .as_u32()
+        .unwrap();
+
+    Some(DiscoveredUart {
+        regs,
+        clock_frequency,
+        baud_rate,
+        reg_shift,
+        reg_io_width,
+        irq_num,
+    })
+}
+
+/// Split a `stdout-path` value into its node path and optional `:options` tail
+/// (DeviceTree spec §3.6 — everything after the first `:` is firmware options).
+fn split_options(spec: &str) -> (&str, Option<&str>) {
+    match spec.split_once(':') {
+        Some((path, options)) => (path, Some(options)),
+        None => (spec, None),
+    }
+}
+
+/// Parse the leading decimal baud rate from an options string (`115200n8` → 115200).
+fn parse_baud(options: &str) -> Option<u32> {
+    options
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// Read a `u32`-typed property, or `None` if it is absent or the wrong shape.
+fn u32_prop(node: &Node<'_>, name: &str) -> Option<u32> {
+    node.find_property(name).ok()??.as_u32().ok()
 }
 
 /// Read 32 bytes from `EFI_RNG_PROTOCOL`. Returns `None` if the protocol is
