@@ -10,7 +10,7 @@ use core::arch::{asm, naked_asm};
 use fdt::Fdt;
 use mem_core::arch::riscv64::Riscv64Sv39;
 use mem_core::{Bootstrapping, HardwareAddressSpace, VirtualAddress};
-use riscv::satp;
+use riscv::{interrupt, satp, sbi};
 use uefi::proto::unsafe_protocol;
 use uefi::{Status, StatusExt, boot};
 
@@ -21,6 +21,14 @@ use crate::{KernelAspaceLayout, Result};
 /// The kernel address space while the loader is still constructing it — i.e.
 /// before the MMU is switched on and control is handed to the kernel.
 pub type InProgressKernelAspace = HardwareAddressSpace<Riscv64Sv39, Bootstrapping>;
+
+pub fn init() {
+    // disarm any timers that might have been set by firmware
+    let _ = sbi::time::set_timer(u64::MAX);
+
+    // disable interrupts
+    interrupt::disable();
+}
 
 pub fn get_ticks() -> u64 {
     let ticks;
