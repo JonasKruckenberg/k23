@@ -120,7 +120,6 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
 
 fn kmain(boot_info: &'static BootInfo) {
     let cpuid = boot_info.boot_cpu_id;
-    let boot_ticks = boot_info.boot_ticks;
 
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
@@ -130,10 +129,16 @@ fn kmain(boot_info: &'static BootInfo) {
     let fdt_phys = boot_info.fdt.expect("loader did not provide FDT");
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
-    let global = state::try_init_global(|| {
-        // set up the basic functionality of the tracing subsystem as early as possible
-        tracing::init_early();
+    let uart = boot_info.uart.as_ref().unwrap();
+    // Safety: the loader mapped the UART register block as device memory
+    // and gave us its virtual base.
+    let (console_tx, console_rx) =
+        unsafe { uart_16550::open(uart.regs.start.get(), uart.clock_frequency, uart.baud_rate) };
 
+    // set up the basic functionality of the tracing subsystem as early as possible
+    tracing::init_early(console_tx);
+
+    let global = state::try_init_global(|| {
         log::info!("{boot_info}");
 
         assert_eq!(
@@ -195,7 +200,7 @@ fn kmain(boot_info: &'static BootInfo) {
         let timer = Timer::new(Duration::from_millis(1), cpu.clock);
 
         Ok(Global {
-            time_origin: Instant::from_ticks(&timer, Ticks(boot_ticks)),
+            time_origin: Instant::from_ticks(&timer, Ticks(boot_info.boot_ticks)),
             timer,
             executor,
             device_tree,
@@ -217,16 +222,17 @@ fn kmain(boot_info: &'static BootInfo) {
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now(&global.timer).duration_since(Instant::ZERO),
-        Instant::from_ticks(&global.timer, Ticks(boot_ticks)).elapsed(&global.timer)
+        Instant::from_ticks(&global.timer, Ticks(boot_info.boot_ticks)).elapsed(&global.timer)
     );
 
     let mut worker2 = Worker::new(&global.executor, FastRand::from_seed(rng.next_u64())).unwrap();
 
     cfg_if! {
         if #[cfg(test)] {
+            let _ = console_rx;
             arch::block_on(worker2.run(tests::run_tests(global))).unwrap().unwrap().unwrap().exit_if_failed();
         } else {
-            shell::init(&global.device_tree, &global.executor, 1);
+            shell::init(global.boot_info, console_rx, &global.executor, 1);
             arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap().unwrap_err(); // the only way `run` can return is when the executor is closed
         }
     }
