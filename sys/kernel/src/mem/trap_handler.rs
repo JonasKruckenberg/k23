@@ -25,7 +25,11 @@ pub fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
     // WASM tests run in kernel context, so this should work for our current needs
     // TODO: In the future, tasks should carry their own address space as metadata
     with_kernel_aspace(|aspace| {
-        let mut aspace = aspace.lock();
+        // NB: the faulting code may already hold the aspace lock,
+        // and re-taking this non-reentrant Mutex would deadlock the hart.
+        let Some(mut aspace) = aspace.try_lock() else {
+            return ControlFlow::Continue(());
+        };
         if let Err(err) = aspace.page_fault(tval, flags) {
             tracing::warn!("page fault handler couldn't correct fault {err}");
             ControlFlow::Continue(())
