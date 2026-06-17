@@ -42,7 +42,7 @@ use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
 use fastrand::FastRand;
 use kasync::executor::{Executor, Worker};
-use kasync::time::{Instant, Ticks, Timer};
+use kasync::time::{Instant, Timer};
 use loader_api::{BootInfo, LoaderConfig};
 use mem::frame_alloc;
 use mem_core::PhysicalAddress;
@@ -120,7 +120,6 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
 
 fn kmain(boot_info: &'static BootInfo) {
     let cpuid = boot_info.boot_cpu_id;
-    let boot_ticks = boot_info.boot_ticks;
 
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
@@ -195,7 +194,7 @@ fn kmain(boot_info: &'static BootInfo) {
         let timer = Timer::new(Duration::from_millis(1), cpu.clock);
 
         Ok(Global {
-            time_origin: Instant::from_ticks(&timer, Ticks(boot_ticks)),
+            time_origin: Instant::from_raw_ticks(&timer, boot_info.boot_ticks).unwrap(),
             timer,
             executor,
             device_tree,
@@ -214,10 +213,11 @@ fn kmain(boot_info: &'static BootInfo) {
         arch: arch_state,
     });
 
+    let now = Instant::now(&global.timer);
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
-        Instant::now(&global.timer).duration_since(Instant::ZERO),
-        Instant::from_ticks(&global.timer, Ticks(boot_ticks)).elapsed(&global.timer)
+        now.duration_since(Instant::ZERO),
+        now.duration_since(global.time_origin)
     );
 
     let mut worker2 = Worker::new(&global.executor, FastRand::from_seed(rng.next_u64())).unwrap();

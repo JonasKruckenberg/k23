@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::arch::{asm, naked_asm};
+use core::arch::naked_asm;
 
 use fdt::Fdt;
 use mem_core::arch::riscv64::Riscv64Sv39;
@@ -23,14 +23,7 @@ use crate::{KernelAspaceLayout, Result};
 pub type KernelAspace = HardwareAddressSpace<Riscv64Sv39>;
 
 pub fn get_ticks() -> u64 {
-    let ticks;
-    unsafe {
-        asm! {
-             "rdtime {0}",
-             out(reg) ticks
-        }
-    }
-    ticks
+    riscv::register::time::read64()
 }
 
 /// Read the boot hart's id. Primary source is `RISCV_EFI_BOOT_PROTOCOL`

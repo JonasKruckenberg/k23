@@ -8,6 +8,7 @@
 mod entry;
 mod wheel;
 
+use core::num::NonZeroU64;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::Poll;
@@ -23,7 +24,7 @@ use crate::loom::sync::atomic::Ordering;
 use crate::time::{Clock, Instant, NANOS_PER_SEC, TimeError, max_duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Ticks(pub u64);
+pub struct Ticks(pub(crate) u64);
 
 #[derive(Copy, Clone, Debug)]
 pub struct Deadline {
@@ -36,8 +37,8 @@ pub struct Deadline {
 pub struct Timer {
     clock: Clock,
     tick_duration: Duration,
-    tick_duration_nanos: u64,
-    tick_ratio: u64,
+    tick_duration_nanos: NonZeroU64,
+    tick_ratio: NonZeroU64,
     core: Mutex<Core>,
 }
 
@@ -109,9 +110,14 @@ impl Deadline {
 impl Timer {
     loom_const_fn! {
         pub const fn new(tick_duration: Duration, clock: Clock) -> Self {
-            let tick_duration_nanos = duration_to_nanos(tick_duration);
+            let tick_duration_nanos = NonZeroU64::new(duration_to_nanos(tick_duration)).unwrap();
 
-            let tick_ratio = tick_duration_nanos / duration_to_nanos(clock.tick_duration());
+            // if the hardware clock's tick duration is smaller than a nanosecond (very unlikely)
+            // and `duration_to_nanos` returns zero
+            let clock_duration_nanos = NonZeroU64::new(duration_to_nanos(clock.tick_duration())).unwrap();
+
+            debug_assert!(tick_duration_nanos.get() > clock_duration_nanos.get());
+            let tick_ratio = tick_duration_nanos.div_ceil(clock_duration_nanos);
 
             Self {
                 clock,
@@ -149,11 +155,12 @@ impl Timer {
     /// Convert the given raw [`Ticks`] into a [`Duration`] using this timers
     /// internal tick duration.
     ///
-    /// # Panics
-    ///
-    /// This method panics if the conversion from the given [`Ticks`] would overflow.
-    pub fn ticks_to_duration(&self, ticks: Ticks) -> Duration {
-        Duration::from_nanos(ticks.0 * self.tick_duration_nanos)
+    /// Returns `None` if the given `ticks` cannot be represented by a `Duration`.
+    pub fn ticks_to_duration(&self, ticks: Ticks) -> Option<Duration> {
+        ticks
+            .0
+            .checked_mul(self.tick_duration_nanos.get())
+            .map(Duration::from_nanos)
     }
 
     /// Convert the given [`Duration`] into a raw [`Ticks`] using this timers
@@ -200,7 +207,7 @@ impl Timer {
 
     fn turn_locked(&self, core: &mut Core) -> (usize, Option<Deadline>) {
         let mut now = self.now();
-        tracing::info!(now = ?now, "turn_locked");
+        tracing::trace!(now = ?now, "turn_locked");
 
         if now < core.now {
             tracing::warn!("time went backwards!");
@@ -231,7 +238,7 @@ impl Timer {
     pub fn schedule_wakeup(&self, maybe_next_deadline: Option<Deadline>) {
         if let Some(next_deadline) = maybe_next_deadline {
             let virt = next_deadline.as_ticks();
-            let phys = virt.0 * self.tick_ratio;
+            let phys = virt.0.saturating_mul(self.tick_ratio.get());
             self.clock.schedule_wakeup(phys);
         } else {
             self.clock.schedule_wakeup(u64::MAX);

@@ -133,6 +133,12 @@ impl Clock {
         self.tick_duration
     }
 
+    /// Convert the given raw `u64` ticks into a [`Duration`] using this clocks
+    /// internal tick duration.
+    pub fn checked_ticks_to_duration(&self, raw_ticks: u64) -> Option<Duration> {
+        Some(self.tick_duration * u32::try_from(raw_ticks).ok()?)
+    }
+
     /// Returns the maximum duration of this clock.
     #[must_use]
     pub fn max_duration(&self) -> Duration {
