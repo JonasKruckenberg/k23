@@ -105,10 +105,6 @@ pub unsafe extern "C" fn handoff_trampoline(
     satp_value: usize,
 ) -> ! {
     naked_asm! {
-        // // set SUM
-        // "li   t0, (1 << 18)", // Set bit 18 (SUM)
-        // "csrrs zero, sstatus, t0",
-
         // set SATP
         "csrw satp, a4",
         "sfence.vma zero, zero",

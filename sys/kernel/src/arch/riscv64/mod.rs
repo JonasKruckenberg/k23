@@ -55,6 +55,10 @@ pub fn per_cpu_init_early() {
         scounteren::set_tm();
         scounteren::set_ir();
 
+        // we must set the SUM bit so wasm host code can access wasm guest pages
+        // which is otherwise forbidden
+        sstatus::set_sum();
+
         // Set the FPU state to initial
         sstatus::set_fs(FS::Initial);
     }
