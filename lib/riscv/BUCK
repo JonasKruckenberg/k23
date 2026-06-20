@@ -8,6 +8,7 @@ rust_library(
         "//lib/trap:trap",
         "//third-party:cfg-if",
         "//third-party:bitflags",
+        "//third-party:critical-section"
     ],
     visibility = ["PUBLIC"],
     tests = [":riscv_unittests"],
@@ -21,6 +22,7 @@ rust_test(
         "//lib/trap:trap",
         "//third-party:cfg-if",
         "//third-party:bitflags",
+        "//third-party:critical-section"
     ],
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],

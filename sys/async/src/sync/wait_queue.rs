@@ -17,7 +17,7 @@ use core::{fmt, mem, ptr};
 use cordyceps::{Linked, List, list};
 use mycelium_bitfield::{FromBits, bitfield, enum_from_bits};
 use pin_project::{pin_project, pinned_drop};
-use spin::{Mutex, MutexGuard};
+use spin::{IrqMutex, IrqMutexGuard};
 use util::{CachePadded, loom_const_fn};
 
 use crate::error::Closed;
@@ -90,7 +90,7 @@ pub struct WaitQueue {
     /// holding the lock; otherwise, it may be modified through the list, so the
     /// lock must be held when modifying the
     /// node.
-    queue: Mutex<List<Waiter>>,
+    queue: IrqMutex<List<Waiter>>,
 }
 
 bitfield! {
@@ -263,7 +263,7 @@ impl WaitQueue {
         pub const fn new() -> Self {
             Self {
                 state: CachePadded(AtomicUsize::new(StateInner::Empty.into_usize())),
-                queue: Mutex::new(List::new()),
+                queue: IrqMutex::new(List::new()),
             }
         }
     }
@@ -364,7 +364,7 @@ impl WaitQueue {
         while waiters_remaining {
             waiters_remaining = Self::drain_to_wake_batch(&mut batch, &mut queue, Wakeup::All);
             woken += batch.len();
-            MutexGuard::unlocked(&mut queue, || batch.wake_all());
+            IrqMutexGuard::unlocked(&mut queue, || batch.wake_all());
         }
 
         woken
@@ -574,7 +574,7 @@ impl WaitQueue {
 
         while waiters_remaining {
             waiters_remaining = Self::drain_to_wake_batch(&mut batch, &mut queue, Wakeup::All);
-            MutexGuard::unlocked(&mut queue, || batch.wake_all());
+            IrqMutexGuard::unlocked(&mut queue, || batch.wake_all());
         }
     }
 

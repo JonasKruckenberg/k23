@@ -1,16 +1,21 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 
+_DEPS = [
+    "//lib/arrayvec:arrayvec",
+    "//lib/human-bytes:human-bytes",
+    "//third-party:mycelium-bitfield",
+    "//third-party:log",
+    "//third-party:lock_api",
+    "//third-party:cfg-if",
+] + select({
+    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+    "DEFAULT": [],
+})
+
 rust_library(
     name = "mem-core",
     srcs = glob(["src/**/*.rs"]),
-    deps = [
-        "//lib/arrayvec:arrayvec",
-        "//lib/human-bytes:human-bytes",
-        "//lib/riscv:riscv",
-        "//third-party:mycelium-bitfield",
-        "//third-party:log",
-        "//third-party:lock_api",
-    ],
+    deps = _DEPS,
     visibility = ["PUBLIC"],
     tests = [":mem-core_unittests"],
 )
@@ -18,13 +23,7 @@ rust_library(
 rust_test(
     name = "mem-core_unittests",
     srcs = glob(["**/*.rs"]),
-    deps = [
-        "//lib/arrayvec:arrayvec",
-        "//lib/human-bytes:human-bytes",
-        "//lib/riscv:riscv",
-        "//third-party:mycelium-bitfield",
-        "//third-party:log",
-        "//third-party:lock_api",
+    deps = _DEPS + [
         "//lib/cpu-local:cpu-local",
         "//lib/spin:spin",
         "//third-party:libc",

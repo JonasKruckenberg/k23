@@ -12,6 +12,7 @@ rust_library(
         "//lib/util:util",
         "//third-party:cfg-if",
         "//third-party:lock_api",
+        "//third-party:critical-section"
     ],
     visibility = ["PUBLIC"],
     tests = [":spin_unittests", ":spin_loom_tests"]
@@ -25,6 +26,7 @@ rust_test(
         "//third-party:cfg-if",
         "//third-party:lock_api",
         "//third-party:lazy_static",
+        "//third-party:critical-section",
         "//lib/fastrand:fastrand",
     ],
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
@@ -40,6 +42,7 @@ rust_loom_test(
         "//third-party:cfg-if",
         "//third-party:lock_api",
         "//third-party:lazy_static",
+        "//third-party:critical-section",
         "//lib/fastrand:fastrand",
         "//third-party:loom",
     ],

@@ -13,6 +13,8 @@
 
 mod backoff;
 mod barrier;
+mod irq_mutex;
+mod irq_rw_lock;
 mod lazy_lock;
 mod loom;
 mod mutex;
@@ -21,9 +23,12 @@ mod once_lock;
 #[cfg(feature = "thread-local")]
 mod remutex;
 mod rw_lock;
+mod util;
 
 pub use backoff::Backoff;
 pub use barrier::{Barrier, BarrierWaitResult};
+pub use irq_mutex::{IrqMutex, IrqMutexGuard};
+pub use irq_rw_lock::IrqRwLock;
 pub use lazy_lock::LazyLock;
 pub use mutex::{Mutex, MutexGuard, RawMutex};
 pub use once::{ExclusiveState, Once};

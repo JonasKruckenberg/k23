@@ -15,6 +15,7 @@ use crate::set_csr_field;
 
 /// Supervisor Status Register
 #[derive(Clone, Copy)]
+#[repr(transparent)]
 pub struct Sstatus {
     bits: usize,
 }
