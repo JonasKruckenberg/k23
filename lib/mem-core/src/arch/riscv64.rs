@@ -8,11 +8,9 @@
 use core::range::Range;
 
 use human_bytes::{GIB, KIB, MIB, TIB};
-use riscv::satp;
-use riscv::sbi::rfence::{sfence_vma, sfence_vma_asid};
 
 use crate::arch::PageTableLevel;
-use crate::{AddressRangeExt, MemoryAttributes, PhysicalAddress, VirtualAddress, WriteOrExecute};
+use crate::{MemoryAttributes, PhysicalAddress, VirtualAddress, WriteOrExecute};
 
 /// The number of usable bits in a `PhysicalAddress`. This may be used for address canonicalization.
 #[cfg_attr(not(test), expect(unused, reason = "only used by tests"))]
@@ -47,21 +45,47 @@ impl super::Arch for Riscv64Sv39 {
     ];
 
     fn active_table(&self) -> Option<PhysicalAddress> {
-        active_table(self.asid, satp::Mode::Sv39)
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                active_table(self.asid, riscv::satp::Mode::Sv39)
+            } else {
+                unimplemented!()
+            }
+        }
     }
 
     unsafe fn set_active_table(&self, address: PhysicalAddress) {
-        // Safety: we're accessing a control register here. The consequences of which
-        // are explained to our caller and it is their responsibility to ensure this is safe.
-        unsafe { set_active_table(self.asid, satp::Mode::Sv39, address) };
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                // Safety: we're accessing a control register here. The consequences of which
+                // are explained to our caller and it is their responsibility to ensure this is safe.
+                unsafe { set_active_table(self.asid, riscv::satp::Mode::Sv39, address) };
+            } else {
+                let _ = address;
+                unimplemented!()
+            }
+        }
     }
 
     fn fence(&self, range: Range<VirtualAddress>) {
-        fence(self.asid, range);
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                fence(self.asid, range);
+            } else {
+                let _ = range;
+                unimplemented!()
+            }
+        }
     }
 
     fn fence_all(&self) {
-        fence_all();
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                fence_all();
+            } else {
+                unimplemented!()
+            }
+        }
     }
 }
 
@@ -83,21 +107,47 @@ impl super::Arch for Riscv64Sv48 {
     const DEFAULT_PHYSMAP_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
 
     fn active_table(&self) -> Option<PhysicalAddress> {
-        active_table(self.asid, satp::Mode::Sv48)
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                active_table(self.asid, riscv::satp::Mode::Sv48)
+            } else {
+                unimplemented!()
+            }
+        }
     }
 
     unsafe fn set_active_table(&self, address: PhysicalAddress) {
-        // Safety: we're accessing a control register here. The consequences of which
-        // are explained to our caller and it is their responsibility to ensure this is safe.
-        unsafe { set_active_table(self.asid, satp::Mode::Sv48, address) };
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                // Safety: we're accessing a control register here. The consequences of which
+                // are explained to our caller and it is their responsibility to ensure this is safe.
+                unsafe { set_active_table(self.asid, riscv::satp::Mode::Sv48, address) };
+            } else {
+                let _ = address;
+                unimplemented!()
+            }
+        }
     }
 
     fn fence(&self, range: Range<VirtualAddress>) {
-        fence(self.asid, range);
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                fence(self.asid, range);
+            } else {
+                let _ = range;
+                unimplemented!()
+            }
+        }
     }
 
     fn fence_all(&self) {
-        fence_all();
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                fence_all();
+            } else {
+                unimplemented!()
+            }
+        }
     }
 }
 
@@ -120,21 +170,47 @@ impl super::Arch for Riscv64Sv57 {
     const DEFAULT_PHYSMAP_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
 
     fn active_table(&self) -> Option<PhysicalAddress> {
-        active_table(self.asid, satp::Mode::Sv57)
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                active_table(self.asid, riscv::satp::Mode::Sv57)
+            } else {
+                unimplemented!()
+            }
+        }
     }
 
     unsafe fn set_active_table(&self, address: PhysicalAddress) {
-        // Safety: we're accessing a control register here. The consequences of which
-        // are explained to our caller and it is their responsibility to ensure this is safe.
-        unsafe { set_active_table(self.asid, satp::Mode::Sv57, address) };
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                // Safety: we're accessing a control register here. The consequences of which
+                // are explained to our caller and it is their responsibility to ensure this is safe.
+                unsafe { set_active_table(self.asid, riscv::satp::Mode::Sv57, address) };
+            } else {
+                let _ = address;
+                unimplemented!()
+            }
+        }
     }
 
     fn fence(&self, range: Range<VirtualAddress>) {
-        fence(self.asid, range);
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                fence(self.asid, range);
+            } else {
+                let _ = range;
+                unimplemented!()
+            }
+        }
     }
 
     fn fence_all(&self) {
-        fence_all();
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                fence_all();
+            } else {
+                unimplemented!()
+            }
+        }
     }
 }
 
@@ -290,8 +366,9 @@ impl super::PageTableEntry for PageTableEntry {
     }
 }
 
-fn active_table(asid: u16, mode: satp::Mode) -> Option<PhysicalAddress> {
-    let satp = satp::read();
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+fn active_table(asid: u16, mode: riscv::satp::Mode) -> Option<PhysicalAddress> {
+    let satp = riscv::satp::read();
 
     debug_assert_eq!(satp.asid(), asid);
     debug_assert_eq!(satp.mode(), mode);
@@ -305,17 +382,21 @@ fn active_table(asid: u16, mode: satp::Mode) -> Option<PhysicalAddress> {
     }
 }
 
-unsafe fn set_active_table(asid: u16, mode: satp::Mode, addr: PhysicalAddress) {
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+unsafe fn set_active_table(asid: u16, mode: riscv::satp::Mode, addr: PhysicalAddress) {
     let ppn = addr.get() >> 12_i32;
 
     // Safety: ensured by the caller.
     unsafe {
-        satp::set(mode, asid, ppn);
+        riscv::satp::set(mode, asid, ppn);
     }
 }
 
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
 fn fence(asid: u16, address_range: Range<VirtualAddress>) {
-    sfence_vma_asid(
+    use crate::AddressRangeExt;
+
+    riscv::sbi::rfence::sfence_vma_asid(
         0,
         usize::MAX,
         address_range.start.get(),
@@ -325,8 +406,9 @@ fn fence(asid: u16, address_range: Range<VirtualAddress>) {
     .unwrap();
 }
 
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
 fn fence_all() {
-    sfence_vma(0, usize::MAX, 0, usize::MAX).unwrap();
+    riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, usize::MAX).unwrap();
 }
 
 #[cfg(test)]
