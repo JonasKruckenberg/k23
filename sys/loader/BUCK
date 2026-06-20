@@ -27,6 +27,7 @@ _DEPS = [
     "//lib/fdt:fdt",
     "//lib/mem-core:mem-core",
     "//lib/arrayvec:arrayvec",
+    "//lib/abort:abort",
     # third-party dependencies
     "//third-party:uefi",
     "//third-party:log",

@@ -23,10 +23,10 @@ use futures::FutureExt;
 use futures::future::try_join_all;
 use test::Test;
 
+use crate::state;
 use crate::tests::args::Arguments;
 use crate::tests::printer::Printer;
 use crate::util::either::Either;
-use crate::{arch, state};
 
 /// The outcome of performing a single test.
 pub enum Outcome {
@@ -63,7 +63,12 @@ impl Conclusion {
     /// Consider using [`Self::exit_code`] instead for a proper program cleanup.
     pub fn exit_if_failed(&self) {
         if self.has_failed() {
-            arch::exit(101)
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            riscv::semihosting::exit(101);
+
+            loop {
+                hint::spin_loop();
+            }
         }
     }
 

@@ -23,18 +23,48 @@
 #[unsafe(no_mangle)]
 #[inline(never)]
 pub fn abort() -> ! {
+    // lets try the graceful exit mechanisms first
     cfg_if::cfg_if! {
         if #[cfg(not(target_os = "none"))] {
+            // if we're running on a host OS, just exit the process
             extern crate std;
             std::process::abort();
-        } else if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-            riscv::exit(1);
         } else {
-            #[expect(
-                clippy::empty_loop,
-                reason = "this being an infinite waiting loop is the point here"
-            )]
-            loop {}
+            cfg_if::cfg_if! {
+                if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                    riscv::semihosting::exit(1);
+                }
+            }
+
+            // if none of the above exit mechanisms worked, best we can do is loop
+            log::error!("Could not shut down, please power off the system manually...");
+
+            cfg_if::cfg_if! {
+                if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                    loop {
+                        // Safety: inline assembly
+                        unsafe {
+                            core::arch::asm!("wfi", options(nomem, nostack));
+                        }
+                    }
+                } else if #[cfg(target_arch = "aarch64")] {
+                    loop {
+                        // Safety: inline assembly
+                        unsafe {
+                            core::arch::asm!("hlt 420", options(nomem, nostack));
+                        }
+                    }
+                } else  if #[cfg(target_arch = "x86_64")] {
+                    loop {
+                        // Safety: inline assembly
+                        unsafe {
+                            core::arch::asm!("hlt", options(nomem, nostack));
+                        }
+                    }
+                } else {
+                    compile_error!("unsupported target architecture")
+                }
+            }
         }
     }
 }

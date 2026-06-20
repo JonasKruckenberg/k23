@@ -34,6 +34,7 @@ mod tracing;
 mod util;
 mod wasm;
 
+use core::hint;
 use core::range::Range;
 use core::time::Duration;
 
@@ -108,7 +109,14 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     });
 
     match res {
-        Ok(_) => arch::exit(0),
+        Ok(_) => {
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            riscv::semihosting::exit(0);
+
+            loop {
+                hint::spin_loop();
+            }
+        }
         // If the panic propagates up to this catch here there is nothing we can do, this is a terminal
         // failure.
         Err(_) => {
