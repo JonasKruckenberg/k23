@@ -1,0 +1,24 @@
+_DEPS = [
+    # internal libraries
+    "//sys/loader-api:loader-api",
+    "//lib/mem-core:mem-core",
+    "//lib/fdt:fdt",
+    "//lib/arrayvec:arrayvec",
+    # third-party dependencies
+    "//third-party:fallible-iterator",
+    "//third-party:log",
+    "//third-party:cfg-if",
+    "//third-party:object",
+] + select({
+    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"]
+})
+
+rust_library(
+    name = "loader-common",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = _DEPS,
+    incoming_transition = "//build:loader",
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    visibility = ["PUBLIC"],
+)

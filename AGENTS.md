@@ -71,7 +71,7 @@ After adding/removing a crate, run `just rust-project` so rust-analyzer picks up
 - **Format:** `rustfmt.toml` — `group_imports = "StdExternalCrate"`, `imports_granularity = "Module"`. Run `just fmt`.
 - **Edition:** Rust 2024.
 - **License header (mandatory):** every first-party `.rs` file starts with the canonical license header (copyright `2023-Present`, a fixed range that never needs bumping). Enforced by `//build/license-header-linter` via `just check-license-headers`; `just fix-license-headers` prepends it to files missing one. Exclusions (vendored crates, build/VCS dirs) live in the linter's `EXCLUDED_*` lists.
-- **`no_std` everywhere.** No `std`. `extern crate alloc` for collections; on critical paths prefer stack / `arrayvec` over heap.
+- **`no_std` everywhere.** No `std`. `extern crate alloc` for collections; on critical paths prefer stack / `arrayvec` over heap. The loader is a UEFI application — `uefi::helpers::init()` installs a firmware-backed global allocator, so `alloc` (`Vec`, `Box`) works there, but **only while boot services are live**: it's backed by UEFI's `AllocatePool`, which dies at `exit_boot_services` (`sys/loader/src/main.rs`). Anything that must outlive handoff goes through the frame allocator / `arrayvec`, not the heap.
 - **Reuse `lib/`** before hand-rolling a data structure — `wavltree`, `sharded-slab`, `range-tree`, `arrayvec`, `spin` exist.
 - **Errors:** every crate defines its own error type and hand-implements `Debug`, `Display`, `core::error::Error`. No `thiserror`. `anyhow::Result<T>` is acceptable inside the kernel where an error enum is infeasible.
 - **Logging:** `log` for early-boot code (loader, early kernel, crates used there); `tracing` for normal operation. Default to `log` when unsure.

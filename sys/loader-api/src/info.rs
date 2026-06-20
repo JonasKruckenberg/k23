@@ -24,9 +24,7 @@ pub struct BootInfo {
     pub boot_cpu_id: usize,
     pub boot_ticks: u64,
 
-    pub fdt: Option<PhysicalAddress>,
-    pub acpi_rsdp: Option<PhysicalAddress>,
-    pub smbios3: Option<PhysicalAddress>,
+    pub firmware_tables: FirmwareTables,
 
     pub rng_seed: [u8; 32],
 
@@ -55,7 +53,43 @@ pub struct BootInfo {
     pub handoff_trampoline_virt: Range<VirtualAddress>,
 
     pub physmap: PhysMap,
-    pub uart: Option<PhysicalAddress>,
+
+    /// Console UART discovered and mapped by the loader, or `None` if the
+    /// firmware declared no usable console.
+    pub uart: Option<UartInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FirmwareTables {
+    /// ACPI RSDP — kernel walks the XSDT for MADT, SRAT, SLIT, …. Firmware
+    /// pointer, passed through verbatim (not staged — see [`Self::stage_tables`]).
+    pub raw_rsdp: Option<PhysicalAddress>,
+    /// FDT blob — kernel walks `/cpus`, `/memory`, …. Points at the loader-owned
+    /// copy once [`Self::stage_tables`] has run.
+    pub raw_fdt: Option<PhysicalAddress>,
+    /// SMBIOS3 entry point — opaque to the loader. Points at the loader-owned
+    /// copy once [`Self::stage_tables`] has run.
+    pub raw_smbios3: Option<PhysicalAddress>,
+}
+
+/// Everything the kernel needs to drive the UART.
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct UartInfo {
+    /// Virtual range of the register block, mapped by the loader as device
+    /// memory. Directly dereferenceable once the kernel address space is active.
+    pub regs: Range<VirtualAddress>,
+    /// Input clock to the baud-rate generator in Hz (`clock-frequency`).
+    pub clock_frequency: u32,
+    /// Line speed in baud — from the `stdout-path` `:options` suffix, then
+    /// `current-speed`, defaulting to 115200.
+    pub baud_rate: u32,
+    /// `log2` of the byte stride between consecutive registers (`reg-shift`),
+    /// 0 when the registers are byte-adjacent.
+    pub reg_shift: u32,
+    /// Width of each register access in bytes (`reg-io-width`), 1 when absent.
+    pub reg_io_width: u32,
+    pub irq_num: u32,
 }
 
 impl BootInfo {
@@ -67,9 +101,11 @@ impl BootInfo {
             version: BOOT_INFO_VERSION,
             boot_cpu_id: 0,
             boot_ticks: 0,
-            fdt: None,
-            acpi_rsdp: None,
-            smbios3: None,
+            firmware_tables: FirmwareTables {
+                raw_fdt: None,
+                raw_rsdp: None,
+                raw_smbios3: None,
+            },
             rng_seed: [0; 32],
             memory_regions: ArrayVec::new(),
             kernel_virt: Range::default(),
@@ -97,12 +133,16 @@ pub struct MemoryRegion {
 /// Represents the different types of memory.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[non_exhaustive]
-#[repr(C)]
+#[repr(u8)]
 pub enum MemoryRegionKind {
     /// Memory in which errors have been detected or which is otherwise unusable.
     Unusable,
     /// Unused conventional memory, can be used by the kernel.
     Usable,
+    /// Loader code, stack and more. Kernel may reclaim after taking control.
+    LoaderReclaimable,
+    /// Loader code, stack and more. Kernel may reclaim after taking control.
+    FirmwareTableReclaimable,
 }
 
 impl MemoryRegionKind {
@@ -118,22 +158,32 @@ impl fmt::Display for BootInfo {
         writeln!(f, "{:<23} : {}", "BOOT CPU ID", self.boot_cpu_id)?;
         writeln!(f, "{:<23} : {}", "BOOT TICKS", self.boot_ticks)?;
 
-        if let Some(fdt) = &self.fdt {
+        if let Some(fdt) = &self.firmware_tables.raw_fdt {
             writeln!(f, "{:<23} : {}", "FDT", fdt)?;
         } else {
             writeln!(f, "{:<23} : None", "FDT")?;
         }
 
-        if let Some(acpi_rsdp) = &self.acpi_rsdp {
+        if let Some(acpi_rsdp) = &self.firmware_tables.raw_rsdp {
             writeln!(f, "{:<23} : {}", "ACPI RDSP", acpi_rsdp)?;
         } else {
             writeln!(f, "{:<23} : None", "ACPI RDSP")?;
         }
 
-        if let Some(smbios3) = &self.smbios3 {
+        if let Some(smbios3) = &self.firmware_tables.raw_smbios3 {
             writeln!(f, "{:<23} : {}", "SMBIOS", smbios3)?;
         } else {
             writeln!(f, "{:<23} : None", "SMBIOS")?;
+        }
+
+        if let Some(uart) = &self.uart {
+            writeln!(
+                f,
+                "{:<23} : {}..{} @ {} Hz, {} baud",
+                "UART", uart.regs.start, uart.regs.end, uart.clock_frequency, uart.baud_rate
+            )?;
+        } else {
+            writeln!(f, "{:<23} : None", "UART")?;
         }
 
         writeln!(

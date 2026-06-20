@@ -306,7 +306,7 @@ qemu_toolchain(
         "-serial",
         "mon:stdio",
         "-d",
-        "guest_errors",
+        "guest_errors,int",
         "-monitor",
         "unix:qemu-monitor-socket,server,nowait",
 
@@ -319,12 +319,12 @@ qemu_toolchain(
         "memory-backend-ram,size=128M,id=m0",
         "-object",
         "memory-backend-ram,size=128M,id=m1",
-        "-numa",
-        "node,cpus=0-3,nodeid=0,memdev=m0",
-        "-numa",
-        "node,cpus=4-7,nodeid=1,memdev=m1",
-        "-numa",
-        "dist,src=0,dst=1,val=20"
+        # "-numa",
+        # "node,cpus=0-3,nodeid=0,memdev=m0",
+        # "-numa",
+        # "node,cpus=4-7,nodeid=1,memdev=m1",
+        # "-numa",
+        # "dist,src=0,dst=1,val=20"
     ] + select({
         "prelude//cpu:riscv64": ["-machine", "virt,acpi=off", "-cpu", "rv64", "-semihosting-config", "enable=on,target=native"],
         "DEFAULT": []

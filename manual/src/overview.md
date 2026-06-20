@@ -1,7 +1,7 @@
 # Overview of k23's Architecture
 
 k23 has 3 main components:
-The [bootloader](../../sys/loader) that is
+The [bootloader](../../sys/loader-common) that is
 responsible for loading the kernel,
 the [kernel itself](../../sys/kernel), which
 is the main operating system, and

@@ -10,7 +10,7 @@ use core::num::NonZero;
 
 use hashbrown::HashMap;
 use kasync::sync::wait_queue::WaitQueue;
-use spin::{LazyLock, RwLock};
+use spin::{IrqRwLock, LazyLock};
 
 use crate::state::cpu_local;
 
@@ -34,8 +34,8 @@ impl IrqClaim {
 }
 
 // hashbrown doesn't have a good const constructor, therefore the `LazyLock`
-static QUEUES: LazyLock<RwLock<HashMap<u32, Arc<WaitQueue>>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
+static QUEUES: LazyLock<IrqRwLock<HashMap<u32, Arc<WaitQueue>>>> =
+    LazyLock::new(|| IrqRwLock::new(HashMap::new()));
 
 pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     let Some(claim) = irq_ctl.irq_claim() else {
@@ -46,21 +46,22 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     // acknowledge the interrupt as fast as possible
     irq_ctl.irq_complete(claim);
 
-    let queues = QUEUES.read();
+    let Some(queues) = QUEUES.try_read() else {
+        log::warn!("couldn't acquire QUEUES read lock!");
+        return;
+    };
+
     if let Some(queue) = queues.get(&claim.as_u32()) {
-        tracing::trace!("waking wakers for irq-{}", claim.as_u32());
-        let woken = queue.wake_all();
-        tracing::trace!("woke {woken} wakers for irq-{}", claim.as_u32());
+        queue.wake_all();
     }
 }
 
 pub async fn next_event(irq_num: u32) -> Result<(), kasync::Closed> {
-    cpu_local()
-        .arch
-        .cpu
-        .interrupt_controller()
-        .irq_unmask(irq_num);
-
+    // Register the wait entry *before* unmasking.  If we unmasked first, the
+    // interrupt could fire between irq_unmask and QUEUES.write(), and
+    // trigger_irq would find no queue entry and drop the wakeup.  Worse, if
+    // the interrupt arrived while we held QUEUES.write(), trigger_irq would
+    // spin on QUEUES.read() while we can't release the write guard — deadlock.
     let wait = {
         let mut queues = QUEUES.write();
         let wait = queues
@@ -71,6 +72,16 @@ pub async fn next_event(irq_num: u32) -> Result<(), kasync::Closed> {
         drop(queues);
         wait
     };
+
+    // Unmask only after the write guard is dropped.  Any interrupt that fires
+    // from here will find the queue entry and call wake_all(); the WaitQueue
+    // stores the notification in its state so the .await below returns
+    // immediately even if the wakeup races with the first poll.
+    cpu_local()
+        .arch
+        .cpu
+        .interrupt_controller()
+        .irq_unmask(irq_num);
 
     let res = wait.await;
 

@@ -98,7 +98,7 @@ impl Clock {
     ///
     /// # Safety
     ///
-    /// The behavior of the returned `Waker` is undefined if the contract defined
+    /// The behavior of the returned `Clock` is undefined if the contract defined
     /// in [`RawClock`]'s and [`RawClockVTable`]'s documentation is not upheld.
     #[inline]
     #[must_use]
@@ -131,6 +131,14 @@ impl Clock {
     #[must_use]
     pub const fn tick_duration(&self) -> Duration {
         self.tick_duration
+    }
+
+    /// Convert the given raw `u64` ticks into a [`Duration`] using this clocks
+    /// internal tick duration.
+    ///
+    /// Returns `None` if the given `raw_ticks` cannot be represented by a `Duration`.
+    pub fn checked_ticks_to_duration(&self, raw_ticks: u64) -> Option<Duration> {
+        Some(self.tick_duration * u32::try_from(raw_ticks).ok()?)
     }
 
     /// Returns the maximum duration of this clock.
@@ -191,7 +199,7 @@ impl Drop for Clock {
 impl fmt::Debug for Clock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let vtable_ptr = ptr::from_ref(self.clock.vtable);
-        f.debug_struct("Waker")
+        f.debug_struct("Clock")
             .field("name", &self.name)
             .field("tick_duration", &self.tick_duration)
             .field("data", &self.clock.data)

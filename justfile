@@ -100,10 +100,9 @@ fuzz_args := ""
     {{ _buck2 }} test {{ _uquery(_q_fuzz_tests(_targets_query(targets))) }} {{ _platform_args }} {{ buck2_args }} {{ if fuzz_args == "" { "" } else { "-- " + fuzz_args } }}
 
 # run kernel selftests under qemu. Pinned to riscv64 for now; long-term this
-# should loop over every supported arch. Pass kernel bootargs after `--`, e.g.
-# just selftests -- --format=json
-@selftests *buck2_args:
-    {{ _buck2 }} test //sys:k23-qemu-tests --target-platforms //platforms:riscv64 {{ buck2_args }}
+# should loop over every supported arch.
+@selftests targets="//sys:k23-uefi-qemu-tests //sys:k23-flat-qemu-tests" *buck2_args:
+    {{ _buck2 }} test {{ targets }} --target-platforms //platforms:riscv64 {{ buck2_args }}
 
 # ===== formatting =====
 
@@ -138,7 +137,6 @@ benchmark targets="" *buck2_args:
 # audit the buck2 graph: cell config plus visibility/providers for top-level kernel targets.
 @buck2-audit:
     {{ _buck2 }} audit cell
-    {{ _buck2 }} audit providers //sys:k23 //sys:k23-qemu //sys/kernel:kernel //sys/loader:loader --target-platforms //platforms:riscv64
 
 # run cargo-deny against the third-party Cargo workspace.
 @cargo-deny:

@@ -2,7 +2,7 @@ load("//build:split_debuginfo.bzl", "split_debuginfo")
 
 _DEPS = [
     # internal libraries
-    "//sys/loader/api:loader-api",
+    "//sys/loader-api:loader-api",
     "//sys/async:kasync",
     "//lib/cpu-local:cpu-local",
     "//lib/trap:trap",

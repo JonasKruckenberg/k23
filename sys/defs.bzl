@@ -1,4 +1,6 @@
-def _k23_image(ctx: AnalysisContext) -> list[Provider]:
+load("//build:qemu.bzl", "K23BootInfo")
+
+def _k23_uefi_image(ctx: AnalysisContext) -> list[Provider]:
     loader_file = ctx.attrs.loader[DefaultInfo].default_outputs[0]
     kernel_file = ctx.attrs.kernel[DefaultInfo].default_outputs[0]
     kernel_debuginfo_file = ctx.attrs.kernel_debuginfo[DefaultInfo].default_outputs[0]
@@ -18,20 +20,20 @@ def _k23_image(ctx: AnalysisContext) -> list[Provider]:
         category = "mkdisk_img",
     )
 
-    return [DefaultInfo(
-        default_output = image,
-        other_outputs = [loader_file, kernel_file, kernel_debuginfo_file, esp]
-    )]
+    return [
+        DefaultInfo(default_output = image, other_outputs = [loader_file, kernel_file, kernel_debuginfo_file, esp]),
+        K23BootInfo(protocol = "uefi"),
+    ]
 
-k23_image = rule(
-    impl = _k23_image,
+k23_uefi_image = rule(
+    impl = _k23_uefi_image,
     doc = """
     Builds a UEFI-bootable ISO-9660 image containing an embedded FAT ESP with
     the loader (at `\\EFI\\BOOT\\BOOT<arch>.EFI`) and the kernel (at
     `\\EFI\\k23\\kernel.elf`), wired up via an El Torito UEFI boot catalog.
 
     On riscv64 the loader ELF shared object is first converted to a PE `.efi`
-    by `elf_to_efi` (see `sys/loader/defs.bzl`); aarch64 and x86_64 build
+    by `elf_to_efi` (see `sys/loader-efi/defs.bzl`); aarch64 and x86_64 build
     the loader directly against the native `*-unknown-uefi` rustc targets
     so no conversion is needed.
 
@@ -48,5 +50,20 @@ k23_image = rule(
             "prelude//cpu:x86_64": "x86_64",
         })),
         "_mkdisk_img": attrs.exec_dep(default = "root//build/mkdisk-img:mkdisk-img", providers = [RunInfo]),
+    },
+)
+
+def _k23_flat_image(ctx: AnalysisContext) -> list[Provider]:
+    loader = ctx.attrs.loader[DefaultInfo].default_outputs[0]
+    return [
+        DefaultInfo(default_output = loader),
+        K23BootInfo(protocol = "flat"),
+    ]
+
+k23_flat_image = rule(
+    impl = _k23_flat_image,
+    doc = "Wraps a self-contained flat loader ELF for direct QEMU kernel boot (`-kernel`).",
+    attrs = {
+        "loader": attrs.dep(providers = [DefaultInfo]),
     },
 )

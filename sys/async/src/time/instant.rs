@@ -19,16 +19,31 @@ impl Instant {
     pub const ZERO: Self = Self(Duration::ZERO);
 
     /// Returns an instant corresponding to "now" in the global timer.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the conversion from the "now" [`Ticks`] would overflow.
     pub fn now(timer: &Timer) -> Self {
         let now = timer.now();
-        Self(timer.ticks_to_duration(now))
+        Self(timer.ticks_to_duration(now).unwrap())
     }
 
-    /// Create a new `Instant` from the given raw [`Ticks`] using the global timer and clock.
-    /// Panics if no global timer is configured.
+    /// Create a new `Instant` from the given raw [`Ticks`] using the provided timer.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the conversion from the given [`Ticks`] would overflow.
     pub fn from_ticks(timer: &Timer, ticks: Ticks) -> Self {
-        let duration = timer.ticks_to_duration(ticks);
+        let duration = timer.ticks_to_duration(ticks).unwrap();
         Self(duration)
+    }
+
+    /// Create a new `Instant` from the given raw `u64` ticks using the timers clock.
+    ///
+    /// Returns `None` if the given `raw_ticks` cannot be represented by an `Instant`.
+    pub fn from_raw_ticks(timer: &Timer, raw_ticks: u64) -> Option<Self> {
+        let duration = timer.clock().checked_ticks_to_duration(raw_ticks)?;
+        Some(Self(duration))
     }
 
     /// Returns the raw [`Ticks`] that this `Instant` represents.

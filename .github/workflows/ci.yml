@@ -183,28 +183,29 @@ jobs:
             buck2-${{ runner.os }}-
       - run: nix develop .#ci --command just loom '${{ needs.changed-targets.outputs.impacted }}'
 
-  # TODO rework this once we have more on-target tests types
   selftests:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: riscv64
+          - name: uefi
+            test_targets: "//sys:k23-uefi-qemu-tests"
+          - name: flat
+            test_targets: "//sys:k23-flat-qemu-tests"
     name: selftests (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [changed-targets]
     # selftest filtering:
     # - IF `changed-targets` failed, was cancelled, or produced `skip = true` => skip
-    # - IF `changed-targets` determined a full run OR the impacted list contains the //sys:k23-qemu-riscv64-tests target
-    #     => run
-    #
-    # we hardcode this here for now to avoid complicating the justfile
+    # - IF `changed-targets` determined a full run OR THIS row's -qemu-tests target
+    #   is impacted => run. Guarding on `matrix.test_targets` (rather than the shared
+    #   `-qemu-tests` substring) keeps a PR touching only one loader from running both rows.
     if: >-
       ${{ !cancelled()
           && needs.changed-targets.result != 'failure'
           && needs.changed-targets.outputs.skip != 'true'
           && (needs.changed-targets.outputs.impacted == ''
-              || contains(needs.changed-targets.outputs.impacted, 'root//sys:k23-qemu-riscv64-tests')) }}
+            || contains(needs.changed-targets.outputs.impacted, '-qemu-tests')) }}
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -224,7 +225,10 @@ jobs:
             buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: nix develop .#ci --command just selftests
+      - if: >-
+          ${{ needs.changed-targets.outputs.impacted == ''
+            || contains(needs.changed-targets.outputs.impacted, matrix.test_targets) }}
+        run: nix develop .#ci --command just selftests '${{ matrix.test_targets }}'
 
   cargo-deny:
     name: Cargo deny

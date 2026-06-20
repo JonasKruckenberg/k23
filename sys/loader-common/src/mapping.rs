@@ -9,11 +9,10 @@ use core::ptr;
 use core::range::Range;
 
 use mem_core::{
-    AddressRangeExt, Flush, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress,
-    WriteOrExecute,
+    AddressRangeExt, Flush, FrameAllocator, MemoryAttributes, MemoryKind, PhysMap, PhysicalAddress,
+    VirtualAddress, WriteOrExecute,
 };
 
-use crate::frame_alloc::UefiFrameAlloc;
 use crate::kernel::{Permissions, RelocatedKernel};
 use crate::{KernelAspaceLayout, arch};
 
@@ -28,6 +27,7 @@ pub fn map_kernel_image(
     aspace_layout: &KernelAspaceLayout,
     kernel: &RelocatedKernel,
     physmap: &PhysMap,
+    frame_alloc: &impl FrameAllocator,
     flush: &mut Flush,
 ) -> crate::Result<()> {
     let granule = aspace.granule_size();
@@ -48,12 +48,56 @@ pub fn map_kernel_image(
 
         log::debug!("mapping {virt:?} => {phys} {attrs:?}");
 
+        // Safety: aspace_layout ensures region is disjoint (unmapped)
+        // and we explicitly aligned the ranges above.
         unsafe {
-            aspace.map_contiguous(virt.into(), phys, attrs, UefiFrameAlloc, physmap, flush)?;
+            aspace.map_contiguous(virt, phys, attrs, frame_alloc, physmap, flush)?;
         }
     }
 
+    log::debug!("apply kernel RELRO...");
+    protect_relro(aspace, aspace_layout, kernel, physmap, flush);
+    log::debug!("applied kernel RELRO");
+
     Ok(())
+}
+
+fn protect_relro(
+    aspace: &mut arch::KernelAspace,
+    aspace_layout: &KernelAspaceLayout,
+    kernel: &RelocatedKernel,
+    physmap: &PhysMap,
+    flush: &mut Flush,
+) {
+    // calculate and apply RELRO
+    let relro = {
+        let start = aspace_layout
+            .kernel_image
+            .start
+            .add(kernel.relro_range().start)
+            .align_down(aspace.granule_size());
+
+        let end = aspace_layout
+            .kernel_image
+            .start
+            .add(kernel.relro_range().end)
+            // NB: glibc aligns-down BOTH boundaries
+            // (https://elixir.bootlin.com/glibc/glibc-2.35/source/elf/dl-reloc.c#L346)
+            .align_down(aspace.granule_size());
+
+        Range::from(start..end)
+    };
+
+    // Safety: `map_kernel_image` ensures region is already mapped and
+    // we ensured the alignment above
+    unsafe {
+        aspace.set_attributes(
+            relro,
+            MemoryAttributes::new().with(MemoryAttributes::READ, true),
+            physmap,
+            flush,
+        );
+    }
 }
 
 pub fn map_tls_block(
@@ -61,6 +105,7 @@ pub fn map_tls_block(
     aspace_layout: &KernelAspaceLayout,
     boot_hart_tls: &[u8],
     physmap: &PhysMap,
+    frame_alloc: &impl FrameAllocator,
     flush: &mut Flush,
 ) -> crate::Result<()> {
     let phys = PhysicalAddress::from_ptr(boot_hart_tls.as_ptr());
@@ -69,12 +114,14 @@ pub fn map_tls_block(
         .with(MemoryAttributes::READ, true)
         .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write);
 
+    // Safety: aspace_layout ensures region is disjoint (unmapped)
+    // and allocator ensures phys allocation is aligned
     unsafe {
         aspace.map_contiguous(
-            aspace_layout.boot_hart_tls.into(),
+            aspace_layout.boot_hart_tls,
             phys,
             attrs,
-            UefiFrameAlloc,
+            frame_alloc,
             physmap,
             flush,
         )?;
@@ -88,6 +135,7 @@ pub fn map_stack(
     aspace_layout: &KernelAspaceLayout,
     boot_hart_stack: &[u8],
     physmap: &PhysMap,
+    frame_alloc: &impl FrameAllocator,
     flush: &mut Flush,
 ) -> crate::Result<()> {
     let phys = PhysicalAddress::from_ptr(boot_hart_stack.as_ptr());
@@ -96,12 +144,14 @@ pub fn map_stack(
         .with(MemoryAttributes::READ, true)
         .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write);
 
+    // Safety: aspace_layout ensures region is disjoint (unmapped)
+    // and allocator ensures phys allocation is aligned
     unsafe {
         aspace.map_contiguous(
-            aspace_layout.boot_hart_stack.into(),
+            aspace_layout.boot_hart_stack,
             phys,
             attrs,
-            UefiFrameAlloc,
+            frame_alloc,
             physmap,
             flush,
         )?;
@@ -115,21 +165,24 @@ pub(crate) fn map_boot_info(
     aspace_layout: &KernelAspaceLayout,
     boot_info: &mut loader_api::BootInfo,
     physmap: &PhysMap,
+    frame_alloc: &impl FrameAllocator,
     flush: &mut Flush,
 ) -> crate::Result<()> {
     let phys = PhysicalAddress::from_ptr(ptr::from_mut(boot_info));
 
     let attrs = MemoryAttributes::new().with(MemoryAttributes::READ, true);
 
+    // Safety: aspace_layout ensures region is disjoint (unmapped)
+    // and allocator ensures phys allocation is aligned
     unsafe {
         aspace.map_contiguous(
-            aspace_layout.boot_info.into(),
+            aspace_layout.boot_info,
             phys,
             attrs,
-            UefiFrameAlloc,
+            frame_alloc,
             physmap,
             flush,
-        )?
+        )?;
     }
 
     Ok(())
@@ -139,21 +192,60 @@ pub(crate) fn map_physical_memory(
     aspace: &mut arch::KernelAspace,
     aspace_layout: &KernelAspaceLayout,
     physmap: &PhysMap,
+    frame_alloc: &impl FrameAllocator,
     flush: &mut Flush,
 ) -> crate::Result<()> {
     let attrs = MemoryAttributes::new()
         .with(MemoryAttributes::READ, true)
         .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write);
 
+    // Safety: aspace_layout ensures region is disjoint (unmapped)
+    // and physmap ensures minimum alignment
     unsafe {
         aspace.map_contiguous(
-            aspace_layout.physmap.range_virt().into(),
+            aspace_layout.physmap.range_virt(),
             aspace_layout.physmap.range_phys().start,
             attrs,
-            UefiFrameAlloc,
+            frame_alloc,
             physmap,
             flush,
-        )?
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Map the firmware console UART register block into the kernel address space
+/// as device memory.
+///
+/// `phys` is the UART register block and `virt` the range reserved for it in
+/// [`KernelAspaceLayout`]; both are page-aligned defensively before mapping, so
+/// their lengths must match. Like [`map_physical_memory`] this maps an existing
+/// device region — no frames are allocated for it.
+pub(crate) fn map_uart(
+    aspace: &mut arch::KernelAspace,
+    virt: Range<VirtualAddress>,
+    phys: Range<PhysicalAddress>,
+    physmap: &PhysMap,
+    frame_alloc: &impl FrameAllocator,
+    flush: &mut Flush,
+) -> crate::Result<()> {
+    let granule = aspace.granule_size();
+    let phys = phys.align_out(granule);
+    let virt = virt.align_out(granule);
+    debug_assert_eq!(virt.len(), phys.len());
+
+    let attrs = MemoryAttributes::new()
+        .with(MemoryAttributes::READ, true)
+        .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write)
+        .with(MemoryAttributes::KIND, MemoryKind::Device);
+
+    log::debug!("mapping UART {virt:?} => {phys:?}");
+
+    // Safety: `phys` is the firmware-described UART register block and `virt` is
+    // a fresh, unmapped range reserved for it in the kernel layout, of equal size.
+    unsafe {
+        aspace.map_contiguous(virt, phys.start, attrs, frame_alloc, physmap, flush)?;
     }
 
     Ok(())
@@ -162,6 +254,7 @@ pub(crate) fn map_physical_memory(
 pub fn map_handoff_trampoline(
     aspace: &mut arch::KernelAspace,
     physmap: &PhysMap,
+    frame_alloc: &impl FrameAllocator,
     flush: &mut Flush,
 ) -> crate::Result<Range<VirtualAddress>> {
     unsafe extern "C" {
@@ -179,14 +272,12 @@ pub fn map_handoff_trampoline(
         .with(MemoryAttributes::READ, true)
         .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Execute);
 
+    log::debug!("handoff trampoline {start}..{end}");
+
+    // Safety: page allocator ensures region is disjoint (unmapped) and we checked
+    // the bounds to be aligned above.
     unsafe {
-        aspace.map_identity(
-            Range::from(start..end),
-            attrs,
-            UefiFrameAlloc,
-            physmap,
-            flush,
-        )?
+        aspace.map_identity(Range::from(start..end), attrs, frame_alloc, physmap, flush)?;
     }
 
     Ok(Range::from(

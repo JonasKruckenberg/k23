@@ -12,7 +12,6 @@
 #![feature(debug_closure_helpers)]
 #![feature(iter_next_chunk)]
 #![feature(allocator_api)]
-#![feature(slice_partition_dedup)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 
 extern crate alloc;
@@ -34,6 +33,7 @@ mod tracing;
 mod util;
 mod wasm;
 
+use core::hint;
 use core::range::Range;
 use core::time::Duration;
 
@@ -42,7 +42,7 @@ use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
 use fastrand::FastRand;
 use kasync::executor::{Executor, Worker};
-use kasync::time::{Instant, Ticks, Timer};
+use kasync::time::{Instant, Timer};
 use loader_api::{BootInfo, LoaderConfig};
 use mem::frame_alloc;
 use mem_core::PhysicalAddress;
@@ -108,7 +108,14 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     });
 
     match res {
-        Ok(_) => arch::exit(0),
+        Ok(_) => {
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            riscv::semihosting::exit(0);
+
+            loop {
+                hint::spin_loop();
+            }
+        }
         // If the panic propagates up to this catch here there is nothing we can do, this is a terminal
         // failure.
         Err(_) => {
@@ -120,82 +127,91 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
 
 fn kmain(boot_info: &'static BootInfo) {
     let cpuid = boot_info.boot_cpu_id;
-    let boot_ticks = boot_info.boot_ticks;
 
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
     arch::per_cpu_init_early();
     tracing::per_cpu_init_early(cpuid);
 
-    let fdt_phys = boot_info.fdt.expect("loader did not provide FDT");
+    log::info!("{boot_info}");
+
+    let fdt_phys = boot_info
+        .firmware_tables
+        .raw_fdt
+        .expect("loader did not provide FDT");
+
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
+    assert_eq!(
+        boot_info.version,
+        loader_api::BOOT_INFO_VERSION,
+        "loader/kernel BootInfo version mismatch"
+    );
+
+    let uart = boot_info.uart.as_ref().unwrap();
+
+    // Safety: the loader mapped the UART register block as device memory
+    // and gave us its virtual base.
+    let (console_tx, console_rx) =
+        unsafe { uart_16550::open(uart.regs.start.get(), uart.clock_frequency, uart.baud_rate) };
+
+    // set up the basic functionality of the tracing subsystem as early as possible
+    tracing::init_early(console_tx);
+
+    // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
+    // is available
+    let allocatable_memories = allocatable_memory_regions(boot_info);
+    log::info!("allocatable memories: {:?}", allocatable_memories);
+    let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
+
+    // initializing the global allocator
+    allocator::init(&mut boot_alloc, boot_info);
+
+    // Safety: the loader passes a valid FDT virtual address via the physmap.
+    let device_tree =
+        unsafe { DeviceTree::from_fdt(boot_info.physmap.phys_to_virt(fdt_phys)).unwrap() };
+    log::debug!("{device_tree:?}");
+
+    let bootargs = bootargs::parse(&device_tree).unwrap();
+
+    // initialize the backtracing subsystem after the allocator has been set up
+    // since setting up the symbolization context requires allocation
+    backtrace::init(boot_info, bootargs.backtrace);
+
+    // fully initialize the tracing subsystem now that we can allocate
+    tracing::init(bootargs.log);
+
+    // perform global, architecture-specific initialization
+    let arch = arch::init();
+
+    // Hand the still-free regions (after the initial-heap carve-out) to the frame
+    // allocator. `boot_alloc.free_regions()` reports usable bytes that haven't been
+    // burned during early boot, so the buddy never re-hands those out.
+    let free_regions: loader_api::MemoryRegions = boot_alloc
+        .free_regions()
+        .map(|range| loader_api::MemoryRegion {
+            range,
+            kind: loader_api::MemoryRegionKind::Usable,
+        })
+        .collect();
+    let frame_alloc = frame_alloc::init(boot_alloc, free_regions, &boot_info.physmap);
+
+    // wire the frame allocator into the kernel heap's OOM handler so the heap can grow
+    // automatically. Must come after `frame_alloc::init`; safe to come before `mem::init`
+    // since the OOM handler doesn't touch the kernel address space.
+    allocator::late_init(frame_alloc, bootargs.heap_max);
+
+    // initialize the virtual memory subsystem
+    mem::init(boot_info, &mut rng, frame_alloc).unwrap();
+
+    let cpu = arch::device::cpu::Cpu::new(&device_tree, cpuid).unwrap();
+
+    // single-CPU at handoff is the current contract.
+    let executor = Executor::with_capacity(1).unwrap();
+    let timer = Timer::new(Duration::from_millis(1), cpu.clock);
     let global = state::try_init_global(|| {
-        // set up the basic functionality of the tracing subsystem as early as possible
-        tracing::init_early();
-
-        log::info!("{boot_info}");
-
-        assert_eq!(
-            boot_info.version,
-            loader_api::BOOT_INFO_VERSION,
-            "loader/kernel BootInfo version mismatch"
-        );
-
-        // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
-        // is available
-        let allocatable_memories = allocatable_memory_regions(boot_info);
-        log::info!("allocatable memories: {:?}", allocatable_memories);
-        let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
-
-        // initializing the global allocator
-        allocator::init(&mut boot_alloc, boot_info);
-
-        // Safety: the loader passes a valid FDT virtual address via the physmap.
-        let device_tree =
-            unsafe { DeviceTree::from_fdt(boot_info.physmap.phys_to_virt(fdt_phys))? };
-        log::debug!("{device_tree:?}");
-
-        let bootargs = bootargs::parse(&device_tree)?;
-
-        // initialize the backtracing subsystem after the allocator has been set up
-        // since setting up the symbolization context requires allocation
-        backtrace::init(boot_info, bootargs.backtrace);
-
-        // fully initialize the tracing subsystem now that we can allocate
-        tracing::init(bootargs.log);
-
-        // perform global, architecture-specific initialization
-        let arch = arch::init();
-
-        // Hand the still-free regions (after the initial-heap carve-out) to the frame
-        // allocator. `boot_alloc.free_regions()` reports usable bytes that haven't been
-        // burned during early boot, so the buddy never re-hands those out.
-        let free_regions: loader_api::MemoryRegions = boot_alloc
-            .free_regions()
-            .map(|range| loader_api::MemoryRegion {
-                range,
-                kind: loader_api::MemoryRegionKind::Usable,
-            })
-            .collect();
-        let frame_alloc = frame_alloc::init(boot_alloc, free_regions, &boot_info.physmap);
-
-        // wire the frame allocator into the kernel heap's OOM handler so the heap can grow
-        // automatically. Must come after `frame_alloc::init`; safe to come before `mem::init`
-        // since the OOM handler doesn't touch the kernel address space.
-        allocator::late_init(frame_alloc, bootargs.heap_max);
-
-        // initialize the virtual memory subsystem
-        mem::init(boot_info, &mut rng, frame_alloc).unwrap();
-
-        let cpu = arch::device::cpu::Cpu::new(&device_tree, cpuid)?;
-
-        // single-CPU at handoff is the current contract.
-        let executor = Executor::with_capacity(1).unwrap();
-        let timer = Timer::new(Duration::from_millis(1), cpu.clock);
-
         Ok(Global {
-            time_origin: Instant::from_ticks(&timer, Ticks(boot_ticks)),
+            time_origin: Instant::from_raw_ticks(&timer, boot_info.boot_ticks).unwrap(),
             timer,
             executor,
             device_tree,
@@ -214,19 +230,21 @@ fn kmain(boot_info: &'static BootInfo) {
         arch: arch_state,
     });
 
+    let now = Instant::now(&global.timer);
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
-        Instant::now(&global.timer).duration_since(Instant::ZERO),
-        Instant::from_ticks(&global.timer, Ticks(boot_ticks)).elapsed(&global.timer)
+        now.duration_since(Instant::ZERO),
+        now.duration_since(global.time_origin)
     );
 
     let mut worker2 = Worker::new(&global.executor, FastRand::from_seed(rng.next_u64())).unwrap();
 
     cfg_if! {
         if #[cfg(test)] {
+            let _ = console_rx;
             arch::block_on(worker2.run(tests::run_tests(global))).unwrap().unwrap().unwrap().exit_if_failed();
         } else {
-            shell::init(&global.device_tree, &global.executor, 1);
+            shell::init(global.boot_info, console_rx, &global.executor, 1);
             arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap().unwrap_err(); // the only way `run` can return is when the executor is closed
         }
     }
@@ -239,27 +257,10 @@ fn kmain(boot_info: &'static BootInfo) {
 fn allocatable_memory_regions(
     boot_info: &BootInfo,
 ) -> ArrayVec<Range<PhysicalAddress>, { loader_api::MAX_MEMORY_REGIONS }> {
-    let mut out: ArrayVec<_, _> = boot_info
+    boot_info
         .memory_regions
         .iter()
         .filter(|region| region.kind.is_usable())
         .map(|region| region.range)
-        .collect();
-
-    // partition_dedup_by keeps the first of each "same" pair; mutating prev to absorb next
-    // and returning true folds runs of contiguous regions into a single entry.
-    let dedup_len = {
-        let (dedup, _) = out.partition_dedup_by(|next, prev| {
-            if prev.end == next.start {
-                prev.end = next.end;
-                true
-            } else {
-                false
-            }
-        });
-        dedup.len()
-    };
-    out.truncate(dedup_len);
-
-    out
+        .collect()
 }

@@ -5,13 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-mod bump;
-
 use core::alloc::Layout;
 use core::fmt;
 use core::range::Range;
-
-pub use bump::{BumpAllocator, DEFAULT_MAX_REGIONS};
 
 use crate::arch::Arch;
 use crate::physmap::PhysMap;

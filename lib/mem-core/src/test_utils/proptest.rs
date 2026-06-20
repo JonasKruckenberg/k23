@@ -21,7 +21,7 @@ use crate::{AddressRangeExt, PhysicalAddress, VirtualAddress};
     reason = "proptest's Strategy is implemented for core::ops::Range, not core::range::Range"
 )]
 pub fn virt(range: ops::Range<usize>) -> impl Strategy<Value = VirtualAddress> {
-    range.prop_map(|raw| VirtualAddress::new(raw))
+    range.prop_map(VirtualAddress::new)
 }
 
 /// Produces `VirtualAddress`s aligned to the given `alignment`
@@ -38,7 +38,7 @@ pub fn aligned_virt(
     reason = "proptest's Strategy is implemented for core::ops::Range, not core::range::Range"
 )]
 pub fn phys(range: ops::Range<usize>) -> impl Strategy<Value = PhysicalAddress> {
-    range.prop_map(|raw| PhysicalAddress::new(raw))
+    range.prop_map(PhysicalAddress::new)
 }
 
 /// Produces `PhysicalAddress`s aligned to the given `alignment`
@@ -49,6 +49,12 @@ pub fn aligned_phys(
     addr.prop_map(move |value| value.align_down(alignment))
 }
 
+/// Produces a set of [`Layout`]s for regions of physical memory aligned to `alignment`.
+/// Most useful for initializing an emulated machine.
+///
+/// # Panics
+///
+/// Panics if `alignment` is not a power of two.
 #[expect(
     clippy::disallowed_types,
     reason = "proptest's vec() size argument requires Into<SizeRange>, implemented for core::ops::Range"
@@ -58,6 +64,8 @@ pub fn region_layouts(
     alignment: usize,
     max_region_size: usize,
 ) -> impl Strategy<Value = Vec<Layout>> {
+    assert!(alignment.is_power_of_two());
+
     proptest::collection::vec(
         // Size of the region (will be aligned)
         alignment..=max_region_size,
@@ -67,6 +75,7 @@ pub fn region_layouts(
         regions
             .into_iter()
             .map(|size| {
+                // Safety: `alignment` is a power of two (asserted above), hence non-zero, so `- 1` cannot underflow
                 let align_minus_one = unsafe { alignment.unchecked_sub(1) };
 
                 let size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
@@ -81,6 +90,10 @@ pub fn region_layouts(
 
 /// Produces a set of *sorted*, *non-overlapping* regions of physical memory aligned to `alignment`.
 /// Most useful for initializing an emulated machine.
+///
+/// # Panics
+///
+/// Panics if `alignment` is not a power of two.
 #[expect(
     clippy::disallowed_types,
     reason = "proptest's vec() size argument requires Into<SizeRange>, implemented for core::ops::Range"
@@ -91,6 +104,8 @@ pub fn regions_phys(
     max_region_size: usize,
     max_gap_size: usize,
 ) -> impl Strategy<Value = Vec<Range<PhysicalAddress>>> {
+    assert!(alignment.is_power_of_two());
+
     proptest::collection::vec(
         (
             // Size of the region (will be aligned)
@@ -139,9 +154,9 @@ pub fn pick_address_in_regions(
     regions.prop_flat_map(|regions| {
         let r = regions.clone();
         let address = (0..regions.len()).prop_flat_map(move |chosen_region| {
-            let range = r[chosen_region].clone();
+            let range = r[chosen_region];
 
-            (range.start.get()..range.end.get()).prop_map(|raw| PhysicalAddress::new(raw))
+            (range.start.get()..range.end.get()).prop_map(PhysicalAddress::new)
         });
 
         (Just(regions), address)
@@ -149,6 +164,10 @@ pub fn pick_address_in_regions(
 }
 
 /// Produces a set of *sorted*, *non-overlapping* regions of virtual memory aligned to `alignment`.
+///
+/// # Panics
+///
+/// Panics if `alignment` is not a power of two.
 #[expect(
     clippy::disallowed_types,
     reason = "proptest's vec() size argument requires Into<SizeRange>, implemented for core::ops::Range"
@@ -159,6 +178,8 @@ pub fn regions_virt(
     max_region_size: usize,
     max_gap_size: usize,
 ) -> impl Strategy<Value = Vec<Range<VirtualAddress>>> {
+    assert!(alignment.is_power_of_two());
+
     proptest::collection::vec(
         (
             // Size of the region (will be aligned)

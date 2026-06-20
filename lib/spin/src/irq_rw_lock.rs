@@ -608,7 +608,6 @@ mod tests {
     /// rwlock can produce.
     const THREADS: usize = if cfg!(loom) { 2 } else { loom::MAX_THREADS - 1 };
 
-    /// Number of cycles to repeat concurrency tests for.
     /// Number of cycles to repeat concurrency tests for. Loom's state space
     /// blows up combinatorially — one cycle is enough to cover every
     /// interesting interleaving, more just wastes hours.
@@ -738,7 +737,7 @@ mod tests {
     fn concurrent_readers() {
         loom::model(|| {
             loom::lazy_static! {
-                static ref L: RwLock<()> = RwLock::new(());
+                static ref L: IrqRwLock<()> = IrqRwLock::new(());
             }
 
             let mut threads = Vec::new();
@@ -764,7 +763,7 @@ mod tests {
     fn concurrent_writers() {
         loom::model(|| {
             loom::lazy_static! {
-                static ref L: RwLock<usize> = RwLock::new(0);
+                static ref L: IrqRwLock<usize> = IrqRwLock::new(0);
             }
 
             let mut threads = Vec::new();
@@ -791,7 +790,7 @@ mod tests {
     fn concurrent_readers_and_writer() {
         loom::model(|| {
             loom::lazy_static! {
-                static ref L: RwLock<()> = RwLock::new(());
+                static ref L: IrqRwLock<()> = IrqRwLock::new(());
             }
 
             let mut threads = Vec::new();
@@ -820,7 +819,7 @@ mod tests {
     fn concurrent_exclusive_with_downgrade() {
         loom::model(|| {
             loom::lazy_static! {
-                static ref L: RwLock<usize> = RwLock::new(0);
+                static ref L: IrqRwLock<usize> = IrqRwLock::new(0);
             }
 
             let mut threads = Vec::new();
@@ -829,8 +828,8 @@ mod tests {
                     for _ in 0..CYCLES {
                         let mut g = L.write();
                         *g = g.wrapping_add(1);
-                        let g = RwLockWriteGuard::downgrade_to_upgradeable(g);
-                        let g = RwLockUpgradableGuard::downgrade(g);
+                        let g = IrqRwLockWriteGuard::downgrade_to_upgradeable(g);
+                        let g = IrqRwLockUpgradableGuard::downgrade(g);
                         drop(g);
 
                         #[cfg(loom)]
@@ -849,7 +848,7 @@ mod tests {
     fn concurrent_upgrade() {
         loom::model(|| {
             loom::lazy_static! {
-                static ref L: RwLock<usize> = RwLock::new(0);
+                static ref L: IrqRwLock<usize> = IrqRwLock::new(0);
             }
 
             let mut threads = Vec::new();
@@ -857,7 +856,7 @@ mod tests {
                 threads.push(thread::spawn(|| {
                     for _ in 0..CYCLES {
                         let g = L.upgradeable_read();
-                        let mut g = RwLockUpgradableGuard::upgrade(g);
+                        let mut g = IrqRwLockUpgradableGuard::upgrade(g);
                         *g = g.wrapping_add(1);
                         drop(g);
 
@@ -877,7 +876,7 @@ mod tests {
     fn concurrent_upgradable_with_downgrade() {
         loom::model(|| {
             loom::lazy_static! {
-                static ref L: RwLock<()> = RwLock::new(());
+                static ref L: IrqRwLock<()> = IrqRwLock::new(());
             }
 
             let mut threads = Vec::new();
@@ -885,7 +884,7 @@ mod tests {
                 threads.push(thread::spawn(|| {
                     for _ in 0..CYCLES {
                         let g = L.upgradeable_read();
-                        let g = RwLockUpgradableGuard::downgrade(g);
+                        let g = IrqRwLockUpgradableGuard::downgrade(g);
                         drop(g);
 
                         #[cfg(loom)]
@@ -904,7 +903,7 @@ mod tests {
     fn concurrent_readers_and_upgrader() {
         loom::model(|| {
             loom::lazy_static! {
-                static ref L: RwLock<()> = RwLock::new(());
+                static ref L: IrqRwLock<()> = IrqRwLock::new(());
             }
 
             let mut threads = Vec::new();
@@ -913,7 +912,7 @@ mod tests {
                     for _ in 0..CYCLES {
                         if i == 0 {
                             let g = L.upgradeable_read();
-                            let g = RwLockUpgradableGuard::upgrade(g);
+                            let g = IrqRwLockUpgradableGuard::upgrade(g);
                             drop(g);
                         } else {
                             drop(L.read());

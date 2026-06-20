@@ -1,38 +1,47 @@
 load("//build:qemu.bzl", "qemu_binary", "qemu_test")
-load(":defs.bzl", "k23_image")
+load(":defs.bzl", "k23_flat_image", "k23_uefi_image")
 
 # All targets here require a bare-metal target platform (os=none). Without
 # `--target-platforms //platforms:riscv64` (or aarch64/x86_64), buck reports
 # the target as incompatible rather than silently building for the host.
 _BARE_METAL = ["prelude//os/constraints:none"]
 
-k23_image(
-    name = "k23",
-    loader = "//sys/loader:loader",
+# ── UEFI images ───────────────────────────────────────────────────────────────
+
+k23_uefi_image(
+    name = "k23-uefi",
+    loader = "//sys/loader-efi:loader-efi",
     kernel = "//sys/kernel:kernel",
     kernel_debuginfo = "//sys/kernel:kernel[debuginfo]",
     target_compatible_with = _BARE_METAL,
 )
 
-# Test variant: same image shape, but the kernel is built with selftests
-# enabled. Reuses the regular loader for now.
-k23_image(
-    name = "k23-tests",
-    loader = "//sys/loader:loader",
+# Test variant: same image shape, but the kernel is built with selftests enabled.
+k23_uefi_image(
+    name = "k23-uefi-tests",
+    loader = "//sys/loader-efi:loader-efi",
     kernel = "//sys/kernel:kernel-tests",
     kernel_debuginfo = "//sys/kernel:kernel-tests[debuginfo]",
     target_compatible_with = _BARE_METAL,
 )
 
-# Boot the k23 image under QEMU via UEFI firmware
-qemu_binary(
-    name = "k23-qemu",
-    image = ":k23",
-    # target_compatible_with = _BARE_METAL,
+qemu_binary(name = "k23-uefi-qemu",       image = ":k23-uefi",       target_compatible_with = _BARE_METAL, visibility = ["PUBLIC"])
+qemu_test(  name = "k23-uefi-qemu-tests", image = ":k23-uefi-tests", target_compatible_with = _BARE_METAL)
+
+# ── Flat images ───────────────────────────────────────────────────────────────
+
+k23_flat_image(
+    name = "k23-flat",
+    loader = "//sys/loader-flat:loader-flat",
+    target_compatible_with = _BARE_METAL,
+    visibility = ["PUBLIC"],
 )
 
-qemu_test(
-    name = "k23-qemu-tests",
-    image = ":k23-tests",
-    # target_compatible_with = _BARE_METAL,
+k23_flat_image(
+    name = "k23-flat-tests",
+    loader = "//sys/loader-flat:loader-flat-tests",
+    target_compatible_with = _BARE_METAL,
 )
+
+qemu_binary(name = "k23-flat-qemu",       image = ":k23-flat",       target_compatible_with = _BARE_METAL, visibility = ["PUBLIC"])
+qemu_test(  name = "k23-flat-qemu-tests", image = ":k23-flat-tests", target_compatible_with = _BARE_METAL)

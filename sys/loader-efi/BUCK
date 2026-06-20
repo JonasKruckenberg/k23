@@ -1,5 +1,3 @@
-# The loader binary.
-#
 # riscv64 has no upstream UEFI target. We compile for
 # `riscv64gc-unknown-none-elf`, drive lld in GNU flavor via a linker script to
 # produce a position-independent ELF shared object, then `//build/riscv-elf2efi`
@@ -7,62 +5,52 @@
 
 load(":defs.bzl", "elf_to_efi")
 
-_RISCV64_LINK_FLAGS = [
-    "-Clink-arg=-shared",
-    "-Clink-arg=-Bsymbolic",
-    "-Clink-arg=--entry=efi_main",
-    "-Clink-arg=-zmax-page-size=0x1000",
-    "-Clink-arg=-znocombreloc",
-    "-Clink-arg=-znorelro",
-]
-
 export_file(
     name = "linker-script-riscv64",
     src = "linkers/riscv64-unknown-uefi.ld",
 )
 
 _DEPS = [
-    # internal libraries
-    "//sys/loader/api:loader-api",
-    "//lib/fdt:fdt",
+    "//sys/loader-common:loader-common",
+    "//sys/loader-api:loader-api",
+    "//lib/abort:abort",
     "//lib/mem-core:mem-core",
-    "//lib/arrayvec:arrayvec",
+    "//lib/fdt:fdt",
     # third-party dependencies
     "//third-party:uefi",
     "//third-party:log",
-    "//third-party:cfg-if",
-    "//third-party:object",
-    "//third-party:rand",
-    "//third-party:rand_chacha",
-    "//third-party:fallible-iterator"
-] + select({
-    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"]
-})
+]
 
-_RUSTC_FLAGS = _RISCV64_LINK_FLAGS + [
+_RUSTC_FLAGS = [
+    "-Clink-arg=-shared",
+    "-Clink-arg=-Bsymbolic",
+    "-Clink-arg=--entry=efi_main",
+    "-Clink-arg=-zmax-page-size=0x1000",
+    "-Clink-arg=-znocombreloc",
+    "-Clink-arg=-znorelro",
     "-Clink-arg=-T",
     "-Clink-arg=$(location :linker-script-riscv64)",
 ]
 
 rust_binary(
-    name = "_loader_raw",
+    name = "_loader-efi-raw",
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/main.rs",
     rustc_flags = _RUSTC_FLAGS,
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     deps = _DEPS,
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     incoming_transition = "//build:loader",
     visibility = ["PUBLIC"],
 )
 
 elf_to_efi(
-    name = "_loader_efi",
-    src = ":_loader_raw",
+    name = "_loader-efi",
+    src = ":_loader-efi-raw",
     visibility = [":loader"],
 )
 
 alias(
-    name = "loader",
-    actual = ":_loader_efi",
+    name = "loader-efi",
+    actual = ":_loader-efi",
     visibility = ["PUBLIC"],
 )

@@ -15,25 +15,21 @@ const S: &str = r#"
 /_/\_\/____/____/
 "#;
 
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use core::fmt;
 use core::fmt::Write;
-use core::ops::DerefMut;
-use core::range::Range;
 
-use fallible_iterator::FallibleIterator;
 use kasync::executor::Executor;
-use mem_core::{AddressRangeExt, PhysicalAddress};
+use loader_api::BootInfo;
 use spin::{Barrier, OnceLock};
+use uart_16550::Receiver;
 
-use crate::device_tree::DeviceTree;
-use crate::mem::{Mmap, with_kernel_aspace};
+use crate::irq;
 use crate::state::global;
-use crate::{arch, irq};
 
 static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 
-pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: usize) {
+pub fn init(boot_info: &BootInfo, rx: Receiver, sched: &'static Executor, num_cpus: usize) {
     // The `Barrier` below is here so that the maybe verbose startup logging is
     // out of the way before dropping the user into the kernel shell. If we don't
     // wait for the last CPU to have finished initializing it will mess up the shell output.
@@ -44,27 +40,41 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: us
         tracing::info!("{S}");
         tracing::info!("type `help` to list available commands");
 
+        let irq_num = boot_info.uart.unwrap().irq_num;
         sched
             .try_spawn(async move {
-                let (mut uart, _mmap, irq_num) = init_uart(devtree);
-
                 let mut line = String::new();
                 loop {
                     let res = irq::next_event(irq_num).await;
                     assert!(res.is_ok());
-                    let mut newline = false;
 
-                    let ch = uart.recv() as char;
-                    uart.write_char(ch).unwrap();
+                    let byte = rx.recv();
+                    let ch = byte as char;
+
+                    // Echo shares the console TX lock with the log writer so output
+                    // can't interleave; the guard is dropped before the next await.
+                    let tx = crate::tracing::console_tx();
+
+                    let mut newline = false;
                     match ch {
+                        // Emit a full CRLF on Enter rather than echoing the raw
+                        // CR/LF, so the cursor returns to column 0 on terminals
+                        // that don't translate newlines themselves (e.g. UTM).
                         '\n' | '\r' => {
                             newline = true;
-                            uart.write_str("\n\r").unwrap();
+                            tx.send(b'\r');
+                            tx.send(b'\n');
                         }
+                        // DEL: `Sender::send` expands this into the
+                        // backspace-space-backspace erase sequence.
                         '\u{007F}' => {
+                            tx.send(byte);
                             line.pop();
                         }
-                        ch => line.push(ch),
+                        ch => {
+                            tx.send(byte);
+                            line.push(ch);
+                        }
                     }
 
                     if newline {
@@ -75,49 +85,6 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: us
             })
             .unwrap();
     }
-}
-
-fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
-    let s = devtree.find_by_path("/soc/serial").unwrap();
-    assert!(s.is_compatible(["ns16550a"]));
-
-    let clock_freq = s
-        .property(devtree, "clock-frequency")
-        .unwrap()
-        .as_u32()
-        .unwrap();
-    let mut regs = s.regs(devtree).unwrap();
-    let reg = regs.next().unwrap().unwrap();
-    assert!(regs.next().unwrap().is_none());
-    let irq_num = s.property(devtree, "interrupts").unwrap().as_u32().unwrap();
-
-    let mmap = with_kernel_aspace(|aspace| {
-        // FIXME: this is gross, we're using the PhysicalAddress as an alignment utility :/
-        let size = PhysicalAddress::new(reg.size.unwrap())
-            .align_up(arch::PAGE_SIZE)
-            .get();
-
-        let range_phys = Range::from_start_len(PhysicalAddress::new(reg.starting_address), size);
-
-        let mmap = Mmap::new_phys(
-            aspace.clone(),
-            range_phys,
-            size,
-            arch::PAGE_SIZE,
-            Some("UART-16550".to_string()),
-        )
-        .unwrap();
-
-        mmap.commit(aspace.lock().deref_mut(), Range::from(0..size), true)
-            .unwrap();
-
-        mmap
-    });
-
-    // Safety: info comes from device tree
-    let uart = unsafe { uart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
-
-    (uart, mmap, irq_num)
 }
 
 pub fn eval(line: &str) {

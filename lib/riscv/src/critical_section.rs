@@ -21,7 +21,8 @@ unsafe impl Impl for SingleHartCriticalSection {
                 let mut sstatus: usize;
 
                 // Safety: inline assembly
-                unsafe { core::arch::asm!("csrrci {}, sstatus, 0b0010", out(reg) sstatus, options(nostack, nomem)) };
+                // NB: bitmask to disable SIE = sstatus bit 1
+                unsafe { core::arch::asm!("csrrci {}, sstatus, 0b0010", out(reg) sstatus) };
 
                 // Safety: `SStatus` is `repr(transparent)` over usize and can deal with arbitrary
                 // bit patters.

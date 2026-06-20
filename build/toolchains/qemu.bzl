@@ -1,7 +1,7 @@
 QEMUToolchainInfo = provider(fields = {
-    "qemu": provider_field(typing.Any),
+    "qemu": provider_field(Artifact),
     "qemu_binary": provider_field(str),
-    "qemu_args": provider_field(list[typing.Any], default = []),
+    "qemu_args": provider_field(list[str], default = []),
     "firmware_code_path": provider_field(str | None),
     "firmware_vars_path": provider_field(str | None)
 })

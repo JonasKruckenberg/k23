@@ -9,29 +9,16 @@ use core::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum Error {
-    Uefi(uefi::Error),
     Elf(object::Error),
     Alloc(mem_core::AllocError),
-
-    /// Wraps any error from the in-tree `fdt` crate.
     Fdt(fdt::Error),
     /// A `PT_LOAD` segment carries a `p_flags` combination the loader does not
     /// support (anything other than `R`, `R|W`, or `R|X`).
     InvalidSegmentFlags(u32),
-    /// Could not determine the boot CPU id from any source (rv64 only — the
-    /// `RISCV_EFI_BOOT_PROTOCOL` lookup failed and `/chosen/boot-hartid`
-    /// was absent).
-    NoBootCpuId,
-    NoRngSeed,
-    /// The SMBIOS config table did not start with a valid `_SM3_` 3.0 entry
-    /// point anchor, so it could not be staged.
-    BadSmbios,
-}
-
-impl From<uefi::Error> for Error {
-    fn from(err: uefi::Error) -> Self {
-        Self::Uefi(err)
-    }
+    TooManyRegions,
+    MissingSegment,
+    FieldOutOfRange,
+    MalformedImage,
 }
 
 impl From<fdt::Error> for Error {
@@ -52,10 +39,15 @@ impl From<mem_core::AllocError> for Error {
     }
 }
 
+impl From<core::num::TryFromIntError> for Error {
+    fn from(_err: core::num::TryFromIntError) -> Self {
+        Self::FieldOutOfRange
+    }
+}
+
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::Uefi(err) => write!(f, "UEFI error {err}"),
             Error::Elf(err) => write!(f, "Failed to parse kernel elf: {err}"),
             Error::Fdt(err) => write!(f, "FDT parse error: {err}"),
             Error::InvalidSegmentFlags(flags) => write!(
@@ -66,9 +58,22 @@ impl Display for Error {
                 f,
                 "Failed to allocate physical frames for kernel address space"
             ),
-            Error::NoBootCpuId => write!(f, "could not determine boot CPU id from firmware"),
-            Error::NoRngSeed => write!(f, "could not seed RNG from firmware"),
-            Error::BadSmbios => write!(f, "SMBIOS config table has no valid _SM3_ entry point"),
+            Error::TooManyRegions => {
+                write!(f, "firmware reported too many physical memory regions")
+            }
+            Error::MissingSegment => write!(f, "missing required section"),
+            Error::FieldOutOfRange => write!(f, "ELF/firmware field out of range"),
+            Error::MalformedImage => write!(f, "kernel ELF or debug-info file malformed"),
         }
     }
+}
+
+#[macro_export]
+macro_rules! ensure {
+    ($cond:expr, $err:expr) => {{
+        if !$cond {
+            log::error!("expected {} == true", stringify!($cond));
+            return Err($err);
+        }
+    }};
 }

@@ -763,7 +763,6 @@ mod tests {
     /// rwlock can produce.
     const THREADS: usize = if cfg!(loom) { 2 } else { loom::MAX_THREADS - 1 };
 
-    /// Number of cycles to repeat concurrency tests for.
     /// Number of cycles to repeat concurrency tests for. Loom's state space
     /// blows up combinatorially — one cycle is enough to cover every
     /// interesting interleaving, more just wastes hours.

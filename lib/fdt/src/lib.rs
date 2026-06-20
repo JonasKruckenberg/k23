@@ -168,6 +168,11 @@ impl<'dt> Fdt<'dt> {
         }
     }
 
+    /// ID of the "primary" CPU that is booting the system
+    pub fn boot_cpuid(&self) -> u32 {
+        self.header.boot_cpuid
+    }
+
     pub fn as_slice(&self) -> &'dt [u8] {
         // SAFETY: it is always valid to cast a `u32` to 4 `u8`s
         unsafe { slice::from_raw_parts(self.data.as_ptr().cast::<u8>(), size_of_val(self.data)) }

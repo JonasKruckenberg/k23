@@ -4917,6 +4917,7 @@ cargo.rust_library(
     edition = "2018",
     features = [
         "attributes",
+        "max_level_debug",
         "tracing-attributes",
     ],
     platform = {
@@ -5159,8 +5160,6 @@ cargo.rust_library(
         "alloc",
         "default",
         "global_allocator",
-        "logger",
-        "panic_handler",
     ],
     visibility = [],
     deps = [

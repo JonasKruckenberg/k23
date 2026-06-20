@@ -36,7 +36,14 @@ unsafe impl FrameAllocator for UefiFrameAlloc {
         &self,
         layout: Layout,
     ) -> core::result::Result<PhysicalAddress, AllocError> {
-        assert!(layout.align() <= uefi::boot::PAGE_SIZE);
+        if !crate::are_boot_services_active() {
+            log::warn!("cannot use UefiFrameAllocator after exiting boot services");
+            return Err(AllocError);
+        }
+
+        if layout.align() > uefi::boot::PAGE_SIZE {
+            return Err(AllocError);
+        }
 
         let pages = layout.pad_to_align().size().div_ceil(uefi::boot::PAGE_SIZE);
         let ptr = uefi::boot::allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, pages)
@@ -51,13 +58,20 @@ unsafe impl FrameAllocator for UefiFrameAlloc {
     }
 
     unsafe fn deallocate(&self, block: PhysicalAddress, layout: Layout) {
-        assert!(layout.align() <= uefi::boot::PAGE_SIZE);
+        if !crate::are_boot_services_active() {
+            log::warn!("cannot use UefiFrameAllocator after exiting boot services");
+            return;
+        }
+
+        debug_assert!(layout.align() <= uefi::boot::PAGE_SIZE);
 
         let pages = layout.pad_to_align().size().div_ceil(uefi::boot::PAGE_SIZE);
         let ptr = NonNull::dangling().with_addr(NonZero::new(block.get()).unwrap());
 
         // SAFETY: the caller guarantees `block`/`layout` denote a live allocation
         // previously handed out by this allocator.
-        unsafe { uefi::boot::free_pages(ptr, pages).unwrap() }
+        if let Err(err) = unsafe { uefi::boot::free_pages(ptr, pages) } {
+            log::warn!("failed to free {pages} pages at {block}: {err}");
+        }
     }
 }
