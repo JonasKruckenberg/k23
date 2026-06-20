@@ -5159,8 +5159,6 @@ cargo.rust_library(
         "alloc",
         "default",
         "global_allocator",
-        "logger",
-        "panic_handler",
     ],
     visibility = [],
     deps = [

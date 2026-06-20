@@ -14,8 +14,10 @@ mod arch;
 mod error;
 mod frame_alloc;
 mod kernel;
+mod logger;
 mod machine_info;
 mod mapping;
+mod panic_handler;
 
 use core::range::Range;
 use core::slice;
@@ -41,6 +43,8 @@ fn main() -> uefi::Status {
 
     // Step 1: Initialize UEFI logger
     uefi::helpers::init().unwrap();
+
+    logger::init();
 
     match init() {
         Ok(()) => Status::SUCCESS,
