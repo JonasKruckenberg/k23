@@ -1,0 +1,15 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+# Checks that every first-party `*.rs` file starts with the canonical license
+# header. Driven by `just check-license-headers` / `just fix-license-headers`.
+rust_binary(
+    name = "license-header-linter",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    deps = [
+        # third-party dependencies
+        "//third-party:clap",
+    ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)

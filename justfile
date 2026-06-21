@@ -156,21 +156,14 @@ benchmark targets="" *buck2_args:
     out=$({{ _buck2 }} uquery "kind(rust_library, //third-party/...) except deps({{ _default_query }})" {{ buck2_args }})
     [ -z "$out" ] || { echo "$out" >&2; exit 1; }
 
-# Space-separated buck target patterns whose source files are exempt from
-# `check-license-headers` (e.g. vendored crates outside //third-party/...).
-license_header_excluded := "//lib/range-tree: //lib/sharded-slab: //lib/wast:"
-[private]
-_license_header_excl := if license_header_excluded == "" { "" } else { f" except inputs(set({{license_header_excluded}}))" }
-
-# fail if any first-party Rust source file lacks the canonical license header
-# (build/license-header.txt) byte-for-byte at the start of the file.
+# fail if any first-party Rust source file lacks the canonical license header.
+# Exclusions (vendored crates, build/VCS dirs) live in //build/license-header-linter.
 @check-license-headers *buck2_args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    n=$(wc -c < build/license-header.txt | tr -d ' ')
-    files=$({{ _buck2 }} uquery "filter('\\.rs$', inputs({{ _default_query }})){{ _license_header_excl }}" {{ buck2_args }})
-    bad=$(for f in $files; do cmp -s <(head -c "$n" "$f") build/license-header.txt || echo "$f"; done)
-    [ -z "$bad" ] || { echo "::error::license header missing or mismatched:" >&2; echo "$bad" >&2; exit 1; }
+    {{ _buck2 }} run //build/license-header-linter:license-header-linter {{ buck2_args }} -- {{ justfile_directory() }}
+
+# prepend the canonical license header to any first-party file missing it.
+@fix-license-headers *buck2_args:
+    {{ _buck2 }} run //build/license-header-linter:license-header-linter {{ buck2_args }} -- --fix {{ justfile_directory() }}
 
 # ===== changed-targets (powered by buck2-change-detector) =====
 #
