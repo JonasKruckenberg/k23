@@ -138,8 +138,7 @@ benchmark targets="" *buck2_args:
 # audit the buck2 graph: cell config plus visibility/providers for top-level kernel targets.
 @buck2-audit:
     {{ _buck2 }} audit cell
-    {{ _buck2 }} audit providers //sys:k23 //sys:k23-qemu //sys/kernel:kernel //sys/loader:loader {{ _platform_args }}
-#   {{ _buck2 }} audit visibility //sys:k23 //sys:k23-qemu //sys/kernel:kernel //sys/loader:loader {{_platform_args}}
+    {{ _buck2 }} audit providers //sys:k23 //sys:k23-qemu //sys/kernel:kernel //sys/loader:loader --target-platforms //platforms:riscv64
 
 # run cargo-deny against the third-party Cargo workspace.
 @cargo-deny:
