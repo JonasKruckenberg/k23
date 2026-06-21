@@ -16,7 +16,6 @@ use std::{cmp, fmt};
 use arrayvec::ArrayVec;
 use cpu_local::collection::CpuLocal;
 
-use crate::address_space::Active;
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::frame_allocator::BumpAllocator;
 use crate::test_utils::arch::EmulateArch;
@@ -65,7 +64,7 @@ impl<A: Arch> Machine<A> {
         &self,
         physmap_start: VirtualAddress,
     ) -> (
-        HardwareAddressSpace<EmulateArch<A>, Active>,
+        HardwareAddressSpace<EmulateArch<A>>,
         BumpAllocator<parking_lot::RawMutex>,
         PhysMap,
     ) {
@@ -86,7 +85,7 @@ impl<A: Arch> Machine<A> {
 
         // Safety: we just created the address space, so don't have any pointers into it. In hosted tests
         // the programs memory and CPU registers are outside the address space anyway.
-        let address_space = unsafe { address_space.finish_bootstrap_and_activate() };
+        unsafe { address_space.activate() };
 
         (address_space, frame_allocator, chosen_physmap)
     }
