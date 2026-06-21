@@ -170,7 +170,7 @@ Four control paths in k23 escape normal Rust flow: **CPU traps**, **Wasm traps**
 ### Build hygiene
 
 - `third-party/Cargo.toml` change without regenerating `third-party/BUCK` via `just buckify` (reindeer) → **Major**.
-- New `.rs` carries the 7-line license header from `build/license-header.txt`. Vendored exempts: `lib/range-tree`, `lib/sharded-slab`, `lib/wast`.
+- New `.rs` carries the canonical license header (`Copyright 2023-Present`), enforced by `//build/license-header-linter` (`just check-license-headers`; `just fix-license-headers` to add it). Vendored exempts: `lib/range-tree`, `lib/sharded-slab`, `lib/wast`.
 - Adding/changing internal deps requires editing the consumer's `BUCK` `deps` — `just check` catches it.
 - New crates follow `manual/src/contributing/adding-a-crate.md`.
 
