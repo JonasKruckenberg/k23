@@ -95,7 +95,9 @@ impl SerialPort {
 
     fn line_sts(&mut self) -> LineStsFlags {
         // Safety: it is always safe to read the line status
-        unsafe { LineStsFlags::from_bits_truncate(*self.line_sts.load(Ordering::Relaxed)) }
+        unsafe {
+            LineStsFlags::from_bits_truncate(self.line_sts.load(Ordering::Relaxed).read_volatile())
+        }
     }
 
     pub fn send(&mut self, data: u8) {
@@ -108,15 +110,15 @@ impl SerialPort {
                 // special uart handling for backspace
                 8 | 0x7F => {
                     wait_for!(self.line_sts().contains(LineStsFlags::OUTPUT_EMPTY), boff);
-                    self_data.write(8);
+                    self_data.write_volatile(8);
                     wait_for!(self.line_sts().contains(LineStsFlags::OUTPUT_EMPTY), boff);
-                    self_data.write(b' ');
+                    self_data.write_volatile(b' ');
                     wait_for!(self.line_sts().contains(LineStsFlags::OUTPUT_EMPTY), boff);
-                    self_data.write(8);
+                    self_data.write_volatile(8);
                 }
                 _ => {
                     wait_for!(self.line_sts().contains(LineStsFlags::OUTPUT_EMPTY), boff);
-                    self_data.write(data);
+                    self_data.write_volatile(data);
                 }
             }
         }
@@ -129,7 +131,7 @@ impl SerialPort {
         // Safety: it is always safe to read from the channel
         unsafe {
             wait_for!(self.line_sts().contains(LineStsFlags::INPUT_FULL), boff);
-            self_data.read()
+            self_data.read_volatile()
         }
     }
 }
