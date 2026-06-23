@@ -119,6 +119,16 @@ fn init() -> Result<()> {
     )?;
     log::debug!("mapped kernel");
 
+    log::debug!("apply kernel RELRO...");
+    mapping::protect_relro(
+        &mut aspace,
+        &aspace_layout,
+        &kernel,
+        &identity_physmap,
+        &mut flush,
+    )?;
+    log::debug!("applied kernel RELRO");
+
     log::debug!("mapping boot hart TLS block...");
     mapping::map_tls_block(
         &mut aspace,

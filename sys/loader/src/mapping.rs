@@ -12,6 +12,8 @@ use mem_core::{
     AddressRangeExt, Flush, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress,
     WriteOrExecute,
 };
+use object::LittleEndian;
+use object::read::elf::ProgramHeader;
 
 use crate::frame_alloc::UefiFrameAlloc;
 use crate::kernel::{Permissions, RelocatedKernel};
@@ -51,6 +53,44 @@ pub fn map_kernel_image(
         unsafe {
             aspace.map_contiguous(virt.into(), phys, attrs, UefiFrameAlloc, physmap, flush)?;
         }
+    }
+
+    Ok(())
+}
+
+pub fn protect_relro(
+    aspace: &mut arch::KernelAspace,
+    aspace_layout: &KernelAspaceLayout,
+    kernel: &RelocatedKernel,
+    physmap: &PhysMap,
+    flush: &mut Flush,
+) -> crate::Result<()> {
+    // calculate and apply RELRO
+    let relro = {
+        let start = aspace_layout
+            .kernel_image
+            .start
+            .add(kernel.relro_range().start)
+            .align_down(aspace.granule_size());
+
+        let end = aspace_layout
+            .kernel_image
+            .start
+            .add(kernel.relro_range().end)
+            // NB: glibc aligns-down BOTH boundaries
+            // (https://elixir.bootlin.com/glibc/glibc-2.35/source/elf/dl-reloc.c#L346)
+            .align_down(aspace.granule_size());
+
+        Range::from(start..end)
+    };
+
+    unsafe {
+        aspace.set_attributes(
+            relro,
+            MemoryAttributes::new().with(MemoryAttributes::READ, true),
+            physmap,
+            flush,
+        );
     }
 
     Ok(())

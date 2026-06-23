@@ -64,7 +64,8 @@ pub struct KernelImage {
     pub load: ArrayVec<LoadSegment, MAX_LOAD_SEGMENTS>,
     tls: TlsTemplate,
     dynamic: ProgramHeader64<LittleEndian>,
-    relro: ProgramHeader64<LittleEndian>,
+    /// The range (offsets into in-memory image) that must be marked as read-only after appling relocations.
+    relro: Range<usize>,
 }
 
 pub struct Kernel {
@@ -125,7 +126,13 @@ impl Kernel {
                     assert!(tls.replace(parse_tls_segment(ph)?).is_none()) // TODO error
                 }
                 PT_DYNAMIC => assert!(dynamic.replace(ph.clone()).is_none()), // TODO error
-                PT_GNU_RELRO => assert!(relro.replace(ph.clone()).is_none()), // TODO error
+                PT_GNU_RELRO => {
+                    let start = usize::try_from(ph.p_vaddr(LittleEndian)).unwrap();
+                    let len = usize::try_from(ph.p_memsz(LittleEndian)).unwrap();
+                    let range = Range::from(start..start + len);
+
+                    assert!(relro.replace(range).is_none())
+                } // TODO error
                 _ => continue,
             }
         }
@@ -374,6 +381,10 @@ impl RelocatedKernel {
 
     pub fn tls_template(&self) -> &TlsTemplate {
         &self.image.tls
+    }
+
+    pub fn relro_range(&self) -> Range<usize> {
+        self.image.relro
     }
 
     /// Allocate the boot hart's TLS block and copy the `.tdata` template into it.
