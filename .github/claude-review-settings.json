@@ -19,11 +19,11 @@
       "Bash(gh pr diff *)",
       "Bash(gh api *)",
       "Bash(jq *)",
-      "Bash(printenv PR_NUMBER)"
+      "Bash(printenv PR_NUMBER)",
+      "Write(//tmp/**)"
     ],
     "deny": [
       "Edit",
-      "Write",
       "NotebookEdit",
       "AskUserQuestion",
       "Bash(git commit *)",
