@@ -115,31 +115,37 @@ jobs:
             7. Build the payload from FILES, not shell-quoted strings. Bash
                double-quoted strings keep `\n` as a literal two-character
                sequence; jq's `--arg` then JSON-escapes that to `\\n`, which
-               renders as backslash-n on GitHub instead of a line break. Write
-               the body and the comments array to disk first, then assemble
-               with `--rawfile` / `--slurpfile`:
+               renders as backslash-n on GitHub instead of a line break.
 
-                 cat > /tmp/review-body.md <<'EOF'
-                 **Verdict**: Needs Attention
-                 ... actual body content with real newlines ...
-                 EOF
-                 printf '%s' "$COMMENTS_JSON" > /tmp/comments.json
+               Create the scratch files with the **Write tool**, not the
+               shell. The bash sandbox is read-only and no file-writing
+               command (`cat <<EOF`, `tee`, `printf >`, redirection, `python3`)
+               is allow-listed, so every shell write is denied — do not
+               attempt them. Only the Write tool can create files, and it is
+               allow-listed for `/tmp/**`. Write two files:
+                 /tmp/review-body.md   — the review body, with real newlines
+                 /tmp/comments.json    — the comments array as JSON
+
+               Then assemble the payload with jq, which only READS those files
+               (reads are allowed under the sandbox), and pipe it straight into
+               `gh api` in step 8. Never redirect jq output to a file:
+
                  jq -n --arg sha "$SHA" \
                        --rawfile body /tmp/review-body.md \
                        --slurpfile comments /tmp/comments.json \
-                       '{commit_id:$sha, body:$body, comments:$comments[0]}' \
-                   > /tmp/review.json
-
-               Use a quoted heredoc (`<<'EOF'`) so backticks and `$` in the
-               body are not expanded.
+                       '{commit_id:$sha, body:$body, comments:$comments[0]}'
 
             8. Create the review as PENDING first (omit `event`), then verify
                the rendered body before submitting. A pending review is
                visible only to the bot, so this leaves no public artifact:
 
-                 REVIEW_ID=$(gh api -X POST \
-                   "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
-                   --input /tmp/review.json --jq '.id')
+                 REVIEW_ID=$(jq -n --arg sha "$SHA" \
+                       --rawfile body /tmp/review-body.md \
+                       --slurpfile comments /tmp/comments.json \
+                       '{commit_id:$sha, body:$body, comments:$comments[0]}' \
+                   | gh api -X POST \
+                       "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+                       --input - --jq '.id')
 
                Read it back and confirm the body contains real line breaks:
 
