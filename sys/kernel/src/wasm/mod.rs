@@ -12,7 +12,7 @@ mod code_registry;
 mod compile;
 mod cranelift;
 mod engine;
-mod func;
+pub(crate) mod func;
 mod global;
 mod indices;
 mod instance;

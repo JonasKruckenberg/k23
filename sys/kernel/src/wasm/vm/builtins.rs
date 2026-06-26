@@ -249,13 +249,9 @@ fn memory_atomic_wait64(
 }
 
 fn raise(_store: &mut StoreOpaque, _instance: &mut Instance) {
-    tracing::debug!("{_store:?} {_instance:?}");
+    tracing::trace!("{_store:?} {_instance:?}");
 
-    todo!()
-
-    // unsafe {
-    //     crate::wasm::vm::trap_handler::raise_preexisting_trap()
-    // }
+    unsafe { crate::wasm::trap_handler::raise_preexisting_trap() }
 }
 
 pub mod raw {
