@@ -7,9 +7,8 @@
 
 use core::range::Range;
 
-use human_bytes::{GIB, KIB, MIB, TIB};
-
-use crate::arch::PageTableLevel;
+use crate::arch::{PageTableLevel, impl_maps_at};
+use crate::page_size::{Size1GiB, Size2MiB, Size4KiB, Size256TiB, Size512GiB};
 use crate::{MemoryAttributes, PhysicalAddress, VirtualAddress, WriteOrExecute};
 
 /// The number of usable bits in a `PhysicalAddress`. This may be used for address canonicalization.
@@ -37,11 +36,10 @@ impl super::Arch for Riscv64Sv39 {
 
     const DEFAULT_PHYSMAP_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
 
-    #[expect(clippy::identity_op, reason = "formatting")]
     const LEVELS: &'static [PageTableLevel] = &[
-        PageTableLevel::new(1 * GIB, 512, true),
-        PageTableLevel::new(2 * MIB, 512, true),
-        PageTableLevel::new(4 * KIB, 512, true),
+        PageTableLevel::new::<Size1GiB>(512, true),
+        PageTableLevel::new::<Size2MiB>(512, true),
+        PageTableLevel::new::<Size4KiB>(512, true),
     ];
 
     fn active_table(&self) -> Option<PhysicalAddress> {
@@ -89,6 +87,8 @@ impl super::Arch for Riscv64Sv39 {
     }
 }
 
+impl_maps_at!(Riscv64Sv39: Size1GiB, Size2MiB, Size4KiB);
+
 pub struct Riscv64Sv48 {
     asid: u16,
 }
@@ -96,12 +96,11 @@ pub struct Riscv64Sv48 {
 impl super::Arch for Riscv64Sv48 {
     type PageTableEntry = PageTableEntry;
 
-    #[expect(clippy::identity_op, reason = "formatting")]
     const LEVELS: &'static [PageTableLevel] = &[
-        PageTableLevel::new(512 * GIB, 512, true),
-        PageTableLevel::new(1 * GIB, 512, true),
-        PageTableLevel::new(2 * MIB, 512, true),
-        PageTableLevel::new(4 * KIB, 512, true),
+        PageTableLevel::new::<Size512GiB>(512, true),
+        PageTableLevel::new::<Size1GiB>(512, true),
+        PageTableLevel::new::<Size2MiB>(512, true),
+        PageTableLevel::new::<Size4KiB>(512, true),
     ];
 
     const DEFAULT_PHYSMAP_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
@@ -151,6 +150,8 @@ impl super::Arch for Riscv64Sv48 {
     }
 }
 
+impl_maps_at!(Riscv64Sv48: Size512GiB, Size1GiB, Size2MiB, Size4KiB);
+
 pub struct Riscv64Sv57 {
     asid: u16,
 }
@@ -158,13 +159,12 @@ pub struct Riscv64Sv57 {
 impl super::Arch for Riscv64Sv57 {
     type PageTableEntry = PageTableEntry;
 
-    #[expect(clippy::identity_op, reason = "formatting")]
     const LEVELS: &'static [PageTableLevel] = &[
-        PageTableLevel::new(256 * TIB, 512, true),
-        PageTableLevel::new(512 * GIB, 512, true),
-        PageTableLevel::new(1 * GIB, 512, true),
-        PageTableLevel::new(2 * MIB, 512, true),
-        PageTableLevel::new(4 * KIB, 512, true),
+        PageTableLevel::new::<Size256TiB>(512, true),
+        PageTableLevel::new::<Size512GiB>(512, true),
+        PageTableLevel::new::<Size1GiB>(512, true),
+        PageTableLevel::new::<Size2MiB>(512, true),
+        PageTableLevel::new::<Size4KiB>(512, true),
     ];
 
     const DEFAULT_PHYSMAP_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
@@ -213,6 +213,8 @@ impl super::Arch for Riscv64Sv57 {
         }
     }
 }
+
+impl_maps_at!(Riscv64Sv57: Size256TiB, Size512GiB, Size1GiB, Size2MiB, Size4KiB);
 
 mycelium_bitfield::bitfield! {
     pub struct PageTableEntry<usize> {

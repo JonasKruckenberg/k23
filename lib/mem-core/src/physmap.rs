@@ -8,7 +8,7 @@
 use core::cmp;
 use core::range::Range;
 
-use crate::{PhysicalAddress, VirtualAddress};
+use crate::{AddressRangeExt, PageSize, PhysicalAddress, VirtualAddress};
 
 /// Describes the region of virtual memory that maps all of physical memory. This region is used
 /// by the virtual memory subsystem to access memory where only the physical address is known (e.g.
@@ -29,7 +29,7 @@ impl PhysMap {
     /// # Panics
     ///
     /// Panics if the iterator is empty.
-    pub fn new(
+    pub fn new<S: PageSize>(
         physmap_base: VirtualAddress,
         regions: impl IntoIterator<Item = Range<PhysicalAddress>>,
     ) -> Self {
@@ -59,7 +59,7 @@ impl PhysMap {
         Self {
             translation_offset,
             range_phys,
-            range_virt,
+            range_virt: range_virt.align_out(S::BYTES),
         }
     }
 
@@ -70,7 +70,9 @@ impl PhysMap {
     /// # Panics
     ///
     /// Panics if the iterator is empty.
-    pub fn new_identity(regions: impl IntoIterator<Item = Range<PhysicalAddress>>) -> Self {
+    pub fn new_identity<S: PageSize>(
+        regions: impl IntoIterator<Item = Range<PhysicalAddress>>,
+    ) -> Self {
         let mut range_phys = Range::from(PhysicalAddress::MAX..PhysicalAddress::MIN);
 
         for region in regions {
@@ -90,7 +92,7 @@ impl PhysMap {
         Self {
             translation_offset: 0,
             range_phys,
-            range_virt,
+            range_virt: range_virt.align_out(S::BYTES),
         }
     }
 

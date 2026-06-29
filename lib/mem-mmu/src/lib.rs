@@ -19,7 +19,10 @@ mod utils;
 
 pub use address_space::HardwareAddressSpace;
 pub use flush::Flush;
-pub use table::{Table, marker};
+// Typed page-size selectors, re-exported so callers name a granularity
+// (`mem_mmu::Size2MiB`) without reaching into `mem-core` or any arch module.
+pub use mem_core::{MapsAt, PageSize, Size1GiB, Size2MiB, Size4KiB, Size256TiB, Size512GiB};
+pub use table::{Step, Table, marker};
 // Re-exported for the `mem-testkit` emulator and out-of-crate tests; the page-walk
 // helper is otherwise an internal detail of this crate.
 pub use utils::{PageTableEntries, page_table_entries_for};

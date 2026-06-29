@@ -18,15 +18,15 @@ mod mapping;
 
 use core::alloc::Layout;
 use core::range::Range;
-use core::{cmp, slice};
+use core::slice;
 
 pub use arch::disable_interrupts;
 pub use error::Error;
 pub use kernel::ImageSource;
-use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, UartInfo};
+use loader_api::{BootInfo, MemoryRegion, UartInfo};
 pub use machine_info::{DiscoveredUart, MachineInfo};
 use mem_core::{AddressRangeExt, FrameAllocator, PhysMap, PhysicalAddress, VirtualAddress};
-use mem_mmu::{Flush, HardwareAddressSpace};
+use mem_mmu::{Flush, HardwareAddressSpace, Size1GiB};
 
 use crate::kernel::{Kernel, RelocatedKernel, StagedKernel};
 
@@ -55,7 +55,8 @@ pub fn boot<S: ImageSource, A: FrameAllocator>(
 ) -> crate::Result<!> {
     let boot_ticks = arch::get_ticks();
 
-    let identity_physmap = PhysMap::new_identity(physical_memory_regions.iter().map(|r| r.range));
+    let identity_physmap =
+        PhysMap::new_identity::<Size1GiB>(physical_memory_regions.iter().map(|r| r.range));
     let arch = mem_core::arch::riscv64::Riscv64Sv39::new(0);
     let mut aspace = HardwareAddressSpace::new(arch, &identity_physmap, &frame_alloc)?;
     let mut flush = Flush::new();
@@ -193,25 +194,6 @@ pub fn boot<S: ImageSource, A: FrameAllocator>(
     // NB: handoff cannot return
 }
 
-/// Computes the _transitive hull_ of all usable physical memory regions reported by the firmware
-fn physical_memory_hull(
-    memory_regions: impl ExactSizeIterator<Item = MemoryRegion>,
-) -> Range<PhysicalAddress> {
-    let mut range_phys = Range::from(PhysicalAddress::MAX..PhysicalAddress::MIN);
-
-    let usable_regions = memory_regions
-        // filter out all unusable regions, we must never use them anyway so we might as well
-        // not bother tracking them in the physmap
-        .filter(|r| !matches!(r.kind, MemoryRegionKind::Unusable));
-
-    for region in usable_regions {
-        range_phys.start = cmp::min(range_phys.start, region.range.start);
-        range_phys.end = cmp::max(range_phys.end, region.range.end);
-    }
-
-    range_phys.align_out(2097152) // TODO remove
-}
-
 fn instantiate_stack(
     stack_size: usize,
     frame_alloc: &impl FrameAllocator,
@@ -321,7 +303,7 @@ fn layout_kernel_aspace(
 ) -> KernelAspaceLayout {
     const BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
 
-    let physmap = PhysMap::new(BASE, physical_memory_regions);
+    let physmap = PhysMap::new::<Size1GiB>(BASE, physical_memory_regions);
 
     let kernel_image =
         Range::from_start_len(physmap.range_virt().end, kernel.size()).align_out(granule);

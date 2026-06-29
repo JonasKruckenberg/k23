@@ -538,7 +538,7 @@ impl<const MAX: usize> ExactSizeIterator for Blocks<MAX> {}
 mod tests {
     use human_bytes::GIB;
     use loader_api::MemoryRegions;
-    use mem_core::PhysMap;
+    use mem_core::{PhysMap, Size4KiB};
     use mem_testkit::{EmulateArch, Machine, MachineBuilder, archtest};
 
     // The allocator's own items (`BumpAllocator`, `Arena`, …) and the crate-root `use` imports
@@ -621,7 +621,7 @@ mod tests {
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
                 BumpAllocator::new::<A>(usable_regions(&machine));
 
-            let physmap = PhysMap::new_identity(machine.memory_regions());
+            let physmap = PhysMap::new_identity::<Size4KiB>(machine.memory_regions());
             let arch = EmulateArch::new(machine);
 
             // Based on the memory of the machine we set up above, we expect the allocator to
@@ -690,7 +690,7 @@ mod tests {
 
             let arch = EmulateArch::new(machine.clone());
 
-            let physmap = PhysMap::new_identity(machine.memory_regions());
+            let physmap = PhysMap::new_identity::<Size4KiB>(machine.memory_regions());
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
                 BumpAllocator::new::<A>(usable_regions(&machine));
@@ -728,7 +728,7 @@ mod tests {
                 ])
                 .finish();
 
-            let physmap = PhysMap::new_identity(machine.memory_regions());
+            let physmap = PhysMap::new_identity::<Size4KiB>(machine.memory_regions());
             let arch = EmulateArch::new(machine.clone());
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =

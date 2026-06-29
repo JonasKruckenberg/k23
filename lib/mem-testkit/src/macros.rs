@@ -45,6 +45,12 @@ macro_rules! for_arch {
 /// `#[cfg]` gates) is spelled out at the call site for the same reason — see
 /// [`for_arch!`].
 ///
+/// The type parameter may carry additional bounds beyond the leading one (e.g.
+/// `fn map<A: Arch + MapsAt<Size4KiB>>()` for tests that map at a fixed page size);
+/// the leading bound is a plain trait name and each further `+ Bound` a path. A bare
+/// trait-name leading bound (rather than an arbitrary path) is what lets the macro
+/// find the closing `>` unambiguously — a `tt`-greedy bound list cannot.
+///
 /// ```ignore
 /// archtest!([Riscv64Sv39, #[cfg(not(miri))] Riscv64Sv48] {
 ///     #[test]
@@ -67,12 +73,12 @@ macro_rules! archtest {
         )+
     };
     (@fns $archty:ident {
-        $( $(#[$tmeta:meta])* fn $test_name:ident<$ge:ident: $gen_ty:tt>() $body:block )*
+        $( $(#[$tmeta:meta])* fn $test_name:ident<$ge:ident: $bound:ident $(+ $extra:path)*>() $body:block )*
     }) => {
         $(
             $(#[$tmeta])*
             fn $test_name() {
-                fn $test_name<$ge: $gen_ty>() $body
+                fn $test_name<$ge: $bound $(+ $extra)*>() $body
                 $test_name::<mem_core::arch::riscv64::$archty>()
             }
         )*
