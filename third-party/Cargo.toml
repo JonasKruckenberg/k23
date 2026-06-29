@@ -13,7 +13,7 @@ cfg-if = "1.0.0"
 log = "0.4.27"
 lock_api = "0.4.13"
 bitflags = "2.9.1"
-tracing = { version = "0.1", default-features = false, features = ["attributes"] }
+tracing = { version = "0.1", default-features = false, features = ["attributes", "max_level_debug"] }
 tracing-core = { version = "0.1", default-features = false }
 gimli = { version = "0.33.0", default-features = false, features = ["read"] }
 fallible-iterator = { version = "0.3.0", default-features = false }
@@ -28,7 +28,8 @@ rand = { version = "0.10.0", default-features = false }
 rand_chacha = { version = "0.10.0", default-features = false }
 static_assertions = "1.1.0"
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
-critical-section = { version = "1.2.0", default_features = false, features = ["restore-state-bool"] }
+critical-section = { version = "1.2.0", default-features = false, features = ["restore-state-bool"] }
+uefi = { version = "0.37", features = [ "alloc", "global_allocator" ] }
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }
@@ -49,8 +50,8 @@ hashbrown = { version = "0.17", default-features = false, features = [
 ] }
 wasmparser = { version = "0.251", default-features = false, features = ["features", "validate", "simd"] }
 target-lexicon = { version = "0.13.3", default-features = false }
-cranelift-codegen = { version = "0.133.1", default-features = false, features = ["core", "riscv64"] }
-cranelift-frontend = { version = "0.133.1", default-features = false, features = ["core"] }
+cranelift-codegen = { version = "0.133.1", default-features = false, features = ["riscv64"] }
+cranelift-frontend = { version = "0.133.1", default-features = false }
 cranelift-entity = { version = "0.133.1", default-features = false }
 wasmtime-slab = "34.0.0"
 
@@ -79,7 +80,7 @@ libfuzzer-sys = { version = "0.4", optional = true }
 fatfs = { version = "0.3.6", default-features = false, features = ["std", "alloc"], optional = true }
 clap = { version = "4.5.38", features = ["derive", "env"], optional = true }
 memmap2 = { version = "0.9.10", optional = true }
-object = { version = "0.39.1", optional = true }
+object = { version = "0.39.1", default-features = false, features = ["elf"], optional = true }
 
 [features]
 default = [
@@ -91,10 +92,12 @@ default = [
     "test-log/trace",
     "memchr/std",
     "zerocopy/std",
+    "object/default",
     "object/write",
     "cranelift-codegen/std",
     "cranelift-frontend/std",
     "critical-section/std",
+    "object/pe",
 
     "dep:proptest",
     "dep:proptest-derive",
@@ -123,4 +126,5 @@ default = [
 no_std = [
     "cranelift-codegen/core",
     "cranelift-frontend/core",
+    "object/read_core"
 ]

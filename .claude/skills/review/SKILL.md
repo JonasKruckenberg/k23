@@ -117,7 +117,7 @@ WebFetch when unsure — specs evolve. Cannot verify a CSR encoding / instructio
 
 - Trap / exception handlers (`lib/trap`, `sys/kernel` dispatch)
 - Async runtime core (`sys/async`: executor, Park, Notify, `block_on`) and scheduler
-- Pre-allocator-init paths (early `sys/loader`, kernel init)
+- No-allocator paths: kernel init before `talc` is up, and `sys/loader` **after `exit_boot_services`** (the UEFI firmware allocator is live only between `uefi::helpers::init()` and `exit_boot_services` — early-loader alloc is fine)
 - Page-table / VM ops (map, unmap, TLB shootdown, page-fault) — unrecoverable
 - Loader crypto verification — panic-induced fallback bypassing the signature/hash → **Blocker**
 - Hot Wasm guest entry/exit
@@ -191,7 +191,7 @@ A non-osdev reader unable to follow the change from comments alone → **Minor**
 
 ### Manual book (`manual/src`)
 
-User-visible changes ship a `manual/src/` update in the **same** change: boot args, public syscalls / host functions, public APIs of `sys/loader/api` and consumer crates, build/config knobs, new arches/devices/Wasm proposals. Missing entirely → **Major**; commit message describes it but the book doesn't → **Minor**.
+User-visible changes ship a `manual/src/` update in the **same** change: boot args, public syscalls / host functions, public APIs of `sys/loader-api` and consumer crates, build/config knobs, new arches/devices/Wasm proposals. Missing entirely → **Major**; commit message describes it but the book doesn't → **Minor**.
 
 ### Change hygiene
 

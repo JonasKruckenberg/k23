@@ -89,8 +89,7 @@ impl Cpu {
             .unwrap();
         tracing::trace!("CPU interrupt controller: {:?}", hlic_node);
 
-        let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
-        plic.irq_unmask(10);
+        let plic = device::plic::Plic::new(devtree, hlic_node)?;
 
         let clock = device::clock::new(devtree, cpu)?;
 

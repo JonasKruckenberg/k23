@@ -274,6 +274,7 @@ impl Mmap {
                     self.range.start,
                     NonZeroUsize::new(self.range.len()).unwrap(),
                     new_permissions.into(),
+                    aspace.frame_alloc.physmap,
                     &mut flush,
                 )?;
             };

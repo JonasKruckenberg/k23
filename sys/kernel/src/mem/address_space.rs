@@ -18,7 +18,7 @@ use core::ptr::NonNull;
 use core::range::{Range, RangeInclusive};
 
 use anyhow::{bail, ensure};
-use mem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use mem_core::{AddressRangeExt, PhysMap, PhysicalAddress, VirtualAddress};
 use rand::RngExt;
 use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;
@@ -83,9 +83,10 @@ impl AddressSpace {
     pub fn new_user(
         asid: u16,
         rng: Option<ChaCha20Rng>,
+        physmap: &PhysMap,
         frame_alloc: &'static FrameAllocator,
     ) -> crate::Result<Self> {
-        let (arch, _) = arch::AddressSpace::new(asid, frame_alloc)?;
+        let (arch, _) = arch::AddressSpace::new(asid, physmap, frame_alloc)?;
 
         #[allow(tail_expr_drop_order, reason = "")]
         Ok(Self {
@@ -255,6 +256,7 @@ impl AddressSpace {
             self.arch.unmap(
                 range.start,
                 NonZeroUsize::new(range.len()).unwrap(),
+                self.frame_alloc.physmap,
                 &mut flush,
             )?;
         }
@@ -321,6 +323,7 @@ impl AddressSpace {
                 range.start,
                 NonZeroUsize::new(range.len()).unwrap(),
                 new_permissions.into(),
+                self.frame_alloc.physmap,
                 &mut flush,
             )?;
         }
@@ -754,6 +757,7 @@ impl<'a> Batch<'a> {
                         phys,
                         NonZeroUsize::new(len).unwrap(),
                         self.flags,
+                        self.frame_alloc.physmap,
                         &mut flush,
                     )?;
                     virt = virt.add(len);

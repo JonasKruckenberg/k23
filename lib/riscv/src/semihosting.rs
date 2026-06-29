@@ -68,19 +68,19 @@ pub(crate) unsafe fn syscall_inner(_nr: usize, _arg: usize) -> usize {
     }
 }
 
-pub use syscall;
+pub(crate) use syscall;
 
 /// [SYS_EXIT (0x18)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit-0x18)
-pub const SYS_EXIT: usize = 0x18;
+pub(crate) const SYS_EXIT: usize = 0x18;
 
 #[cfg(target_pointer_width = "32")]
 /// [SYS_EXIT_EXTENDED (0x20)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit_extended-0x20)
-pub const SYS_EXIT_EXTENDED: usize = 0x20;
+pub(crate) const SYS_EXIT_EXTENDED: usize = 0x20;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(usize)]
 #[non_exhaustive]
-pub enum ExitReason {
+pub(crate) enum ExitReason {
     // Reason codes related to hardware exceptions:
     // AdpStoppedBranchThroughZero = 0x20000,
     // AdpStoppedUndefinedInstr = 0x20001,
@@ -108,7 +108,7 @@ pub enum ExitReason {
     clippy::cast_sign_loss,
     reason = "sign extended conversion from i32 to usize"
 )]
-pub(crate) fn exit(code: i32) {
+pub fn exit(code: i32) {
     // TODO: check sh_ext_exit_extended first
     sys_exit_extended(
         ExitReason::AdpStoppedApplicationExit,
@@ -124,7 +124,7 @@ pub(crate) fn exit(code: i32) {
 }
 
 /// [SYS_EXIT (0x18)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit-0x18)
-pub fn sys_exit(reason: ExitReason) {
+pub(crate) fn sys_exit(reason: ExitReason) {
     // Safety: syscall
     unsafe {
         #[cfg(target_pointer_width = "32")]
@@ -135,7 +135,7 @@ pub fn sys_exit(reason: ExitReason) {
 }
 
 /// [SYS_EXIT_EXTENDED (0x20)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit_extended-0x20)
-pub fn sys_exit_extended(reason: ExitReason, subcode: usize) {
+pub(crate) fn sys_exit_extended(reason: ExitReason, subcode: usize) {
     // Safety: syscall
     unsafe {
         #[cfg(target_pointer_width = "32")]

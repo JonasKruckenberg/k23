@@ -13,7 +13,7 @@ use core::{cmp, fmt, mem, slice};
 
 use cordyceps::List;
 use fallible_iterator::FallibleIterator;
-use mem_core::{AddressRangeExt, PhysicalAddress};
+use mem_core::{AddressRangeExt, PhysMap, PhysicalAddress};
 use smallvec::SmallVec;
 
 use super::frame::FrameInfo;
@@ -56,12 +56,13 @@ impl fmt::Debug for Arena {
 }
 
 impl Arena {
-    pub fn from_selection(selection: ArenaSelection) -> Self {
+    pub fn from_selection(selection: ArenaSelection, physmap: &PhysMap) -> Self {
         debug_assert!(selection.bookkeeping.len() >= bookkeeping_size(selection.arena.len()));
 
         // Safety: arena selection has ensured the region is valid
         let slots: &mut [MaybeUninit<FrameInfo>] = unsafe {
-            let ptr = arch::phys_to_virt(selection.bookkeeping.start)
+            let ptr = physmap
+                .phys_to_virt(selection.bookkeeping.start)
                 .as_mut_ptr()
                 .cast();
 

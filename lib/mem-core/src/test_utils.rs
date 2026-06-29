@@ -6,11 +6,13 @@
 // copied, modified, or distributed except according to those terms.
 
 mod arch;
+mod frame_allocator;
 mod machine;
 mod memory;
 pub mod proptest;
 
 pub use arch::EmulateArch;
+pub use frame_allocator::TestFrameAllocator;
 pub use machine::{Cpu, HasMemory, Machine, MachineBuilder, MissingMemory};
 pub use memory::Memory;
 

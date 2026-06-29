@@ -25,6 +25,7 @@ impl Drop for Memory {
         let regions = mem::take(&mut self.regions);
 
         for (_range, region, layout) in regions {
+            // Safety: we allocated the pointer with the layout at construction time
             unsafe { host_dealloc(region, layout) }
         }
     }
@@ -78,6 +79,13 @@ impl Memory {
         Some((*region, offset))
     }
 
+    /// # Panics
+    ///
+    /// Panics if the requested range is not a valid physical memory range.
+    #[expect(
+        clippy::mut_from_ref,
+        reason = "emulated physical memory aliases through raw pointers (like real MMIO); callers are responsible for not creating overlapping mutable views"
+    )]
     pub fn region(&self, range: Range<PhysicalAddress>, will_write: bool) -> &mut [u8] {
         let Some((mut region, offset)) = self.get_region_containing(range) else {
             let access_ty = if will_write { "write" } else { "read" };
@@ -88,6 +96,8 @@ impl Memory {
             )
         };
 
+        // Safety: `region` is a live allocation from `host_alloc`, valid for the lifetime of this
+        // `Memory`.
         let region = unsafe { region.as_mut() };
         &mut region[offset..offset + range.len()]
     }
@@ -96,6 +106,7 @@ impl Memory {
         let size = size_of::<T>();
         let region = self.region(Range::from_start_len(address, size), false);
 
+        // Safety: ensured by caller
         unsafe { region.as_ptr().cast::<T>().read() }
     }
 
@@ -103,6 +114,7 @@ impl Memory {
         let size = size_of::<T>();
         let region = self.region(Range::from_start_len(address, size), true);
 
+        // Safety: ensured by caller
         unsafe { region.as_mut_ptr().cast::<T>().write(value) }
     }
 
@@ -139,6 +151,8 @@ impl fmt::Debug for Memory {
 // Miri can't call `mmap`, so under `cfg(miri)` it uses the `System` branch below.
 #[cfg(all(unix, not(miri)))]
 fn host_alloc(layout: Layout) -> NonNull<[u8]> {
+    // Safety: `mmap` with NUL will ask the kernel to choose a memory range => safe.
+    // invalid requests yield `MAP_FAILED`, which is asserted against below.
     let ptr = unsafe {
         libc::mmap(
             std::ptr::null_mut(),
@@ -151,7 +165,7 @@ fn host_alloc(layout: Layout) -> NonNull<[u8]> {
     };
     assert_ne!(ptr, libc::MAP_FAILED, "mmap failed for {layout:?}");
     NonNull::new(std::ptr::slice_from_raw_parts_mut(
-        ptr as *mut u8,
+        ptr.cast::<u8>(),
         layout.size(),
     ))
     .unwrap()
@@ -159,8 +173,9 @@ fn host_alloc(layout: Layout) -> NonNull<[u8]> {
 
 #[cfg(all(unix, not(miri)))]
 unsafe fn host_dealloc(region: NonNull<[u8]>, _layout: Layout) {
-    let ret = unsafe { libc::munmap(region.as_ptr() as *mut libc::c_void, region.len()) };
-    assert_eq!(ret, 0, "munmap failed");
+    // Safety: ensured by caller
+    let ret = unsafe { libc::munmap(region.as_ptr().cast::<libc::c_void>(), region.len()) };
+    assert_eq!(ret, 0_i32, "munmap failed");
 }
 
 #[cfg(any(not(unix), miri))]

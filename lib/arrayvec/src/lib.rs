@@ -195,6 +195,38 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         }
     }
 
+    /// Removes an element from the vector and returns it.
+    ///
+    /// The removed element is replaced by the last element of the vector.
+    ///
+    /// This does not preserve ordering of the remaining elements, but is *O*(1).
+    /// If you need to preserve the element order, use [`remove`] instead.
+    #[inline]
+    pub fn swap_remove(&mut self, index: usize) -> T {
+        #[cold]
+        fn assert_failed(index: usize, len: usize) -> ! {
+            panic!("swap_remove index (is {index}) should be < len (is {len})");
+        }
+
+        let len = self.len();
+        if index >= len {
+            assert_failed(index, len);
+        }
+
+        // Safety: we have checked `index` to be within the initialized
+        // part of the vec.
+        unsafe {
+            // We replace self[index] with the last element. Note that if the
+            // bounds check above succeeds there must be a last element (which
+            // can be self[index] itself).
+            let value = ptr::read(self.as_ptr().add(index));
+            let base_ptr = self.as_mut_ptr();
+            ptr::copy(base_ptr.add(len - 1), base_ptr.add(index), 1);
+            self.len = len - 1;
+            value
+        }
+    }
+
     /// Remove all elements in the vector.
     pub fn clear(&mut self) {
         let len = self.len;

@@ -14,12 +14,11 @@ mod trap_handler;
 
 use core::arch::asm;
 
-use anyhow::ensure;
 pub use asid_allocator::AsidAllocator;
 pub use block_on::block_on;
 pub use mem::{
     AddressSpace, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_RANGE,
-    invalidate_range, is_canonical, is_kernel_address, is_user_address, phys_to_virt,
+    invalidate_range, is_canonical, is_kernel_address, is_user_address,
 };
 use mem_core::VirtualAddress;
 use riscv::sstatus::FS;
@@ -36,7 +35,6 @@ pub fn init() -> state::Global {
     let supported = riscv::sbi::supported_extensions().unwrap();
     tracing::trace!("Supported SBI extensions: {supported:?}");
 
-    mem::init();
     asid_allocator::init();
 
     state::Global {}
@@ -56,21 +54,13 @@ pub fn per_cpu_init_early() {
         scounteren::set_tm();
         scounteren::set_ir();
 
+        // we must set the SUM bit so wasm host code can access wasm guest pages
+        // which is otherwise forbidden
+        sstatus::set_sum();
+
         // Set the FPU state to initial
         sstatus::set_fs(FS::Initial);
     }
-}
-
-#[cold]
-pub fn per_cpu_init(devtree: &DeviceTree, cpuid: usize) -> crate::Result<state::CpuLocal> {
-    let cpu = Cpu::new(devtree, cpuid)?;
-
-    ensure!(
-        cpu.supports_rva20u64(),
-        "CPU {cpuid} does not support the RVA20U64 profile"
-    );
-
-    Ok(state::CpuLocal { cpu })
 }
 
 /// Late per-cpu and RISC-V specific initialization.

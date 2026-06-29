@@ -5,17 +5,36 @@ _DEPS = [
     "//lib/human-bytes:human-bytes",
     "//third-party:mycelium-bitfield",
     "//third-party:log",
-    "//third-party:lock_api",
     "//third-party:cfg-if",
 ] + select({
     "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
     "DEFAULT": [],
 })
 
+# Crates pulled in only by the `test_utils` feature (the `std`-backed host emulation harness:
+# `Machine`, `EmulateArch`, the proptest strategies, …).
+_TEST_UTILS_DEPS = [
+    "//lib/cpu-local:cpu-local",
+    "//third-party:libc",
+    "//third-party:proptest",
+    "//third-party:proptest-derive",
+]
+
+_TEST_UTILS_FEATURE = select({
+    "prelude//os/constraints:none": [],
+    "DEFAULT": ["test_utils"],
+})
+
+_TEST_UTILS_FEATURE_DEPS = select({
+    "prelude//os/constraints:none": [],
+    "DEFAULT": _TEST_UTILS_DEPS,
+})
+
 rust_library(
     name = "mem-core",
     srcs = glob(["src/**/*.rs"]),
-    deps = _DEPS,
+    features = _TEST_UTILS_FEATURE,
+    deps = _DEPS + _TEST_UTILS_FEATURE_DEPS,
     visibility = ["PUBLIC"],
     tests = [":mem-core_unittests"],
 )
@@ -23,13 +42,7 @@ rust_library(
 rust_test(
     name = "mem-core_unittests",
     srcs = glob(["**/*.rs"]),
-    deps = _DEPS + [
-        "//lib/cpu-local:cpu-local",
-        "//lib/spin:spin",
-        "//third-party:libc",
-        "//third-party:proptest",
-        "//third-party:proptest-derive",
-        "//third-party:parking_lot",
+    deps = _DEPS + _TEST_UTILS_DEPS + [
         "//third-party:tracing-subscriber",
         "//third-party:test-log",
     ],

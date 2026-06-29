@@ -42,6 +42,7 @@ DENY = [
     "clippy::recursive_format_impl",
 
     # unsafe / api discipline
+    "unsafe_op_in_unsafe_fn",
     "clippy::undocumented_unsafe_blocks",
     "clippy::as_underscore",
     "clippy::alloc_instead_of_core",

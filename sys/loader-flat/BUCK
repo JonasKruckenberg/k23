@@ -1,0 +1,87 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+export_file(
+    name = "linker-script-riscv64",
+    src = "linkers/riscv64-unknown-qemu.ld",
+)
+
+_DEPS = [
+    "//sys/loader-common:loader-common",
+    "//sys/loader-api:loader-api",
+    "//lib/abort:abort",
+    "//lib/mem-core:mem-core",
+    "//lib/arrayvec:arrayvec",
+    "//lib/fdt:fdt",
+    "//lib/spin:spin",
+    # third-party dependencies
+    "//third-party:log",
+    "//third-party:cfg-if",
+    "//third-party:lock_api",
+] + select({
+    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"]
+})
+
+_RUSTC_FLAGS = [
+    "-Clink-arg=-T",
+    "-Clink-arg=$(location :linker-script-riscv64)",
+]
+
+rust_binary(
+    name = "loader-flat",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    rustc_flags = _RUSTC_FLAGS,
+    deps = _DEPS,
+    env = {
+        "KERNEL": "$(location //sys/kernel:kernel)",
+        "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel[debuginfo])"
+    },
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    incoming_transition = "//build:loader",
+    visibility = ["PUBLIC"],
+    tests = [":frame-alloc-tests"],
+)
+
+# Host-side unit/property tests for the bump frame allocator. Built for the host (a hosted OS), so
+# it links the `std`-backed mem-core `test_utils` harness (`Machine`/`EmulateArch`/`PhysMap`); the
+# riscv loader binaries above never compile these `#[cfg(test)]` modules. `frame_alloc.rs` is its
+# own crate root here — it has no `crate::`-internal deps, only `mem_core`/`loader_api`/etc.
+rust_test(
+    name = "frame-alloc-tests",
+    srcs = ["src/frame_alloc.rs"],
+    crate_root = "src/frame_alloc.rs",
+    crate = "frame_alloc",
+    deps = [
+        "//lib/mem-core:mem-core",
+        "//sys/loader-api:loader-api",
+        "//lib/arrayvec:arrayvec",
+        "//third-party:lock_api",
+        "//third-party:log",
+        # test-only
+        "//third-party:parking_lot",
+        "//third-party:proptest",
+        "//lib/human-bytes:human-bytes",
+        "//third-party:tracing-subscriber",
+        "//third-party:test-log",
+    ],
+    env = {
+        "PROPTEST_DISABLE_FAILURE_PERSISTENCE": "true",
+    },
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "loader-flat-tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    rustc_flags = _RUSTC_FLAGS,
+    deps = _DEPS,
+    env = {
+        "KERNEL": "$(location //sys/kernel:kernel-tests)",
+        "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel-tests[debuginfo])"
+    },
+    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    incoming_transition = "//build:loader",
+    visibility = ["PUBLIC"],
+)

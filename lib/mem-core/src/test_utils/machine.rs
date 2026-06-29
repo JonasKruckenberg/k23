@@ -13,12 +13,11 @@ use std::range::Range;
 use std::sync::Arc;
 use std::{cmp, fmt};
 
-use arrayvec::ArrayVec;
 use cpu_local::collection::CpuLocal;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
-use crate::frame_allocator::BumpAllocator;
 use crate::test_utils::arch::EmulateArch;
+use crate::test_utils::frame_allocator::TestFrameAllocator;
 use crate::test_utils::memory::Memory;
 use crate::utils::page_table_entries_for;
 use crate::{
@@ -60,22 +59,26 @@ where
 impl<A: Arch> Machine<A> {
     /// Bootstrap an address space for this machine. Will set up initial page table and
     /// frame allocator.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the machine lacks enough physical memory for the root page table or the physmap.
     pub fn bootstrap_address_space(
         &self,
         physmap_start: VirtualAddress,
     ) -> (
         HardwareAddressSpace<EmulateArch<A>>,
-        BumpAllocator<parking_lot::RawMutex>,
+        TestFrameAllocator,
         PhysMap,
     ) {
         let arch = EmulateArch::new(self.clone());
 
-        let memory_regions: ArrayVec<_, _> = arch.machine().memory_regions().collect();
+        let memory_regions: Vec<_> = arch.machine().memory_regions().collect();
 
         let active_physmap = PhysMap::new_identity(memory_regions.clone());
         let chosen_physmap = PhysMap::new(physmap_start, memory_regions.clone());
 
-        let frame_allocator = BumpAllocator::new::<A>(memory_regions.clone());
+        let frame_allocator = TestFrameAllocator::new::<A>(memory_regions.clone());
 
         let mut address_space = HardwareAddressSpace::new(arch, &active_physmap, frame_allocator.by_ref())
             .expect("Machine does not have enough physical memory for root page table. Consider increasing configured physical memory sizes.");
@@ -98,6 +101,10 @@ impl<A: Arch> Machine<A> {
     /// Reads the value from `address` without moving it. This leaves the memory in `address` unchanged.
     ///
     /// This method **does not** support reads crossing page boundaries.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address range is not mapped as readable.
     ///
     /// # Safety
     ///
@@ -128,6 +135,7 @@ impl<A: Arch> Machine<A> {
                 size_of::<T>()
             );
 
+            // Safety: validity/alignment ensured by caller
             unsafe { self.read_phys(phys) }
         } else {
             core::panic!("read: {address} size {:#x} not present", size_of::<T>());
@@ -138,6 +146,10 @@ impl<A: Arch> Machine<A> {
     /// or dropping the old value.
     ///
     /// This method **does not** support writes crossing page boundaries.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address range is not mapped as writable.
     ///
     /// # Safety
     ///
@@ -167,6 +179,7 @@ impl<A: Arch> Machine<A> {
                 size_of::<T>()
             );
 
+            // Safety: validity/alignment ensured by caller
             unsafe { self.write_phys(phys, value) }
         } else {
             core::panic!("write: {address} size {:#x} not present", size_of::<T>());
@@ -176,6 +189,10 @@ impl<A: Arch> Machine<A> {
     /// Reads `count` bytes of memory starting at `address`. This leaves the memory in `address` unchanged.
     ///
     /// This method **does not** support reads crossing page boundaries.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address range is not mapped as readable.
     ///
     /// # Safety
     ///
@@ -199,6 +216,7 @@ impl<A: Arch> Machine<A> {
                 count
             );
 
+            // Safety: validity ensured by caller
             self.read_bytes_phys(phys, count)
         } else {
             panic!("write: {address} size {count:#x} not present");
@@ -213,6 +231,10 @@ impl<A: Arch> Machine<A> {
     ///
     /// Contrary to [`Self::read`], [`Self::write`], and [`Self::write_bytes`] this **does**
     /// support writes crossing page boundaries.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address range is not mapped as writable.
     ///
     /// # Safety
     ///
@@ -267,6 +289,7 @@ impl<A: Arch> Machine<A> {
     /// [valid]:
     /// [`ptr::read`]: core::ptr::read()
     pub unsafe fn read_phys<T>(&self, address: PhysicalAddress) -> T {
+        // Safety: validity/alignment ensured by caller
         unsafe { self.0.memory.read(address) }
     }
 
@@ -289,6 +312,7 @@ impl<A: Arch> Machine<A> {
     /// [valid]:
     /// [`ptr::write`]: core::ptr::write()
     pub unsafe fn write_phys<T>(&self, address: PhysicalAddress, value: T) {
+        // Safety: validity/alignment ensured by caller
         unsafe { self.0.memory.write(address, value) }
     }
 
@@ -336,7 +360,7 @@ impl<A: Arch> Machine<A> {
     /// later if the written bytes are not a valid representation of some T. **Use this to write
     /// bytes only** If you need a way to write a type to some address, use [`Self::write`].
     pub fn write_bytes_phys(&self, address: PhysicalAddress, value: u8, count: usize) {
-        self.0.memory.write_bytes(address, value, count)
+        self.0.memory.write_bytes(address, value, count);
     }
 
     /// Return the active page table on the calling (emulated) CPU (thread).
@@ -420,26 +444,47 @@ impl<A: Arch> Cpu<A> {
         self.page_table = Some(address);
     }
 
+    /// Invalidate page table mappings for the given virtual address `range` and `asid`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no page table is active on the calling CPU.
     pub fn invalidate(&mut self, asid: u16, range: Range<VirtualAddress>, memory: &Memory) {
         self.map
             .retain(|(key_asid, key_range), _| !(*key_asid == asid && range.contains(key_range)));
 
-        self.reload_map(asid, range, 0, self.page_table.unwrap(), memory);
+        // Safety: `self.page_table` is set by the hardware address space
+        unsafe {
+            self.reload_map(asid, range, 0, self.page_table.unwrap(), memory);
+        }
     }
 
+    /// Invalidate all page table mappings for the given `asid`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no page table is active on the calling CPU.
     pub fn invalidate_all(&mut self, asid: u16, memory: &Memory) {
         self.map.clear();
 
-        self.reload_map(
-            asid,
-            Range::from(VirtualAddress::MIN..VirtualAddress::MAX.align_down(A::GRANULE_SIZE)),
-            0,
-            self.page_table.unwrap(),
-            memory,
-        );
+        // Safety: `self.page_table` is set by the hardware address space
+        unsafe {
+            self.reload_map(
+                asid,
+                Range::from(VirtualAddress::MIN..VirtualAddress::MAX.align_down(A::GRANULE_SIZE)),
+                0,
+                self.page_table.unwrap(),
+                memory,
+            );
+        }
     }
 
-    fn reload_map(
+    /// Reload the translation map for the calling CPU.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `table` points at a valid, initialized page table.
+    unsafe fn reload_map(
         &mut self,
         asid: u16,
         range: Range<VirtualAddress>,
@@ -453,6 +498,7 @@ impl<A: Arch> Cpu<A> {
         let entries = page_table_entries_for::<A>(range, level);
 
         for (pte_index, range) in entries {
+            // Safety: ensured by caller
             let entry = unsafe {
                 memory.read::<A::PageTableEntry>(
                     table.add(pte_index as usize * size_of::<A::PageTableEntry>()),
@@ -460,7 +506,11 @@ impl<A: Arch> Cpu<A> {
             };
 
             if entry.is_table() {
-                self.reload_map(asid, range, depth + 1, entry.address(), memory);
+                // Safety: `entry.address()` is the frame this table descriptor points at; its
+                // validity is guaranteed by this function's own contract.
+                unsafe {
+                    self.reload_map(asid, range, depth + 1, entry.address(), memory);
+                }
             } else if entry.is_leaf() {
                 log::trace!("inserting map entry for {range:?}");
                 self.map
@@ -494,6 +544,10 @@ impl<A: Arch> MachineBuilder<A, MissingMemory> {
 impl<A: Arch> MachineBuilder<A, MissingMemory> {
     /// Sets the size and alignments(s) of the machines physical memory regions. The exact
     /// addresses will be chosen at random and can be retrieved via [`Machine::memory_regions`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the memory regions iterator is empty.
     pub fn with_memory_regions(
         self,
         region_sizes: impl IntoIterator<Item = Layout>,
@@ -515,6 +569,7 @@ impl<A: Arch> MachineBuilder<A, MissingMemory> {
 
 impl<A: Arch> MachineBuilder<A, HasMemory> {
     /// Finish constructing and return the machine.
+    #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
     pub fn finish(self) -> Machine<A> {
         let memory = self.memory.unwrap();
 

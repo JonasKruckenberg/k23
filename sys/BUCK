@@ -1,35 +1,47 @@
 load("//build:qemu.bzl", "qemu_binary", "qemu_test")
-load(":defs.bzl", "k23_image")
+load(":defs.bzl", "k23_flat_image", "k23_uefi_image")
 
-k23_image(
-    name = "k23-riscv64",
-    loader = "//sys/loader:loader",
+# All targets here require a bare-metal target platform (os=none). Without
+# `--target-platforms //platforms:riscv64` (or aarch64/x86_64), buck reports
+# the target as incompatible rather than silently building for the host.
+_BARE_METAL = ["prelude//os/constraints:none"]
+
+# ── UEFI images ───────────────────────────────────────────────────────────────
+
+k23_uefi_image(
+    name = "k23-uefi",
+    loader = "//sys/loader-efi:loader-efi",
     kernel = "//sys/kernel:kernel",
     kernel_debuginfo = "//sys/kernel:kernel[debuginfo]",
-    platform = "//platforms:riscv64",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    target_compatible_with = _BARE_METAL,
 )
 
-# Test variant: same image shape, but the loader embeds the test kernel.
-k23_image(
-    name = "k23-tests-riscv64",
-    loader = "//sys/loader:loader-tests",
+# Test variant: same image shape, but the kernel is built with selftests enabled.
+k23_uefi_image(
+    name = "k23-uefi-tests",
+    loader = "//sys/loader-efi:loader-efi",
     kernel = "//sys/kernel:kernel-tests",
     kernel_debuginfo = "//sys/kernel:kernel-tests[debuginfo]",
-    platform = "//platforms:riscv64",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    target_compatible_with = _BARE_METAL,
 )
 
-qemu_binary(
-    name = "k23-qemu-riscv64",
-    binary = ":k23-riscv64",
-    default_target_platform = "//platforms:riscv64",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+qemu_binary(name = "k23-uefi-qemu",       image = ":k23-uefi",       target_compatible_with = _BARE_METAL, visibility = ["PUBLIC"])
+qemu_test(  name = "k23-uefi-qemu-tests", image = ":k23-uefi-tests", target_compatible_with = _BARE_METAL)
+
+# ── Flat images ───────────────────────────────────────────────────────────────
+
+k23_flat_image(
+    name = "k23-flat",
+    loader = "//sys/loader-flat:loader-flat",
+    target_compatible_with = _BARE_METAL,
+    visibility = ["PUBLIC"],
 )
 
-qemu_test(
-    name = "k23-qemu-riscv64-tests",
-    binary = ":k23-tests-riscv64",
-    default_target_platform = "//platforms:riscv64",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+k23_flat_image(
+    name = "k23-flat-tests",
+    loader = "//sys/loader-flat:loader-flat-tests",
+    target_compatible_with = _BARE_METAL,
 )
+
+qemu_binary(name = "k23-flat-qemu",       image = ":k23-flat",       target_compatible_with = _BARE_METAL, visibility = ["PUBLIC"])
+qemu_test(  name = "k23-flat-qemu-tests", image = ":k23-flat-tests", target_compatible_with = _BARE_METAL)

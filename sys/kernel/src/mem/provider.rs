@@ -51,7 +51,10 @@ impl TheZeroFrame {
     }
     pub(super) fn frame(&self) -> &Frame {
         self.frame.get_or_init(|| {
-            let frame = self.frame_alloc.alloc_one_zeroed().unwrap();
+            let frame = self
+                .frame_alloc
+                .alloc_one_zeroed(self.frame_alloc.physmap)
+                .unwrap();
             tracing::trace!("THE_ZERO_FRAME: {}", frame.addr());
             frame
         })
@@ -61,7 +64,9 @@ impl TheZeroFrame {
 impl Provider for TheZeroFrame {
     fn get_frame(&self, _at_offset: usize, will_write: bool) -> crate::Result<Frame> {
         if will_write {
-            self.frame_alloc.alloc_one_zeroed().map_err(Into::into)
+            self.frame_alloc
+                .alloc_one_zeroed(self.frame_alloc.physmap)
+                .map_err(Into::into)
         } else {
             Ok(self.frame().clone())
         }
@@ -76,6 +81,7 @@ impl Provider for TheZeroFrame {
         if will_write {
             let frames = self.frame_alloc.alloc_contiguous_zeroed(
                 Layout::from_size_align(len.get(), arch::PAGE_SIZE).unwrap(),
+                self.frame_alloc.physmap,
             )?;
 
             let frames = FrameList::from_iter(frames.into_iter().map(|info| {

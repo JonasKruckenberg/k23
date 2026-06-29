@@ -126,7 +126,7 @@ unsafe impl Source for KernelHeapSource {
 
         let phys_start = frames.iter().next().unwrap().addr();
 
-        let virt_start = arch::phys_to_virt(phys_start);
+        let virt_start = fa.physmap.phys_to_virt(phys_start);
 
         // Safety: we just exclusively allocated this physical run from the frame allocator and
         // the HHDM mapping is wired and stable for the rest of the kernel's lifetime.
@@ -163,7 +163,7 @@ unsafe impl Source for KernelHeapSource {
 ///
 /// Runs before `frame_alloc::init`; the heap source stays in fallback mode (returning `Err`)
 /// until [`late_init`] wires up the frame allocator.
-pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
+pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &'static BootInfo) {
     let layout =
         Layout::from_size_align(INITIAL_HEAP_SIZE_PAGES * arch::PAGE_SIZE, arch::PAGE_SIZE)
             .unwrap();

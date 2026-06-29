@@ -9,7 +9,7 @@ use core::alloc::Layout;
 use core::range::Range;
 use core::{iter, ptr, slice};
 
-use mem_core::{AddressRangeExt, PhysicalAddress};
+use mem_core::{AddressRangeExt, PhysMap, PhysicalAddress};
 
 use crate::arch;
 
@@ -41,11 +41,12 @@ impl<'a> BootstrapAllocator<'a> {
         })
     }
 
-    pub fn allocate_one_zeroed(&mut self) -> Option<PhysicalAddress> {
+    pub fn allocate_one_zeroed(&mut self, physmap: &PhysMap) -> Option<PhysicalAddress> {
         // Safety: layout is always valid
-        self.allocate_contiguous_zeroed(unsafe {
-            Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE)
-        })
+        self.allocate_contiguous_zeroed(
+            unsafe { Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE) },
+            physmap,
+        )
     }
 
     pub fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
@@ -90,17 +91,17 @@ impl<'a> BootstrapAllocator<'a> {
         unimplemented!("Bootstrap allocator can't free");
     }
 
-    pub fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+    pub fn allocate_contiguous_zeroed(
+        &mut self,
+        layout: Layout,
+        physmap: &PhysMap,
+    ) -> Option<PhysicalAddress> {
         let requested_size = layout.pad_to_align().size();
         let addr = self.allocate_contiguous(layout)?;
 
         // Safety: we just allocated the frame
         unsafe {
-            ptr::write_bytes::<u8>(
-                arch::KERNEL_ASPACE_RANGE.start.add(addr.get()).as_mut_ptr(),
-                0,
-                requested_size,
-            );
+            ptr::write_bytes::<u8>(physmap.phys_to_virt(addr).as_mut_ptr(), 0, requested_size);
         }
         Some(addr)
     }
