@@ -29,13 +29,13 @@ rand_chacha = { version = "0.10.0", default-features = false }
 static_assertions = "1.1.0"
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
 critical-section = { version = "1.2.0", default-features = false, features = ["restore-state-bool"] }
-uefi = { version = "0.37", features = [ "alloc", "global_allocator" ] }
+uefi = { version = "0.38", features = [ "alloc", "global_allocator" ] }
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }
 memchr = { version = "2.7.4", default-features = false }
 leb128fmt = { version = "0.1.0", default-features = false }
-wasm-encoder = { version = "0.251.0", default-features = false }
+wasm-encoder = { version = "0.252.0", default-features = false }
 anyhow = { version = "1.0.98", default-features = false }
 libtest-mimic = "0.8.1"
 
@@ -48,7 +48,7 @@ hashbrown = { version = "0.17", default-features = false, features = [
     "inline-more",
     "default-hasher",
 ] }
-wasmparser = { version = "0.251", default-features = false, features = ["features", "validate", "simd"] }
+wasmparser = { version = "0.252", default-features = false, features = ["features", "validate", "simd"] }
 target-lexicon = { version = "0.13.3", default-features = false }
 cranelift-codegen = { version = "0.133.1", default-features = false, features = ["riscv64"] }
 cranelift-frontend = { version = "0.133.1", default-features = false }
