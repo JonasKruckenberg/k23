@@ -11,9 +11,44 @@ use std::alloc::Layout;
 use std::ops;
 use std::range::Range;
 
-use proptest::prelude::{Just, Strategy};
+use mem_core::{
+    AddressRangeExt, MemoryAttributes, PhysicalAddress, VirtualAddress, WriteOrExecute,
+};
+use proptest::prelude::{Just, Strategy, any};
 
-use crate::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+/// Produces arbitrary `VirtualAddress`s across the whole `usize` range.
+///
+/// Replaces the former `proptest_derive::Arbitrary` derive on `VirtualAddress`; keeping
+/// the strategy here (rather than an `Arbitrary` impl in `mem-core`) keeps `mem-core`
+/// free of any `proptest` dependency.
+pub fn any_virt() -> impl Strategy<Value = VirtualAddress> {
+    any::<usize>().prop_map(VirtualAddress::new)
+}
+
+/// Produces arbitrary `PhysicalAddress`s across the whole `usize` range.
+pub fn any_phys() -> impl Strategy<Value = PhysicalAddress> {
+    any::<usize>().prop_map(PhysicalAddress::new)
+}
+
+/// Produces arbitrary *valid* `MemoryAttributes`.
+///
+/// Generates only valid bit patterns: an arbitrary `u8` would allow the
+/// `WRITE_OR_EXECUTE` pattern `0b11`, which has no `WriteOrExecute` variant and panics
+/// in `get`. Replaces the former `Arbitrary for MemoryAttributes` impl in `mem-core`.
+pub fn attrs() -> impl Strategy<Value = MemoryAttributes> {
+    (any::<bool>(), 0u8..3).prop_map(|(read, write_or_execute)| {
+        let write_or_execute = match write_or_execute {
+            0 => WriteOrExecute::Neither,
+            1 => WriteOrExecute::Write,
+            2 => WriteOrExecute::Execute,
+            _ => unreachable!(),
+        };
+
+        MemoryAttributes::new()
+            .with(MemoryAttributes::READ, read)
+            .with(MemoryAttributes::WRITE_OR_EXECUTE, write_or_execute)
+    })
+}
 
 /// Produces `VirtualAddress`s in the given range
 #[expect(

@@ -9,9 +9,10 @@ use core::ptr;
 use core::range::Range;
 
 use mem_core::{
-    AddressRangeExt, Flush, FrameAllocator, MemoryAttributes, MemoryKind, PhysMap, PhysicalAddress,
+    AddressRangeExt, FrameAllocator, MemoryAttributes, MemoryKind, PhysMap, PhysicalAddress,
     VirtualAddress, WriteOrExecute,
 };
+use mem_mmu::Flush;
 
 use crate::kernel::{Permissions, RelocatedKernel};
 use crate::{KernelAspaceLayout, arch};

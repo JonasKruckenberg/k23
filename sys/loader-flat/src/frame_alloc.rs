@@ -538,8 +538,8 @@ impl<const MAX: usize> ExactSizeIterator for Blocks<MAX> {}
 mod tests {
     use human_bytes::GIB;
     use loader_api::MemoryRegions;
-    use mem_core::test_utils::{EmulateArch, Machine, MachineBuilder};
-    use mem_core::{PhysMap, archtest};
+    use mem_core::PhysMap;
+    use mem_testkit::{EmulateArch, Machine, MachineBuilder, archtest};
 
     // The allocator's own items (`BumpAllocator`, `Arena`, …) and the crate-root `use` imports
     // (`Arch`, `Layout`, `FrameAllocator`, `MemoryRegion`, `PhysicalAddress`, …) come in through
@@ -849,9 +849,9 @@ mod proptests {
 
     use human_bytes::{GIB, KIB};
     use mem_core::arch::Arch;
-    use mem_core::test_utils::proptest::region_layouts;
-    use mem_core::test_utils::{Machine, MachineBuilder};
-    use mem_core::{AddressRangeExt, FrameAllocator, for_arch};
+    use mem_core::{AddressRangeExt, FrameAllocator};
+    use mem_testkit::proptest::region_layouts;
+    use mem_testkit::{Machine, MachineBuilder, for_arch};
     use proptest::prelude::*;
 
     use super::tests::usable_regions;

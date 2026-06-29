@@ -671,6 +671,10 @@ impl RawBacktrace {
 
             // Get the next older frame pointer from the current Wasm frame
             // pointer.
+            #[expect(
+                clippy::cast_ptr_alignment,
+                reason = "fp points to an 8-byte-aligned stack slot holding the saved FP"
+            )]
             #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
             let next_older_fp = unsafe {
                 *fp.as_mut_ptr()

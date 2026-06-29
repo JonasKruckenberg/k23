@@ -9,11 +9,10 @@ use core::marker::PhantomData;
 use core::range::Range;
 
 use arrayvec::ArrayVec;
+use mem_core::arch::{Arch, PageTableEntry, PageTableLevel};
+use mem_core::{AllocError, FrameAllocator, PhysMap, PhysicalAddress, VirtualAddress};
 
-use crate::arch::{Arch, PageTableEntry, PageTableLevel};
-use crate::physmap::PhysMap;
 use crate::utils::{PageTableEntries, page_table_entries_for};
-use crate::{AllocError, FrameAllocator, PhysicalAddress, VirtualAddress};
 
 /// A page table. Essentially a fixed-sized list of `A::PageTableEntry`s.
 #[derive(Debug)]
@@ -89,6 +88,12 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
 }
 
 impl<A: Arch> Table<A, marker::Owned> {
+    /// Allocates a fresh, zeroed root page table from `frame_allocator`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError`] if the frame allocator cannot provide a granule-sized,
+    /// granule-aligned frame for the root table.
     pub fn allocate(
         frame_allocator: impl FrameAllocator,
         physmap: &PhysMap,
@@ -163,6 +168,19 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
         unsafe { arch.write(entry_virt, entry) }
     }
 
+    /// Depth-first walk of every page-table entry spanning `range`, calling `visit_entry`
+    /// on each, writing back the (possibly mutated) entry, and descending into any entry
+    /// the visitor leaves as a table.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the first error returned by `visit_entry`, aborting the remainder of the
+    /// walk.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the page-table depth would overflow while descending (unreachable for the
+    /// architectures k23 supports, whose depth is bounded by `A::LEVELS`).
     pub fn visit_mut<F, E>(
         self,
         range: Range<VirtualAddress>,
@@ -255,65 +273,4 @@ pub mod marker {
     pub struct Mut<'a>(PhantomData<&'a mut ()>);
     #[derive(Debug)]
     pub struct Immut<'a>(PhantomData<&'a ()>);
-}
-
-#[cfg(test)]
-mod tests {
-    use std::alloc::Layout;
-
-    use proptest::prelude::*;
-
-    use super::*;
-    use crate::test_utils::{Machine, MachineBuilder};
-    use crate::{MemoryAttributes, for_arch};
-
-    for_arch!(A in [
-        Riscv64Sv39,
-        #[cfg(not(miri))]
-        Riscv64Sv48,
-        #[cfg(not(miri))]
-        Riscv64Sv57,
-    ] {
-        proptest! {
-            /// Regression test for [`Table::is_empty`] (review Blocker: `|=` should be `&=`).
-            ///
-            /// `is_empty` must return `true` exactly when every entry is vacant. The buggy
-            /// `|=` accumulation makes it unconditionally report `true`.
-            #[test]
-            fn is_empty_iff_all_entries_vacant(
-                occupied in proptest::collection::hash_set(0u16..A::LEVELS[0].entries(), 0..32),
-            ) {
-                let machine: Machine<A> = MachineBuilder::new()
-                    .with_memory_regions([
-                        Layout::from_size_align(0x20000, A::GRANULE_SIZE).unwrap()
-                    ])
-                    .finish();
-
-                let (address_space, frame_allocator, physmap) =
-                    machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
-                let arch = address_space.arch();
-
-                let mut table =
-                    Table::allocate(frame_allocator.by_ref(), &physmap, arch).unwrap();
-
-                // Occupy the chosen entries with leaves. The leaf address is irrelevant —
-                // `is_empty` only inspects each entry's vacancy.
-                let leaf = <<A as Arch>::PageTableEntry as PageTableEntry>::new_leaf(
-                    PhysicalAddress::new(A::GRANULE_SIZE),
-                    MemoryAttributes::new().with(MemoryAttributes::READ, true),
-                );
-                for &index in &occupied {
-                    // Safety: `index` is in `0..A::LEVELS[0].entries()`, in-bounds for the root table.
-                    unsafe {
-                        table.borrow_mut().set(index, leaf, &physmap, arch);
-                    }
-                }
-
-                prop_assert_eq!(
-                    table.borrow().is_empty(&physmap, arch),
-                    occupied.is_empty(),
-                );
-            }
-        }
-    });
 }

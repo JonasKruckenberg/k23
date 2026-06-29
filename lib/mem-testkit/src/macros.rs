@@ -5,17 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-mod arch;
-mod frame_allocator;
-mod machine;
-mod memory;
-pub mod proptest;
-
-pub use arch::EmulateArch;
-pub use frame_allocator::TestFrameAllocator;
-pub use machine::{Cpu, HasMemory, Machine, MachineBuilder, MissingMemory};
-pub use memory::Memory;
-
 /// Emit a copy of `$body` for each architecture in the list, aliasing `$arch` to
 /// that architecture's type inside a module named after it.
 ///
@@ -39,7 +28,7 @@ macro_rules! for_arch {
             #[expect(non_snake_case, reason = "test module named after the arch it instantiates")]
             mod $archty {
                 use super::*;
-                type $arch = $crate::arch::riscv64::$archty;
+                type $arch = mem_core::arch::riscv64::$archty;
 
                 // The body is re-emitted verbatim per arch; capturing it as one `tt`
                 // and unwrapping it here avoids `macro_rules!` zipping the body items
@@ -84,7 +73,7 @@ macro_rules! archtest {
             $(#[$tmeta])*
             fn $test_name() {
                 fn $test_name<$ge: $gen_ty>() $body
-                $test_name::<$crate::arch::riscv64::$archty>()
+                $test_name::<mem_core::arch::riscv64::$archty>()
             }
         )*
     };
