@@ -268,9 +268,14 @@ impl PageTableLevel {
     }
 
     /// Extracts the page table entry (PTE) for a table at this level from the given address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this level has more than `u16::MAX + 1` entries (unreachable for the
+    /// architectures k23 supports).
     // TODO: tests
     //  - ensure this only returns in-bound indices
-    pub(crate) fn pte_index_of(&self, address: VirtualAddress) -> u16 {
+    pub fn pte_index_of(&self, address: VirtualAddress) -> u16 {
         let idx =
             u16::try_from(address.get() >> self.index_shift & (self.entries as usize - 1)).unwrap();
         debug_assert!(idx < self.entries);
@@ -279,7 +284,7 @@ impl PageTableLevel {
 
     /// Whether we can create a leaf entry at this level given the combination of base `VirtualAddress`,
     /// base `PhysicalAddress`, and remaining chunk length.
-    pub(crate) fn can_map(&self, virt: VirtualAddress, phys: PhysicalAddress, len: usize) -> bool {
+    pub fn can_map(&self, virt: VirtualAddress, phys: PhysicalAddress, len: usize) -> bool {
         let page_size = self.page_size();
 
         virt.is_aligned_to(page_size)

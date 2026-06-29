@@ -10,10 +10,8 @@ use std::collections::BTreeSet;
 use std::range::Range;
 use std::sync::Mutex;
 
-use crate::PhysicalAddress;
-use crate::address_range::AddressRangeExt;
-use crate::arch::Arch;
-use crate::frame_allocator::{AllocError, FrameAllocator};
+use mem_core::arch::Arch;
+use mem_core::{AddressRangeExt, AllocError, FrameAllocator, PhysicalAddress};
 
 /// A deliberately simple frame allocator for exercising `mem-core` in tests.
 ///

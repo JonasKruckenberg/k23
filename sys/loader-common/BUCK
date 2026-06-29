@@ -2,6 +2,7 @@ _DEPS = [
     # internal libraries
     "//sys/loader-api:loader-api",
     "//lib/mem-core:mem-core",
+    "//lib/mem-mmu:mem-mmu",
     "//lib/fdt:fdt",
     "//lib/arrayvec:arrayvec",
     # third-party dependencies
@@ -10,7 +11,10 @@ _DEPS = [
     "//third-party:cfg-if",
     "//third-party:object",
 ] + select({
-    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"]
+    # `riscv` is the only genuinely riscv64-only dependency; everything above is
+    # portable no_std, so on any other bare-metal target the crate builds without it.
+    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+    "DEFAULT": [],
 })
 
 rust_library(

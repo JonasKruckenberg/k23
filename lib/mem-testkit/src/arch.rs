@@ -9,9 +9,10 @@ use core::fmt;
 use core::range::Range;
 use std::mem;
 
-use crate::arch::{Arch, PageTableLevel};
-use crate::test_utils::Machine;
-use crate::{PhysicalAddress, VirtualAddress};
+use mem_core::arch::{Arch, PageTableLevel};
+use mem_core::{PhysicalAddress, VirtualAddress};
+
+use crate::machine::Machine;
 
 /// `[Arch`] implementation that emulates a given "real" architecture. For testing purposes.
 pub struct EmulateArch<A: Arch> {

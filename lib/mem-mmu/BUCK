@@ -1,29 +1,23 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 
-_DEPS = [
-    "//lib/human-bytes:human-bytes",
-    "//third-party:mycelium-bitfield",
-    "//third-party:cfg-if",
-] + select({
-    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
-    "DEFAULT": [],
-})
-
 rust_library(
-    name = "mem-core",
+    name = "mem-mmu",
     srcs = glob(["src/**/*.rs"]),
-    deps = _DEPS,
+    deps = [
+        "//lib/mem-core:mem-core",
+        "//lib/arrayvec:arrayvec",
+        "//third-party:log",
+    ],
     visibility = ["PUBLIC"],
 )
 
-# Tests live in `tests/` as out-of-crate integration tests (not inline `#[cfg(test)]`
-# modules) so they can depend on the std-backed `mem-testkit` harness without forming a
-# dependency cycle through `mem-core`. Each is its own test crate; they see only the
-# public API.
+# Tests live in `tests/` as out-of-crate integration tests so they can depend on the
+# std-backed `mem-testkit` harness (which depends on `mem-mmu`) without a cycle. They see
+# only the public API.
 _TEST_DEPS = [
-    ":mem-core",
+    ":mem-mmu",
+    "//lib/mem-core:mem-core",
     "//lib/mem-testkit:mem-testkit",
-    "//lib/human-bytes:human-bytes",
     "//third-party:proptest",
     "//third-party:test-log",
     "//third-party:tracing-subscriber",
@@ -35,9 +29,9 @@ _TEST_ENV = {
 }
 
 rust_test(
-    name = "address_tests",
-    srcs = ["tests/address.rs"],
-    crate_root = "tests/address.rs",
+    name = "flush_tests",
+    srcs = ["tests/flush.rs"],
+    crate_root = "tests/flush.rs",
     deps = _TEST_DEPS,
     env = _TEST_ENV,
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
@@ -45,9 +39,9 @@ rust_test(
 )
 
 rust_test(
-    name = "address_range_tests",
-    srcs = ["tests/address_range.rs"],
-    crate_root = "tests/address_range.rs",
+    name = "utils_tests",
+    srcs = ["tests/utils.rs"],
+    crate_root = "tests/utils.rs",
     deps = _TEST_DEPS,
     env = _TEST_ENV,
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
@@ -55,9 +49,9 @@ rust_test(
 )
 
 rust_test(
-    name = "memory_attributes_tests",
-    srcs = ["tests/memory_attributes.rs"],
-    crate_root = "tests/memory_attributes.rs",
+    name = "table_tests",
+    srcs = ["tests/table.rs"],
+    crate_root = "tests/table.rs",
     deps = _TEST_DEPS,
     env = _TEST_ENV,
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
@@ -65,9 +59,9 @@ rust_test(
 )
 
 rust_test(
-    name = "physmap_tests",
-    srcs = ["tests/physmap.rs"],
-    crate_root = "tests/physmap.rs",
+    name = "address_space_tests",
+    srcs = ["tests/address_space.rs"],
+    crate_root = "tests/address_space.rs",
     deps = _TEST_DEPS,
     env = _TEST_ENV,
     target_compatible_with = [host_configuration.os, host_configuration.cpu],

@@ -25,10 +25,8 @@ pub use error::Error;
 pub use kernel::ImageSource;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, UartInfo};
 pub use machine_info::{DiscoveredUart, MachineInfo};
-use mem_core::{
-    AddressRangeExt, Flush, FrameAllocator, HardwareAddressSpace, PhysMap, PhysicalAddress,
-    VirtualAddress,
-};
+use mem_core::{AddressRangeExt, FrameAllocator, PhysMap, PhysicalAddress, VirtualAddress};
+use mem_mmu::{Flush, HardwareAddressSpace};
 
 use crate::kernel::{Kernel, RelocatedKernel, StagedKernel};
 

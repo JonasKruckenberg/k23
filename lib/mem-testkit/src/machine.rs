@@ -14,16 +14,13 @@ use std::sync::Arc;
 use std::{cmp, fmt};
 
 use cpu_local::collection::CpuLocal;
+use mem_core::arch::{Arch, PageTableEntry, PageTableLevel};
+use mem_core::{FrameAllocator, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress};
+use mem_mmu::{HardwareAddressSpace, page_table_entries_for};
 
-use crate::arch::{Arch, PageTableEntry, PageTableLevel};
-use crate::test_utils::arch::EmulateArch;
-use crate::test_utils::frame_allocator::TestFrameAllocator;
-use crate::test_utils::memory::Memory;
-use crate::utils::page_table_entries_for;
-use crate::{
-    FrameAllocator, HardwareAddressSpace, MemoryAttributes, PhysMap, PhysicalAddress,
-    VirtualAddress,
-};
+use crate::arch::EmulateArch;
+use crate::frame_allocator::TestFrameAllocator;
+use crate::memory::Memory;
 
 /// A "virtual machine" that emulates a given architecture. It is intended to be used in tests
 /// and supports modeling the following properties:

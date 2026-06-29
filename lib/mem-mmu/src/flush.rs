@@ -9,9 +9,8 @@ use core::mem;
 use core::range::Range;
 
 use arrayvec::ArrayVec;
-
-use crate::VirtualAddress;
-use crate::arch::Arch;
+use mem_core::VirtualAddress;
+use mem_core::arch::Arch;
 
 pub enum Flush<const CAP: usize = 16> {
     Ranges(ArrayVec<Range<VirtualAddress>, CAP>),
@@ -75,41 +74,5 @@ impl Flush {
 
     pub fn invalidate_all(&mut self) {
         *self = Flush::All;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use proptest::prelude::*;
-
-    use super::*;
-
-    proptest! {
-        /// `invalidate` must never panic, regardless of how many ranges are pushed, and
-        /// every pushed range must remain covered by the resulting `Flush`.
-        #[test]
-        fn invalidate_records_every_range_without_panicking(
-            ranges in proptest::collection::vec(
-                (any::<VirtualAddress>(), any::<VirtualAddress>())
-                    .prop_map(|(a, b)| Range::from(a.min(b)..a.max(b))),
-                0..256,
-            ),
-        ) {
-            let mut flush = Flush::new();
-            for range in &ranges {
-                flush.invalidate(*range);
-            }
-
-            match flush {
-                // Coarsening to `All` covers every range trivially.
-                Flush::All => {}
-                // Otherwise every pushed range must have been recorded.
-                Flush::Ranges(recorded) => {
-                    for range in &ranges {
-                        prop_assert!(recorded.contains(range));
-                    }
-                }
-            }
-        }
     }
 }
