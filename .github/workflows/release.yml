@@ -1,0 +1,95 @@
+name: Release
+
+# Nightly release: once a day, build every k23 image (each image kind × target
+# platform) from the tip of `main` and republish them as the `nightly` prerelease.
+
+on:
+  schedule:
+    - cron: "17 1 * * *" # 03:17 CEST/02:17CET daily (off-peak to avoid cron backlog)
+  workflow_dispatch:
+
+concurrency:
+  # One rolling release; if a manual run overlaps the scheduled one, keep the newest.
+  group: release-nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: write # create/overwrite the release and upload the image assets
+
+jobs:
+  # Fan out over every (image kind × target platform) combination. Each leg
+  # builds one image and uploads it as a workflow artifact; the `publish` job
+  # below collects them into a single release. fail-fast is off so one leg
+  # breaking still lets the others run to completion (and surface their errors).
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # UEFI-bootable ISO.
+          - target: //sys:k23-uefi
+            platform: //platforms:riscv64
+            output: k23-riscv64-uefi.iso
+          # Flat loader ELF for direct QEMU `-kernel` boot.
+          - target: //sys:k23-flat
+            platform: //platforms:riscv64
+            output: k23-riscv64-flat.elf
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
+      - uses: actions/cache@v5
+        with:
+          path: buck-out
+          # Key per matrix so the kinds/arches don't clobber each other's cache.
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.target }}-${{ matrix.platform }}-${{ github.run_id }}
+          restore-keys: |
+            buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.target }}-${{ matrix.platform }}-
+            buck2-${{ runner.os }}-${{ github.job }}-
+            buck2-${{ runner.os }}-
+
+      # `--out` copies the target's default output to a stable path; buck-out
+      # paths are content-addressed and not safe to reference directly. A failed
+      # build fails this leg, so its image is absent and no release is published.
+      - name: build ${{ matrix.output }}
+        run: nix develop .#ci --command buck2 build ${{ matrix.target }} --target-platforms ${{ matrix.platform }} --out ${{ matrix.output }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output }}
+          path: ${{ matrix.output }}
+          if-no-files-found: error
+
+  # Collect every built image and force-move the rolling `nightly` release/tag to
+  # this commit. Runs once, after the whole matrix, so the asset uploads don't
+  # race. `needs: build` requires every leg to succeed, so a broken image keeps
+  # the previous nightly in place rather than publishing a partial release.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6 # gives `gh` a git remote to resolve the repo
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true # flatten every artifact into `artifacts/`
+
+      # Delete first so the tag does not keep pointing at the previous commit.
+      - name: publish rolling nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --cleanup-tag --yes || true
+          gh release create nightly artifacts/* \
+            --prerelease \
+            --target "${{ github.sha }}" \
+            --title "Nightly $(date -u +%F)" \
+            --notes "Rolling build from ${{ github.sha }}."
