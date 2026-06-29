@@ -12,7 +12,7 @@ use mem_core::{
     AddressRangeExt, FrameAllocator, MemoryAttributes, MemoryKind, PhysMap, PhysicalAddress,
     VirtualAddress, WriteOrExecute,
 };
-use mem_mmu::Flush;
+use mem_mmu::{Flush, Size1GiB, Size4KiB};
 
 use crate::kernel::{Permissions, RelocatedKernel};
 use crate::{KernelAspaceLayout, arch};
@@ -52,7 +52,7 @@ pub fn map_kernel_image(
         // Safety: aspace_layout ensures region is disjoint (unmapped)
         // and we explicitly aligned the ranges above.
         unsafe {
-            aspace.map_contiguous(virt, phys, attrs, frame_alloc, physmap, flush)?;
+            aspace.map_contiguous::<Size4KiB>(virt, phys, attrs, frame_alloc, physmap, flush)?;
         }
     }
 
@@ -92,7 +92,7 @@ fn protect_relro(
     // Safety: `map_kernel_image` ensures region is already mapped and
     // we ensured the alignment above
     unsafe {
-        aspace.set_attributes(
+        aspace.set_attributes::<Size4KiB>(
             relro,
             MemoryAttributes::new().with(MemoryAttributes::READ, true),
             physmap,
@@ -118,7 +118,7 @@ pub fn map_tls_block(
     // Safety: aspace_layout ensures region is disjoint (unmapped)
     // and allocator ensures phys allocation is aligned
     unsafe {
-        aspace.map_contiguous(
+        aspace.map_contiguous::<Size4KiB>(
             aspace_layout.boot_hart_tls,
             phys,
             attrs,
@@ -148,7 +148,7 @@ pub fn map_stack(
     // Safety: aspace_layout ensures region is disjoint (unmapped)
     // and allocator ensures phys allocation is aligned
     unsafe {
-        aspace.map_contiguous(
+        aspace.map_contiguous::<Size4KiB>(
             aspace_layout.boot_hart_stack,
             phys,
             attrs,
@@ -176,7 +176,7 @@ pub(crate) fn map_boot_info(
     // Safety: aspace_layout ensures region is disjoint (unmapped)
     // and allocator ensures phys allocation is aligned
     unsafe {
-        aspace.map_contiguous(
+        aspace.map_contiguous::<Size4KiB>(
             aspace_layout.boot_info,
             phys,
             attrs,
@@ -203,7 +203,7 @@ pub(crate) fn map_physical_memory(
     // Safety: aspace_layout ensures region is disjoint (unmapped)
     // and physmap ensures minimum alignment
     unsafe {
-        aspace.map_contiguous(
+        aspace.map_contiguous::<Size1GiB>(
             aspace_layout.physmap.range_virt(),
             aspace_layout.physmap.range_phys().start,
             attrs,
@@ -246,7 +246,7 @@ pub(crate) fn map_uart(
     // Safety: `phys` is the firmware-described UART register block and `virt` is
     // a fresh, unmapped range reserved for it in the kernel layout, of equal size.
     unsafe {
-        aspace.map_contiguous(virt, phys.start, attrs, frame_alloc, physmap, flush)?;
+        aspace.map_contiguous::<Size4KiB>(virt, phys.start, attrs, frame_alloc, physmap, flush)?;
     }
 
     Ok(())
@@ -278,7 +278,13 @@ pub fn map_handoff_trampoline(
     // Safety: page allocator ensures region is disjoint (unmapped) and we checked
     // the bounds to be aligned above.
     unsafe {
-        aspace.map_identity(Range::from(start..end), attrs, frame_alloc, physmap, flush)?;
+        aspace.map_identity::<Size4KiB>(
+            Range::from(start..end),
+            attrs,
+            frame_alloc,
+            physmap,
+            flush,
+        )?;
     }
 
     Ok(Range::from(

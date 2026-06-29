@@ -14,9 +14,12 @@ use std::sync::Arc;
 use std::{cmp, fmt};
 
 use cpu_local::collection::CpuLocal;
-use mem_core::arch::{Arch, PageTableEntry, PageTableLevel};
-use mem_core::{FrameAllocator, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress};
-use mem_mmu::{HardwareAddressSpace, page_table_entries_for};
+use mem_core::arch::{Arch, MapsAt, PageTableEntry, PageTableLevel};
+use mem_core::{
+    FrameAllocator, MemoryAttributes, PageSize, PhysMap, PhysicalAddress, VirtualAddress,
+    WriteOrExecute,
+};
+use mem_mmu::{Flush, HardwareAddressSpace, page_table_entries_for};
 
 use crate::arch::EmulateArch;
 use crate::frame_allocator::TestFrameAllocator;
@@ -60,28 +63,58 @@ impl<A: Arch> Machine<A> {
     /// # Panics
     ///
     /// Panics if the machine lacks enough physical memory for the root page table or the physmap.
-    pub fn bootstrap_address_space(
+    pub fn bootstrap_address_space<S>(
         &self,
         physmap_start: VirtualAddress,
     ) -> (
         HardwareAddressSpace<EmulateArch<A>>,
         TestFrameAllocator,
         PhysMap,
-    ) {
+    )
+    where
+        S: PageSize,
+        A: MapsAt<S>,
+    {
         let arch = EmulateArch::new(self.clone());
 
         let memory_regions: Vec<_> = arch.machine().memory_regions().collect();
 
-        let active_physmap = PhysMap::new_identity(memory_regions.clone());
-        let chosen_physmap = PhysMap::new(physmap_start, memory_regions.clone());
+        let active_physmap = PhysMap::new_identity::<S>(memory_regions.clone());
+        let chosen_physmap = PhysMap::new::<S>(physmap_start, memory_regions.clone());
 
         let frame_allocator = TestFrameAllocator::new::<A>(memory_regions.clone());
 
         let mut address_space = HardwareAddressSpace::new(arch, &active_physmap, frame_allocator.by_ref())
             .expect("Machine does not have enough physical memory for root page table. Consider increasing configured physical memory sizes.");
 
-        address_space.map_physical_memory(memory_regions.into_iter(), &active_physmap, &chosen_physmap, frame_allocator.by_ref())
-            .expect("Machine does not have enough physical memory for physmap. Consider increasing configured physical memory sizes.");
+        let attrs = MemoryAttributes::new()
+            .with(MemoryAttributes::READ, true)
+            .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write);
+
+        let mut flush = Flush::new();
+
+        // Map the physmap at the translation granule: every test memory region
+        // is granule-aligned, so the smallest leaf size always covers them exactly.
+        for region_phys in memory_regions {
+            // NB: use the desired physmap (ie the one used after bootstrapping)
+            let region_virt = chosen_physmap.phys_to_virt_range(region_phys);
+
+            // Safety: we just created the address space and `BootstrapAllocator` checks its regions to
+            // not be overlapping (1.). It will also align regions to at least page size (2., 3.).
+            unsafe {
+                address_space.map_contiguous::<S>(
+                    region_virt,
+                    region_phys.start,
+                    attrs,
+                    frame_allocator.by_ref(),
+                    &active_physmap,
+                    &mut flush,
+                ).expect("Machine does not have enough physical memory for physmap. Consider increasing configured physical memory sizes.");
+            }
+        }
+        // Safety: we're going to invalidate the entire address space after bootstrapping. No need
+        // to flush in between.
+        unsafe { flush.ignore() };
 
         // Safety: we just created the address space, so don't have any pointers into it. In hosted tests
         // the programs memory and CPU registers are outside the address space anyway.

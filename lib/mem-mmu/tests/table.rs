@@ -8,9 +8,9 @@
 use std::alloc::Layout;
 
 use mem_core::arch::{Arch, PageTableEntry};
-use mem_core::{FrameAllocator, MemoryAttributes, PhysicalAddress};
+use mem_core::{FrameAllocator, MemoryAttributes, PhysicalAddress, Size4KiB};
 use mem_mmu::Table;
-use mem_testkit::{Machine, MachineBuilder, for_arch};
+use mem_testkit::{for_arch, Machine, MachineBuilder};
 use proptest::prelude::*;
 
 for_arch!(A in [
@@ -36,7 +36,7 @@ for_arch!(A in [
                 .finish();
 
             let (address_space, frame_allocator, physmap) =
-                machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
+                machine.bootstrap_address_space::<Size4KiB>(A::DEFAULT_PHYSMAP_BASE);
             let arch = address_space.arch();
 
             let mut table =

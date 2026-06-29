@@ -8,7 +8,7 @@
 use core::range::Range;
 
 use human_bytes::{GIB, KIB};
-use mem_core::{PhysMap, PhysicalAddress, VirtualAddress};
+use mem_core::{PhysMap, PhysicalAddress, Size4KiB, VirtualAddress};
 use mem_testkit::proptest::{aligned_virt, any_virt, pick_address_in_regions, regions_phys};
 use proptest::prelude::*;
 
@@ -19,7 +19,7 @@ proptest! {
     fn phys_to_virt(base in aligned_virt(any_virt(), 1*GIB), (regions, phys) in pick_address_in_regions(regions_phys(1..10, 4*KIB, 256*GIB, 256*GIB)), ) {
         let regions_start = regions[0].start;
 
-        let map = PhysMap::new(
+        let map = PhysMap::new::<Size4KiB>(
             base,
             regions
         );
@@ -71,12 +71,12 @@ proptest! {
 #[test]
 #[should_panic]
 fn construct_no_regions() {
-    let _map = PhysMap::new(VirtualAddress::new(0xffffffc000000000), []);
+    let _map = PhysMap::new::<Size4KiB>(VirtualAddress::new(0xffffffc000000000), []);
 }
 
 #[test]
 fn phys_to_virt_lower_half() {
-    let map = PhysMap::new(
+    let map = PhysMap::new::<Size4KiB>(
         VirtualAddress::new(0x0),
         [Range::from(
             PhysicalAddress::new(0x00007f87024d9000)..PhysicalAddress::new(0x00007fc200e17000),
@@ -91,7 +91,7 @@ fn phys_to_virt_lower_half() {
 
 #[test]
 fn phys_to_virt_upper_half() {
-    let map = PhysMap::new(
+    let map = PhysMap::new::<Size4KiB>(
         VirtualAddress::new(0xffffffc000000000),
         [Range::from(
             PhysicalAddress::new(0x00007f87024d9000)..PhysicalAddress::new(0x00007fc200e17000),

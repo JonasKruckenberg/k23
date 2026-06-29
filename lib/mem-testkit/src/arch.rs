@@ -9,8 +9,8 @@ use core::fmt;
 use core::range::Range;
 use std::mem;
 
-use mem_core::arch::{Arch, PageTableLevel};
-use mem_core::{PhysicalAddress, VirtualAddress};
+use mem_core::arch::{Arch, MapsAt, PageTableLevel};
+use mem_core::{PageSize, PhysicalAddress, VirtualAddress};
 
 use crate::machine::Machine;
 
@@ -139,4 +139,11 @@ impl<A: Arch> Arch for EmulateArch<A> {
             self.machine.write_bytes_phys(address, value, count);
         }
     }
+}
+
+/// Forward the emulated architecture's page-size capabilities: `EmulateArch<A>` maps a
+/// leaf of size `S` at exactly the depth `A` does, so tests exercise the real arch's
+/// [`MapsAt`] depths rather than a substitute.
+impl<S: PageSize, A: MapsAt<S>> MapsAt<S> for EmulateArch<A> {
+    const DEPTH: u8 = <A as MapsAt<S>>::DEPTH;
 }
