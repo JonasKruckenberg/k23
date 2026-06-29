@@ -11,7 +11,16 @@ use core::alloc::Layout;
 use core::range::Range;
 use core::{fmt, ptr, slice};
 
+use crate::page_size::PageSize;
 use crate::{MemoryAttributes, PhysicalAddress, VirtualAddress};
+
+/// The deepest page-table hierarchy across every architecture k23 supports
+/// (RISC-V Sv57, x86_64 5-level, and aarch64 all bottom out at or below this).
+///
+/// A page-table walk descends at most this many levels, so it can use a stack of
+/// this fixed capacity rather than one sized per-arch; every `Arch` must satisfy
+/// `LEVELS.len() <= MAX_PAGE_TABLE_LEVELS`.
+pub const MAX_PAGE_TABLE_LEVELS: usize = 5;
 
 pub trait Arch {
     /// The type representing a single page table entry on this architecture. Usually `usize` sized.
@@ -222,18 +231,18 @@ pub struct PageTableLevel {
 }
 
 impl PageTableLevel {
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "we check the coercion does not truncate"
-    )]
-    pub(crate) const fn new(page_size: usize, entries: u16, supports_leaf: bool) -> PageTableLevel {
-        let index_shift = page_size.ilog2();
-        assert!(index_shift <= u8::MAX as u32);
-
+    /// Constructs the level whose leaf entries span one `P` page, with `entries`
+    /// slots, that may hold a leaf iff `supports_leaf`.
+    ///
+    /// Taking the size as the [`PageSize`] type parameter rather than a raw byte
+    /// count keeps a level's geometry tied to its named size: the `index_shift`
+    /// is exactly `P::SHIFT`, so [`page_size`][Self::page_size] can never drift
+    /// from the marker the arch's `LEVELS` and [`MapsAt`] impls refer to.
+    pub(crate) const fn new<P: PageSize>(entries: u16, supports_leaf: bool) -> PageTableLevel {
         Self {
             entries,
             supports_leaf,
-            index_shift: page_size.ilog2() as u8,
+            index_shift: P::SHIFT,
         }
     }
 
@@ -293,3 +302,66 @@ impl PageTableLevel {
             && self.supports_leaf
     }
 }
+
+/// Bridges a compile-time [`PageSize`] to the page-table level at which an
+/// architecture places leaves of that size.
+///
+/// An `A: MapsAt<S>` bound is the statement "architecture `A` can map a leaf of
+/// size `S`". It is the typed counterpart of [`Arch::LEVELS`]: `LEVELS` is the
+/// runtime list every level walk consults, while a `MapsAt<S>` impl names *one*
+/// leaf-capable level by its [`PageSize`] and exposes its [`DEPTH`][Self::DEPTH]
+/// as a constant. Because the same byte size sits at a different depth in
+/// different paging modes (2 MiB is depth 1 under Sv39, 2 under Sv48, 3 under
+/// Sv57) the depth cannot live on the size marker; it is resolved per-arch here.
+///
+/// The set of impls is exactly the set of `(arch, size)` pairs the hardware
+/// supports, so requiring `A: MapsAt<S>` turns an unsupported request into a
+/// compile error rather than a runtime check.
+pub trait MapsAt<S: PageSize>: Arch {
+    /// Depth (root = `0`) of the level whose leaf entries span `S::BYTES` bytes.
+    ///
+    /// Known at compile time, this lets the mapping routine descend a fixed,
+    /// unrolled number of levels instead of deciding the leaf level per entry.
+    const DEPTH: u8;
+}
+
+/// Resolves the depth of the leaf-capable level of `A` whose page size is
+/// `S::BYTES`, deriving [`MapsAt::DEPTH`] from [`Arch::LEVELS`] so the two can
+/// never disagree.
+///
+/// # Panics
+///
+/// Panics if `A` has no leaf level of size `S::BYTES`. Used to initialise the
+/// associated `const` of a [`MapsAt`] impl, this fires at compile time (const
+/// evaluation), so listing an unsupported size in [`impl_maps_at!`] fails the
+/// build rather than panicking at runtime.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a page table has at most 5 levels, so the index fits a u8"
+)]
+pub const fn leaf_depth_of<A: Arch, S: PageSize>() -> u8 {
+    let mut depth = 0;
+    while depth < A::LEVELS.len() {
+        let level = &A::LEVELS[depth];
+        if level.page_size() == S::BYTES && level.supports_leaf() {
+            return depth as u8;
+        }
+        depth += 1;
+    }
+    panic!("architecture has no leaf page-table level for this page size")
+}
+
+/// Implements [`MapsAt`] for an architecture and every leaf [`PageSize`] it
+/// supports, deriving each `DEPTH` from the arch's `LEVELS` via
+/// [`leaf_depth_of`]. List only sizes that appear as a leaf level in `LEVELS`;
+/// any other is a compile-time error.
+macro_rules! impl_maps_at {
+    ($arch:ty : $($size:ty),+ $(,)?) => {
+        $(
+            impl $crate::arch::MapsAt<$size> for $arch {
+                const DEPTH: u8 = $crate::arch::leaf_depth_of::<$arch, $size>();
+            }
+        )+
+    };
+}
+pub(crate) use impl_maps_at;
