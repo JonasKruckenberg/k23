@@ -4,6 +4,7 @@ _DEFAULT_MODIFIERS = [
     "constraints//:opt-level[3]",
     "constraints//:debuginfo[line-tables-only]",
     "constraints//:strip[debuginfo]",
+    "constraints//:lto[thin]"
 ]
 
 def _rust_benchmark_runner_impl(ctx: AnalysisContext) -> list[Provider]:

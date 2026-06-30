@@ -1,4 +1,5 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
+load("//build:bench.bzl", "rust_benchmark")
 
 rust_library(
     name = "mem-mmu",
@@ -65,5 +66,21 @@ rust_test(
     deps = _TEST_DEPS,
     env = _TEST_ENV,
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+# Host-only criterion micro-benchmarks for the page-table walk. Uses a flat,
+# raw-pointer `Arch` backend (see benches/walk.rs) rather than the `mem-testkit`
+# emulator so the walk's bookkeeping — not emulation overhead — is what's timed.
+rust_benchmark(
+    name = "mem-mmu_benchmarks",
+    srcs = ["benches/walk.rs"],
+    crate_root = "benches/walk.rs",
+    deps = [
+        ":mem-mmu",
+        "//lib/mem-core:mem-core",
+        "//lib/mem-testkit:mem-testkit",
+        "//third-party:criterion",
+    ],
     visibility = ["PUBLIC"],
 )
