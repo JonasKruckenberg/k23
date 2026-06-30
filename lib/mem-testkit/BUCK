@@ -1,0 +1,20 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+# The std-backed test harness shared across the mem-* crates and their consumers
+# (`mem-core`/`mem-mmu` integration tests, loader tests, the future `vmem` tests):
+# the emulated `Machine`/`EmulateArch`, `TestFrameAllocator`, proptest strategies, and
+# the cross-arch test macros. Host-only; never linked into a bare-metal binary.
+rust_library(
+    name = "mem-testkit",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//lib/mem-core:mem-core",
+        "//lib/mem-mmu:mem-mmu",
+        "//lib/cpu-local:cpu-local",
+        "//third-party:log",
+        "//third-party:proptest",
+        "//third-party:libc",
+    ],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)

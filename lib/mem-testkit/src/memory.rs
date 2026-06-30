@@ -10,8 +10,8 @@ use std::ptr::NonNull;
 use std::range::Range;
 use std::{fmt, mem};
 
-use crate::arch::Arch;
-use crate::{AddressRangeExt, PhysicalAddress};
+use mem_core::arch::Arch;
+use mem_core::{AddressRangeExt, PhysicalAddress};
 
 pub struct Memory {
     // Regions sorted ascending by end address. A `Vec` + linear scan is deliberate

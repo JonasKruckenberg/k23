@@ -7,8 +7,9 @@
 
 use core::arch::naked_asm;
 
+use mem_core::VirtualAddress;
 use mem_core::arch::riscv64::Riscv64Sv39;
-use mem_core::{HardwareAddressSpace, VirtualAddress};
+use mem_mmu::HardwareAddressSpace;
 use riscv::{interrupt, satp, sbi};
 
 use crate::KernelAspaceLayout;

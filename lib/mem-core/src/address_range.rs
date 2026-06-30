@@ -99,33 +99,3 @@ macro_rules! impl_address_range {
 
 impl_address_range!(VirtualAddress);
 impl_address_range!(PhysicalAddress);
-
-#[cfg(test)]
-mod test {
-    use core::range::Range;
-
-    use super::{AddressRangeExt, *};
-
-    proptest::proptest! {
-        #[test]
-        #[cfg_attr(miri, ignore)]
-        fn len(len: usize) {
-            let r: Range<VirtualAddress> = Range::from_start_len(VirtualAddress::new(0), len);
-
-            proptest::prop_assert_eq!(len, AddressRangeExt::len(&r))
-        }
-
-        /// `len` must be total: an empty or inverted range (`start >= end`) has
-        /// length zero and must never panic via `offset_from_unsigned`.
-        #[test]
-        fn len_is_total(start: VirtualAddress, end: VirtualAddress) {
-            let r = Range::from(start..end);
-
-            if start >= end {
-                proptest::prop_assert_eq!(AddressRangeExt::len(&r), 0);
-            } else {
-                proptest::prop_assert_eq!(AddressRangeExt::len(&r), end.get() - start.get());
-            }
-        }
-    }
-}

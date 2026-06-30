@@ -6,7 +6,6 @@ export_file(
 )
 
 _DEPS = [
-    "//sys/loader-common:loader-common",
     "//sys/loader-api:loader-api",
     "//lib/abort:abort",
     "//lib/mem-core:mem-core",
@@ -18,7 +17,14 @@ _DEPS = [
     "//third-party:cfg-if",
     "//third-party:lock_api",
 ] + select({
-    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"]
+    # `loader-common` is bare-metal-only, and the host-side `frame-alloc-tests`
+    # reuses `_DEPS`; riding the riscv64 loader branch (next to `riscv`) keeps it out
+    # of the host build, where it would be incompatible and is unused anyway.
+    "prelude//cpu/constraints:riscv64": [
+        "//sys/loader-common:loader-common",
+        "//lib/riscv:riscv",
+    ],
+    "DEFAULT": [],
 })
 
 _RUSTC_FLAGS = [
@@ -42,35 +48,7 @@ rust_binary(
     tests = [":frame-alloc-tests"],
 )
 
-# Host-side unit/property tests for the bump frame allocator. Built for the host (a hosted OS), so
-# it links the `std`-backed mem-core `test_utils` harness (`Machine`/`EmulateArch`/`PhysMap`); the
-# riscv loader binaries above never compile these `#[cfg(test)]` modules. `frame_alloc.rs` is its
-# own crate root here — it has no `crate::`-internal deps, only `mem_core`/`loader_api`/etc.
-rust_test(
-    name = "frame-alloc-tests",
-    srcs = ["src/frame_alloc.rs"],
-    crate_root = "src/frame_alloc.rs",
-    crate = "frame_alloc",
-    deps = [
-        "//lib/mem-core:mem-core",
-        "//sys/loader-api:loader-api",
-        "//lib/arrayvec:arrayvec",
-        "//third-party:lock_api",
-        "//third-party:log",
-        # test-only
-        "//third-party:parking_lot",
-        "//third-party:proptest",
-        "//lib/human-bytes:human-bytes",
-        "//third-party:tracing-subscriber",
-        "//third-party:test-log",
-    ],
-    env = {
-        "PROPTEST_DISABLE_FAILURE_PERSISTENCE": "true",
-    },
-    target_compatible_with = [host_configuration.os, host_configuration.cpu],
-    visibility = ["PUBLIC"],
-)
-
+# on-target selftests build of the loader & kernel
 rust_binary(
     name = "loader-flat-tests",
     srcs = glob(["src/**/*.rs"]),
@@ -83,5 +61,26 @@ rust_binary(
     },
     target_compatible_with = ["prelude//cpu/constraints:riscv64"],
     incoming_transition = "//build:loader",
+    visibility = ["PUBLIC"],
+)
+
+# Host-side unit/property tests for the bump frame allocator.
+rust_test(
+    name = "frame-alloc-tests",
+    srcs = ["src/frame_alloc.rs"],
+    crate_root = "src/frame_alloc.rs",
+    crate = "frame_alloc",
+    deps = _DEPS + [
+        "//lib/mem-testkit:mem-testkit",
+        "//third-party:parking_lot",
+        "//third-party:proptest",
+        "//lib/human-bytes:human-bytes",
+        "//third-party:test-log",
+        "//third-party:tracing-subscriber",
+    ],
+    env = {
+        "PROPTEST_DISABLE_FAILURE_PERSISTENCE": "true",
+    },
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
