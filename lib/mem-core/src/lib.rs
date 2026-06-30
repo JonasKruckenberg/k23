@@ -15,11 +15,13 @@ mod address_range;
 pub mod arch;
 mod frame_allocator;
 mod memory_attributes;
+mod page_size;
 mod physmap;
 
 pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_range::AddressRangeExt;
-pub use arch::Arch;
+pub use arch::{Arch, MapsAt};
 pub use frame_allocator::{AllocError, FrameAllocator};
 pub use memory_attributes::{MemoryAttributes, MemoryKind, WriteOrExecute};
+pub use page_size::{PageSize, Size1GiB, Size2MiB, Size4KiB, Size256TiB, Size512GiB};
 pub use physmap::PhysMap;

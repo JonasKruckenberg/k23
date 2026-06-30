@@ -14,8 +14,10 @@ use std::sync::Arc;
 use std::{cmp, fmt};
 
 use cpu_local::collection::CpuLocal;
-use mem_core::arch::{Arch, PageTableEntry, PageTableLevel};
-use mem_core::{FrameAllocator, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress};
+use mem_core::arch::{Arch, MapsAt, PageTableEntry, PageTableLevel};
+use mem_core::{
+    FrameAllocator, MemoryAttributes, PhysMap, PhysicalAddress, Size4KiB, VirtualAddress,
+};
 use mem_mmu::{HardwareAddressSpace, page_table_entries_for};
 
 use crate::arch::EmulateArch;
@@ -67,7 +69,10 @@ impl<A: Arch> Machine<A> {
         HardwareAddressSpace<EmulateArch<A>>,
         TestFrameAllocator,
         PhysMap,
-    ) {
+    )
+    where
+        A: MapsAt<Size4KiB>,
+    {
         let arch = EmulateArch::new(self.clone());
 
         let memory_regions: Vec<_> = arch.machine().memory_regions().collect();
@@ -80,7 +85,9 @@ impl<A: Arch> Machine<A> {
         let mut address_space = HardwareAddressSpace::new(arch, &active_physmap, frame_allocator.by_ref())
             .expect("Machine does not have enough physical memory for root page table. Consider increasing configured physical memory sizes.");
 
-        address_space.map_physical_memory(memory_regions.into_iter(), &active_physmap, &chosen_physmap, frame_allocator.by_ref())
+        // Map the physmap at the translation granule (4 KiB): every test memory region
+        // is granule-aligned, so the smallest leaf size always covers them exactly.
+        address_space.map_physical_memory::<Size4KiB>(memory_regions.into_iter(), &active_physmap, &chosen_physmap, frame_allocator.by_ref())
             .expect("Machine does not have enough physical memory for physmap. Consider increasing configured physical memory sizes.");
 
         // Safety: we just created the address space, so don't have any pointers into it. In hosted tests

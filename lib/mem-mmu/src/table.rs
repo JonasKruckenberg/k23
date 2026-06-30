@@ -9,7 +9,7 @@ use core::marker::PhantomData;
 use core::range::Range;
 
 use arrayvec::ArrayVec;
-use mem_core::arch::{Arch, PageTableEntry, PageTableLevel};
+use mem_core::arch::{Arch, MAX_PAGE_TABLE_LEVELS, PageTableEntry, PageTableLevel};
 use mem_core::{AllocError, FrameAllocator, PhysMap, PhysicalAddress, VirtualAddress};
 
 use crate::utils::{PageTableEntries, page_table_entries_for};
@@ -132,6 +132,23 @@ impl<A: Arch> Table<A, marker::Owned> {
     }
 }
 
+/// A point in a depth-first page-table walk at which [`visit_mut`](Table::visit_mut)
+/// invokes its visitor.
+#[derive(Debug)]
+pub enum Step {
+    /// On the way **down**: an entry covering `range`, in the table at `depth`
+    /// (root = `0`). Mutating the entry into a table makes the walk descend into
+    /// it; leaving it a leaf or vacant does not.
+    Descend {
+        range: Range<VirtualAddress>,
+        depth: u8,
+    },
+    /// On the way **up**: the subtable beneath this entry — itself at `child_depth`
+    /// — has just been fully visited. The point at which a now-empty subtable is
+    /// reclaimed and its entry vacated.
+    Ascend { child_depth: u8 },
+}
+
 impl<A: Arch> Table<A, marker::Mut<'_>> {
     /// Returns a second mutable reference to this table.
     pub fn reborrow_mut(&mut self) -> Table<A, marker::Mut<'_>> {
@@ -168,13 +185,20 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
         unsafe { arch.write(entry_virt, entry) }
     }
 
-    /// Depth-first walk of every page-table entry spanning `range`, calling `visit_entry`
-    /// on each, writing back the (possibly mutated) entry, and descending into any entry
-    /// the visitor leaves as a table.
+    /// Depth-first, in-order walk of every page-table entry spanning `range`.
+    ///
+    /// `visit` is called for each entry on the way **down** with [`Step::Descend`],
+    /// and once on the way **up** with [`Step::Ascend`] for every entry the walk
+    /// descended into, after that entry's whole subtable has been visited. The
+    /// (possibly mutated) entry is written back after each call, and the walk
+    /// descends into any entry a [`Step::Descend`] visit leaves as a table.
+    ///
+    /// A single visitor handles both steps so it can own the mutable state — e.g. a
+    /// [`Flush`][crate::Flush] — that both the descend and ascend phases touch.
     ///
     /// # Errors
     ///
-    /// Propagates the first error returned by `visit_entry`, aborting the remainder of the
+    /// Propagates the first error returned by `visit`, aborting the remainder of the
     /// walk.
     ///
     /// # Panics
@@ -186,56 +210,77 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
         range: Range<VirtualAddress>,
         physmap: &PhysMap,
         arch: &A,
-        mut visit_entry: F,
+        mut visit: F,
     ) -> Result<(), E>
     where
         Self: Sized,
-        F: FnMut(
-            &mut A::PageTableEntry,
-            Range<VirtualAddress>,
-            &'static PageTableLevel,
-        ) -> Result<(), E>,
+        F: FnMut(&mut A::PageTableEntry, Step) -> Result<(), E>,
     {
-        struct Level<'t, A>
+        struct Frame<'t, A>
         where
             A: Arch,
         {
             table: Table<A, marker::Mut<'t>>,
             entries_iter: PageTableEntries<A>,
+            /// Index in the parent table of the entry descended through, and that
+            /// entry's value. Written back — after its [`Step::Ascend`] visit — only
+            /// once this subtable is fully visited, so a visitor can vacate it
+            /// post-order. Both ignored for the root frame.
+            parent_index: u16,
+            parent_entry: A::PageTableEntry,
         }
 
-        // NB: we use a fixed size stack here to help with loop unrolling and
-        // enforce a known upper bound on the runtime-complexity of this function
-        // (5 level deep max). 5 is chosen because it is the deepest page table depth
-        // across all our supported target architectures.
-        let mut stack: ArrayVec<Level<'_, _>, 5> = ArrayVec::from_iter([Level {
-            table: self,
+        // NB: a fixed-capacity stack keeps this walk iterative and bounds its runtime
+        // complexity to the page-table depth, which never exceeds `MAX_PAGE_TABLE_LEVELS`.
+        let mut stack: ArrayVec<Frame<'_, A>, MAX_PAGE_TABLE_LEVELS> = ArrayVec::new();
+        stack.push(Frame {
             entries_iter: page_table_entries_for(range, &A::LEVELS[0]),
-        }]);
+            table: self,
+            parent_index: 0,
+            parent_entry: A::PageTableEntry::VACANT,
+        });
 
         // Depth-first, in-order walk of the page tables.
         while let Some(frame) = stack.last_mut() {
             let Some((entry_index, range)) = frame.entries_iter.next() else {
-                // This table is fully visited; backtrack to its parent.
-                stack.pop();
+                // This subtable is fully visited; ascend to its parent, letting the
+                // visitor reclaim it, then write the (possibly vacated) parent entry.
+                let mut done = stack.pop().unwrap();
+                if let Some(parent) = stack.last_mut() {
+                    visit(
+                        &mut done.parent_entry,
+                        Step::Ascend {
+                            child_depth: done.table.depth(),
+                        },
+                    )?;
+
+                    // Safety: `parent_index` indexed `parent` on the way down, so it
+                    // is in-bounds.
+                    unsafe {
+                        parent
+                            .table
+                            .set(done.parent_index, done.parent_entry, physmap, arch);
+                    }
+                }
                 continue;
             };
 
             // Safety: `page_table_entries_for` yields only in-bound indices
             let mut entry = unsafe { frame.table.get(entry_index, physmap, arch) };
 
-            visit_entry(&mut entry, range, frame.table.level())?;
-
-            // Safety: `page_table_entries_for` yields only in-bound indices
-            unsafe {
-                frame.table.set(entry_index, entry, physmap, arch);
-            }
+            visit(
+                &mut entry,
+                Step::Descend {
+                    range,
+                    depth: frame.table.depth(),
+                },
+            )?;
 
             if entry.is_table() {
                 debug_assert!((frame.table.depth() as usize + 1) < A::LEVELS.len());
 
-                // Safety: We checked the entry is a table above (1.) know the depth is correct (2.)
-                // and inherit the mutable access from self.
+                // Safety: We checked the entry is a table above, the depth is one below
+                // this frame, and we inherit the mutable access from self.
                 let subtable: Table<_, marker::Mut<'_>> = unsafe {
                     Table::from_raw_parts(
                         entry.address(),
@@ -243,12 +288,21 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
                     )
                 };
 
-                // Descend at once, before advancing to the next sibling, so entries
-                // are visited in ascending address order.
-                stack.push(Level {
+                // Descend at once, before advancing to the next sibling, so entries are
+                // visited in ascending address order. This entry is written back when
+                // its subtable is fully visited (the `Ascend` arm above).
+                stack.push(Frame {
                     entries_iter: page_table_entries_for(range, subtable.level()),
                     table: subtable,
+                    parent_index: entry_index,
+                    parent_entry: entry,
                 });
+            } else {
+                // Leaf or vacant: nothing to descend into, so write the entry now.
+                // Safety: `page_table_entries_for` yields only in-bound indices
+                unsafe {
+                    frame.table.set(entry_index, entry, physmap, arch);
+                }
             }
         }
 

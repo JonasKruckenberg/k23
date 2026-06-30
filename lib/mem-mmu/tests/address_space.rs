@@ -10,11 +10,11 @@ mod tests {
     use std::range::Range;
 
     use mem_core::AddressRangeExt;
-    use mem_core::arch::Arch;
+    use mem_core::arch::{Arch, MapsAt};
     use mem_mmu::Flush;
     use mem_core::FrameAllocator;
     use mem_testkit::{Machine, MachineBuilder};
-    use mem_core::{MemoryAttributes, VirtualAddress, WriteOrExecute};
+    use mem_core::{MemoryAttributes, Size4KiB, VirtualAddress, WriteOrExecute};
     use mem_testkit::archtest;
 
     archtest!([
@@ -23,7 +23,7 @@ mod tests {
         #[cfg(not(miri))] Riscv64Sv57,
     ] {
         #[test]
-        fn map<A: Arch>() {
+        fn map<A: Arch + MapsAt<Size4KiB>>() {
             let machine: Machine<A> = MachineBuilder::new()
                 .with_memory_regions([
                     Layout::from_size_align(0xA000, A::GRANULE_SIZE).unwrap()
@@ -41,7 +41,7 @@ mod tests {
             let mut flush = Flush::new();
             unsafe {
                 address_space
-                    .map_contiguous(
+                    .map_contiguous::<Size4KiB>(
                         page.clone(),
                         frame,
                         MemoryAttributes::new().with(MemoryAttributes::READ, true),
@@ -64,7 +64,7 @@ mod tests {
         }
 
         #[test]
-        fn remap<A: Arch>() {
+        fn remap<A: Arch + MapsAt<Size4KiB>>() {
             let machine: Machine<A> = MachineBuilder::new()
                 .with_memory_regions([Layout::from_size_align(0xB000, A::GRANULE_SIZE).unwrap()])
                 .finish();
@@ -80,7 +80,7 @@ mod tests {
             let mut flush = Flush::new();
             unsafe {
                 address_space
-                    .map_contiguous(
+                    .map_contiguous::<Size4KiB>(
                         page.clone(),
                         frame,
                         MemoryAttributes::new().with(MemoryAttributes::READ, true),
@@ -109,7 +109,7 @@ mod tests {
 
             let mut flush = Flush::new();
             unsafe {
-                address_space.remap_contiguous(page.clone(), new_frame, &physmap, &mut flush);
+                address_space.remap_contiguous::<Size4KiB>(page.clone(), new_frame, &physmap, &mut flush);
             }
             flush.flush(address_space.arch());
 
@@ -124,7 +124,7 @@ mod tests {
         }
 
         #[test]
-        fn set_attributes<A: Arch>() {
+        fn set_attributes<A: Arch + MapsAt<Size4KiB>>() {
             let machine: Machine<A> = MachineBuilder::new()
                 .with_memory_regions([Layout::from_size_align(0xB000, A::GRANULE_SIZE).unwrap()])
                 .finish();
@@ -140,7 +140,7 @@ mod tests {
             let mut flush = Flush::new();
             unsafe {
                 address_space
-                    .map_contiguous(
+                    .map_contiguous::<Size4KiB>(
                         page.clone(),
                         frame,
                         MemoryAttributes::new().with(MemoryAttributes::READ, true),
@@ -165,7 +165,7 @@ mod tests {
 
             let mut flush = Flush::new();
             unsafe {
-                address_space.set_attributes(
+                address_space.set_attributes::<Size4KiB>(
                     page.clone(),
                     MemoryAttributes::new()
                         .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Execute),
@@ -197,7 +197,7 @@ mod proptests {
     use mem_mmu::Flush;
     use mem_core::FrameAllocator;
     use mem_testkit::{Machine, MachineBuilder};
-    use mem_core::{MemoryAttributes, VirtualAddress};
+    use mem_core::{MemoryAttributes, Size4KiB, VirtualAddress};
     use mem_testkit::for_arch;
 
     for_arch!(A in [
@@ -256,7 +256,7 @@ mod proptests {
                 let mut flush = Flush::new();
                 unsafe {
                     address_space
-                        .map_contiguous(
+                        .map_contiguous::<Size4KiB>(
                             virt,
                             phys,
                             MemoryAttributes::new().with(MemoryAttributes::READ, true),
