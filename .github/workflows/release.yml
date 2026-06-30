@@ -36,7 +36,7 @@ jobs:
             platform: //platforms:riscv64
             output: k23-riscv64-flat.elf
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -46,7 +46,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: buck-out
           # Key per matrix so the kinds/arches don't clobber each other's cache.
@@ -62,7 +62,7 @@ jobs:
       - name: build ${{ matrix.output }}
         run: nix develop .#ci --command buck2 build ${{ matrix.target }} -m release --target-platforms ${{ matrix.platform }} --out ${{ matrix.output }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.output }}
           path: ${{ matrix.output }}
@@ -74,8 +74,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6 # gives `gh` a git remote to resolve the repo
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7 # gives `gh` a git remote to resolve the repo
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true # flatten every artifact into `artifacts/`

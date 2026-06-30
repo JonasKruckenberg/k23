@@ -18,7 +18,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -55,7 +55,7 @@ jobs:
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -65,7 +65,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
@@ -91,7 +91,7 @@ jobs:
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -101,7 +101,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
@@ -116,7 +116,7 @@ jobs:
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -126,7 +126,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
@@ -140,7 +140,7 @@ jobs:
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -150,7 +150,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
@@ -164,7 +164,7 @@ jobs:
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -174,7 +174,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
@@ -207,7 +207,7 @@ jobs:
           && (needs.changed-targets.outputs.impacted == ''
             || contains(needs.changed-targets.outputs.impacted, '-qemu-tests')) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -217,7 +217,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
@@ -234,7 +234,7 @@ jobs:
     name: Cargo deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -244,7 +244,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry

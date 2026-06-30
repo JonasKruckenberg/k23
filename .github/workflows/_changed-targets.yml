@@ -30,7 +30,7 @@ jobs:
       impacted: ${{ steps.compute.outputs.impacted }}
       skip: ${{ steps.compute.outputs.skip }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -55,7 +55,7 @@ jobs:
 
       - name: Restore base.jsonl
         id: cache-base
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: base.jsonl
           key: changed-targets-base-${{ runner.os }}-${{ steps.base.outputs.sha }}
