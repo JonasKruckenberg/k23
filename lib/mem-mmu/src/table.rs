@@ -8,11 +8,12 @@
 use core::marker::PhantomData;
 use core::range::Range;
 
-use arrayvec::ArrayVec;
-use mem_core::arch::{Arch, MAX_PAGE_TABLE_LEVELS, PageTableEntry, PageTableLevel};
-use mem_core::{AllocError, FrameAllocator, PhysMap, PhysicalAddress, VirtualAddress};
+use mem_core::arch::{Arch, MapsAt, PageTableEntry, PageTableLevel};
+use mem_core::{
+    AddressRangeExt, AllocError, FrameAllocator, PageSize, PhysMap, PhysicalAddress, VirtualAddress,
+};
 
-use crate::utils::{PageTableEntries, page_table_entries_for};
+use crate::utils::page_table_entries_for;
 
 /// A page table. Essentially a fixed-sized list of `A::PageTableEntry`s.
 #[derive(Debug)]
@@ -59,6 +60,14 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
         self.base
     }
 
+    /// Returns the virtual address of entry `index` in this table.
+    pub(crate) fn entry_address(&self, index: u16, physmap: &PhysMap) -> VirtualAddress {
+        let entry_phys = self
+            .base
+            .add(index as usize * size_of::<A::PageTableEntry>());
+        physmap.phys_to_virt(entry_phys)
+    }
+
     /// Returns `true` when _all_ page table entries in this table are _vacant_.
     pub fn is_empty(&self, physmap: &PhysMap, arch: &A) -> bool {
         (0..self.level().entries()).all(|entry_index| {
@@ -74,11 +83,7 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
     ///
     /// The caller must ensure `index` is in-bounds (less than the number of entries at this level).
     pub unsafe fn get(&self, index: u16, physmap: &PhysMap, arch: &A) -> A::PageTableEntry {
-        let entry_phys = self
-            .base
-            .add(index as usize * size_of::<A::PageTableEntry>());
-
-        let entry_virt = physmap.phys_to_virt(entry_phys);
+        let entry_virt = self.entry_address(index, physmap);
 
         // Safety: The address is always well aligned by the way we calculate it above (2.) we also
         // know `0` is a valid pattern for `A::PageTableEntry` and we know that we can access the
@@ -132,21 +137,85 @@ impl<A: Arch> Table<A, marker::Owned> {
     }
 }
 
-/// A point in a depth-first page-table walk at which [`visit_mut`](Table::visit_mut)
-/// invokes its visitor.
-#[derive(Debug)]
-pub enum Step {
-    /// On the way **down**: an entry covering `range`, in the table at `depth`
-    /// (root = `0`). Mutating the entry into a table makes the walk descend into
-    /// it; leaving it a leaf or vacant does not.
-    Descend {
-        range: Range<VirtualAddress>,
-        depth: u8,
-    },
-    /// On the way **up**: the subtable beneath this entry — itself at `child_depth`
-    /// — has just been fully visited. The point at which a now-empty subtable is
-    /// reclaimed and its entry vacated.
-    Ascend { child_depth: u8 },
+/// Visits page-table entries as [`visit`](Table::visit) walks the tree down to the
+/// `S`-sized leaf level.
+pub trait Visitor<A: Arch, S: PageSize> {
+    /// Error type; the first `Err` a method returns aborts the walk and propagates
+    /// out of it.
+    type Error;
+
+    /// Called on the way **down** for the interior entry at `index` in `table`.
+    ///
+    /// Returns the base address of the child table to descend into, or `None` to stop
+    /// descending. The default is read-only: it descends into an existing table and
+    /// stops at anything else, never writing the entry back.
+    ///
+    /// # Errors
+    ///
+    /// Any `Err` aborts the remainder of the walk.
+    fn descend(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        index: u16,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<Option<PhysicalAddress>, Self::Error> {
+        // Safety: the walk only descends through in-bounds indices.
+        let entry = unsafe { table.get(index, physmap, arch) };
+
+        // The default descent is read-only: it neither allocates nor writes. The
+        // operations that use it (remap, set-attributes, unmap) run over an
+        // already-mapped range, so a vacant interior entry means the range is not
+        // fully mapped at `S` — a precondition violation.
+        debug_assert!(
+            !entry.is_vacant(),
+            "virtual address range must be mapped at page size {}",
+            S::BYTES,
+        );
+
+        if entry.is_table() {
+            Ok(Some(entry.address()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Called on the way **up** once the child table at `child_base`/`child_depth`,
+    /// beneath the interior entry at `index` in `table`, has been fully visited.
+    /// Defaults to a no-op.
+    ///
+    /// # Errors
+    ///
+    /// Any `Err` aborts the remainder of the walk.
+    fn ascend(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        index: u16,
+        child_base: PhysicalAddress,
+        child_depth: u8,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<(), Self::Error> {
+        let _ = (table, index, child_base, child_depth, physmap, arch);
+        Ok(())
+    }
+
+    /// Called once for the contiguous run of `count` leaf entries starting at index
+    /// `first` in `table`, whose first entry maps the `S`-sized page at `va` (the run
+    /// spans `count` pages from there).
+    ///
+    /// # Errors
+    ///
+    /// Any `Err` aborts the remainder of the walk.
+    fn fill(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        first: u16,
+        count: u16,
+        va: VirtualAddress,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<(), Self::Error>;
 }
 
 impl<A: Arch> Table<A, marker::Mut<'_>> {
@@ -173,11 +242,7 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
     ) {
         debug_assert!(index < self.level().entries());
 
-        let entry_phys = self
-            .base
-            .add(index as usize * size_of::<A::PageTableEntry>());
-
-        let entry_virt = physmap.phys_to_virt(entry_phys);
+        let entry_virt = self.entry_address(index, physmap);
 
         // Safety: The address is always well aligned by the way we calculate it above (2.) we also
         // know `0` is a valid pattern for `A::PageTableEntry` and we know that we can access the
@@ -185,130 +250,107 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
         unsafe { arch.write(entry_virt, entry) }
     }
 
-    /// Depth-first, in-order walk of every page-table entry spanning `range`.
-    ///
-    /// `visit` is called for each entry on the way **down** with [`Step::Descend`],
-    /// and once on the way **up** with [`Step::Ascend`] for every entry the walk
-    /// descended into, after that entry's whole subtable has been visited. The
-    /// (possibly mutated) entry is written back after each call, and the walk
-    /// descends into any entry a [`Step::Descend`] visit leaves as a table.
-    ///
-    /// A single visitor handles both steps so it can own the mutable state — e.g. a
-    /// [`Flush`][crate::Flush] — that both the descend and ascend phases touch.
+    /// Walks `range` from this table down to the `S`-sized leaf level, invoking
+    /// `visitor` at each level.
     ///
     /// # Errors
     ///
-    /// Propagates the first error returned by `visit`, aborting the remainder of the
-    /// walk.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the page-table depth would overflow while descending (unreachable for the
-    /// architectures k23 supports, whose depth is bounded by `A::LEVELS`).
-    pub fn visit_mut<F, E>(
+    /// Propagates the first error `visitor` returns, aborting the walk.
+    pub fn visit<S, V>(
         self,
         range: Range<VirtualAddress>,
         physmap: &PhysMap,
         arch: &A,
-        mut visit: F,
-    ) -> Result<(), E>
+        visitor: &mut V,
+    ) -> Result<(), V::Error>
     where
-        Self: Sized,
-        F: FnMut(&mut A::PageTableEntry, Step) -> Result<(), E>,
+        S: PageSize,
+        A: MapsAt<S>,
+        V: Visitor<A, S>,
     {
-        struct Frame<'t, A>
-        where
-            A: Arch,
-        {
-            table: Table<A, marker::Mut<'t>>,
-            entries_iter: PageTableEntries<A>,
-            /// Index in the parent table of the entry descended through, and that
-            /// entry's value. Written back — after its [`Step::Ascend`] visit — only
-            /// once this subtable is fully visited, so a visitor can vacate it
-            /// post-order. Both ignored for the root frame.
-            parent_index: u16,
-            parent_entry: A::PageTableEntry,
+        if range.len() == S::BYTES {
+            // Optimized fast-path for single leaf-page operations such as when committing, decommitting, etc individual
+            // CoW pages.
+            visit_leaf::<S, A, V>(self, range.start, physmap, arch, visitor)
+        } else {
+            visit_range::<S, A, V>(self, range, physmap, arch, visitor)
         }
-
-        // NB: a fixed-capacity stack keeps this walk iterative and bounds its runtime
-        // complexity to the page-table depth, which never exceeds `MAX_PAGE_TABLE_LEVELS`.
-        let mut stack: ArrayVec<Frame<'_, A>, MAX_PAGE_TABLE_LEVELS> = ArrayVec::new();
-        stack.push(Frame {
-            entries_iter: page_table_entries_for(range, &A::LEVELS[0]),
-            table: self,
-            parent_index: 0,
-            parent_entry: A::PageTableEntry::VACANT,
-        });
-
-        // Depth-first, in-order walk of the page tables.
-        while let Some(frame) = stack.last_mut() {
-            let Some((entry_index, range)) = frame.entries_iter.next() else {
-                // This subtable is fully visited; ascend to its parent, letting the
-                // visitor reclaim it, then write the (possibly vacated) parent entry.
-                let mut done = stack.pop().unwrap();
-                if let Some(parent) = stack.last_mut() {
-                    visit(
-                        &mut done.parent_entry,
-                        Step::Ascend {
-                            child_depth: done.table.depth(),
-                        },
-                    )?;
-
-                    // Safety: `parent_index` indexed `parent` on the way down, so it
-                    // is in-bounds.
-                    unsafe {
-                        parent
-                            .table
-                            .set(done.parent_index, done.parent_entry, physmap, arch);
-                    }
-                }
-                continue;
-            };
-
-            // Safety: `page_table_entries_for` yields only in-bound indices
-            let mut entry = unsafe { frame.table.get(entry_index, physmap, arch) };
-
-            visit(
-                &mut entry,
-                Step::Descend {
-                    range,
-                    depth: frame.table.depth(),
-                },
-            )?;
-
-            if entry.is_table() {
-                debug_assert!(
-                    (frame.table.depth() as usize + 1) < A::LEVELS.len(),
-                    "cannot descend into subtable at final depth {}. max depth {}",
-                    frame.table.depth(),
-                    A::LEVELS.len()
-                );
-
-                // Safety: We checked the entry is a table above, the depth is one below
-                // this frame, and we inherit the mutable access from self.
-                let subtable: Table<_, marker::Mut<'_>> =
-                    unsafe { Table::from_raw_parts(entry.address(), frame.table.depth() + 1) };
-
-                // Descend at once, before advancing to the next sibling, so entries are
-                // visited in ascending address order. This entry is written back when
-                // its subtable is fully visited (the `Ascend` arm above).
-                stack.push(Frame {
-                    entries_iter: page_table_entries_for(range, subtable.level()),
-                    table: subtable,
-                    parent_index: entry_index,
-                    parent_entry: entry,
-                });
-            } else {
-                // Leaf or vacant: nothing to descend into, so write the entry now.
-                // Safety: `page_table_entries_for` yields only in-bound indices
-                unsafe {
-                    frame.table.set(entry_index, entry, physmap, arch);
-                }
-            }
-        }
-
-        Ok(())
     }
+}
+
+fn visit_leaf<S, A, V>(
+    mut table: Table<A, marker::Mut<'_>>,
+    va: VirtualAddress,
+    physmap: &PhysMap,
+    arch: &A,
+    visitor: &mut V,
+) -> Result<(), V::Error>
+where
+    S: PageSize,
+    A: MapsAt<S>,
+    V: Visitor<A, S>,
+{
+    let depth = table.depth();
+    let index = A::LEVELS[depth as usize].pte_index_of(va);
+
+    if depth == <A as MapsAt<S>>::DEPTH {
+        // Leaf table: fill the single entry.
+        return visitor.fill(&mut table, index, 1, va, physmap, arch);
+    }
+
+    // The visitor hands back the child table to descend into, or `None` to stop.
+    if let Some(child_base) = visitor.descend(&mut table, index, physmap, arch)? {
+        // Safety: the visitor promised `child_base` is a table, so it sits one level
+        // below `table`, and we inherit `table`'s mutable access to the tree.
+        let subtable = unsafe { Table::from_raw_parts(child_base, depth + 1) };
+        visit_leaf::<S, A, V>(subtable, va, physmap, arch, visitor)?;
+        visitor.ascend(&mut table, index, child_base, depth + 1, physmap, arch)?;
+    }
+
+    Ok(())
+}
+
+fn visit_range<S, A, V>(
+    mut table: Table<A, marker::Mut<'_>>,
+    range: Range<VirtualAddress>,
+    physmap: &PhysMap,
+    arch: &A,
+    visitor: &mut V,
+) -> Result<(), V::Error>
+where
+    S: PageSize,
+    A: MapsAt<S>,
+    V: Visitor<A, S>,
+{
+    let depth = table.depth();
+
+    if depth == <A as MapsAt<S>>::DEPTH {
+        // Leaf table: the covered entries are one contiguous run.
+        // Hand the whole run to `fill`.
+        let level = &A::LEVELS[depth as usize];
+        let first = level.pte_index_of(range.start);
+        let last = level.pte_index_of(range.end.sub(1));
+        return visitor.fill(
+            &mut table,
+            first,
+            last - first + 1,
+            range.start,
+            physmap,
+            arch,
+        );
+    }
+
+    for (index, sub_range) in page_table_entries_for::<A>(range, &A::LEVELS[depth as usize]) {
+        if let Some(child_base) = visitor.descend(&mut table, index, physmap, arch)? {
+            // Safety: the visitor promised `child_base` is a table, so it sits one level
+            // below `table`, and we inherit `table`'s mutable access to the tree.
+            let subtable = unsafe { Table::from_raw_parts(child_base, depth + 1) };
+            visit_range::<S, A, V>(subtable, sub_range, physmap, arch, visitor)?;
+            visitor.ascend(&mut table, index, child_base, depth + 1, physmap, arch)?;
+        }
+    }
+
+    Ok(())
 }
 
 impl<A: Arch> Clone for Table<A, marker::Immut<'_>> {

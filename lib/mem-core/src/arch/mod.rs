@@ -251,6 +251,7 @@ impl PageTableLevel {
     /// On most architectures all tables - regardless of their level - have the same
     /// number of entries. One notable exception is AArch64 where 16KiB and 64KiB
     /// page size modes have varying numbers of entries per table.
+    #[inline]
     pub const fn entries(&self) -> u16 {
         self.entries
     }
@@ -259,6 +260,7 @@ impl PageTableLevel {
     ///
     /// Leaf entries directly map physical memory, as opposed to pointing
     /// to the next level of the page table hierarchy.
+    #[inline]
     pub const fn supports_leaf(&self) -> bool {
         self.supports_leaf
     }
@@ -272,6 +274,7 @@ impl PageTableLevel {
     ///
     /// For an in-depth discussion of page sizes, block sizes, and how the naming conventions used
     /// by different architectures relate to k23's naming, see the [crate-level documentation](crate#page-size-vs-block-size).
+    #[inline]
     pub const fn page_size(&self) -> usize {
         1 << self.index_shift
     }
@@ -284,6 +287,7 @@ impl PageTableLevel {
     /// architectures k23 supports).
     // TODO: tests
     //  - ensure this only returns in-bound indices
+    #[inline]
     pub fn pte_index_of(&self, address: VirtualAddress) -> u16 {
         let idx =
             u16::try_from(address.get() >> self.index_shift & (self.entries as usize - 1)).unwrap();
@@ -293,6 +297,7 @@ impl PageTableLevel {
 
     /// Whether we can create a leaf entry at this level given the combination of base `VirtualAddress`,
     /// base `PhysicalAddress`, and remaining chunk length.
+    #[inline]
     pub fn can_map(&self, virt: VirtualAddress, phys: PhysicalAddress, len: usize) -> bool {
         let page_size = self.page_size();
 

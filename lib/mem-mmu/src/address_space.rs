@@ -16,7 +16,7 @@ use mem_core::{
 };
 
 use crate::flush::Flush;
-use crate::table::{Step, Table, marker};
+use crate::table::{Table, Visitor, marker};
 
 pub struct HardwareAddressSpace<A: Arch> {
     arch: A,
@@ -239,7 +239,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
     pub unsafe fn map_contiguous<S: PageSize>(
         &mut self,
         virt: Range<VirtualAddress>,
-        mut phys: PhysicalAddress,
+        phys: PhysicalAddress,
         attributes: MemoryAttributes,
         frame_allocator: impl FrameAllocator,
         physmap: &PhysMap,
@@ -271,48 +271,16 @@ impl<A: Arch> HardwareAddressSpace<A> {
             S::BYTES,
         );
 
-        let leaf_depth = <A as MapsAt<S>>::DEPTH;
-
-        let map_contiguous =
-            |entry: &mut A::PageTableEntry, step: Step| -> Result<(), AllocError> {
-                let Step::Descend { range, depth } = step else {
-                    return Ok(());
-                };
-
-                // If the entry is a table, just keep walking
-                if entry.is_table() {
-                    return Ok(());
-                }
-
-                debug_assert!(entry.is_vacant());
-
-                if depth == leaf_depth {
-                    *entry = <A as Arch>::PageTableEntry::new_leaf(phys, attributes);
-
-                    phys = phys.add(range.len());
-
-                    // TODO fence(modified pages, 0) if attributes includes GLOBAL
-                    // TODO we can omit the fence here and lazily change the mapping in the fault handler#
-                    flush.invalidate(range);
-                } else {
-                    let frame = frame_allocator.allocate_contiguous_zeroed(
-                        A::GRANULE_LAYOUT,
-                        physmap,
-                        &self.arch,
-                    )?;
-
-                    *entry = <A as Arch>::PageTableEntry::new_table(frame);
-
-                    // TODO fence(all pages, 0) if attributes includes GLOBAL
-                    flush.invalidate_all();
-                }
-
-                Ok(())
-            };
+        let mut visitor = MapVisitor {
+            phys,
+            attributes,
+            frame_allocator,
+            flush,
+        };
 
         self.root_page_table
             .borrow_mut()
-            .visit_mut(virt, physmap, &self.arch, map_contiguous)?;
+            .visit::<S, _>(virt, physmap, &self.arch, &mut visitor)?;
 
         Ok(())
     }
@@ -386,7 +354,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
     pub unsafe fn remap_contiguous<S: PageSize>(
         &mut self,
         virt: Range<VirtualAddress>,
-        mut phys: PhysicalAddress,
+        phys: PhysicalAddress,
         physmap: &PhysMap,
         flush: &mut Flush,
     ) where
@@ -409,39 +377,13 @@ impl<A: Arch> HardwareAddressSpace<A> {
             S::BYTES,
         );
 
-        let leaf_depth = <A as MapsAt<S>>::DEPTH;
+        let mut visitor = RemapVisitor { phys, flush };
 
-        let remap_contiguous =
-            |entry: &mut A::PageTableEntry, step: Step| -> Result<(), Infallible> {
-                let Step::Descend { range, depth } = step else {
-                    return Ok(());
-                };
-
-                debug_assert!(!entry.is_vacant());
-
-                if entry.is_leaf() {
-                    debug_assert!(
-                        depth == leaf_depth,
-                        "virtual address range must be mapped at page size {}",
-                        S::BYTES,
-                    );
-
-                    *entry = A::PageTableEntry::new_leaf(phys, entry.attributes());
-
-                    phys = phys.add(range.len());
-
-                    // TODO fence(modified pages, 0) if attributes includes GLOBAL
-                    flush.invalidate(range);
-                }
-
-                Ok(())
-            };
-
-        // Safety: `remap_contiguous` is infallible
+        // Safety: `RemapVisitor` is infallible.
         unsafe {
             self.root_page_table
                 .borrow_mut()
-                .visit_mut(virt, physmap, &self.arch, remap_contiguous)
+                .visit::<S, _>(virt, physmap, &self.arch, &mut visitor)
                 .unwrap_unchecked();
         }
     }
@@ -480,39 +422,13 @@ impl<A: Arch> HardwareAddressSpace<A> {
             S::BYTES,
         );
 
-        let leaf_depth = <A as MapsAt<S>>::DEPTH;
+        let mut visitor = SetAttributesVisitor { attributes, flush };
 
-        let set_attributes =
-            |entry: &mut A::PageTableEntry, step: Step| -> Result<(), Infallible> {
-                let Step::Descend { range, depth } = step else {
-                    return Ok(());
-                };
-
-                debug_assert!(!entry.is_vacant());
-
-                if entry.is_leaf() {
-                    debug_assert!(
-                        depth == leaf_depth,
-                        "virtual address range must be mapped at page size {}",
-                        S::BYTES,
-                    );
-
-                    *entry = A::PageTableEntry::new_leaf(entry.address(), attributes);
-
-                    // TODO fence(modified pages, 0) if attributes includes GLOBAL
-                    // TODO we can omit the fence here IF the attributes are MORE PERMISSIVE than before and
-                    //  lazily change the mapping in the fault handler
-                    flush.invalidate(range);
-                }
-
-                Ok(())
-            };
-
-        // Safety: `set_attributes` is infallible
+        // Safety: `SetAttributesVisitor` is infallible.
         unsafe {
             self.root_page_table
                 .borrow_mut()
-                .visit_mut(virt, physmap, &self.arch, set_attributes)
+                .visit::<S, _>(virt, physmap, &self.arch, &mut visitor)
                 .unwrap_unchecked();
         }
     }
@@ -551,60 +467,16 @@ impl<A: Arch> HardwareAddressSpace<A> {
             S::BYTES,
         );
 
-        let leaf_depth = <A as MapsAt<S>>::DEPTH;
-
-        let unmap = |entry: &mut A::PageTableEntry, step: Step| -> Result<(), Infallible> {
-            match step {
-                // Descending: vacate the leaf entries covering `virt`.
-                Step::Descend { range, depth } => {
-                    debug_assert!(!entry.is_vacant());
-
-                    if entry.is_leaf() {
-                        debug_assert!(
-                            depth == leaf_depth,
-                            "virtual address range must be mapped at page size {}",
-                            S::BYTES,
-                        );
-
-                        *entry = A::PageTableEntry::VACANT;
-
-                        // TODO fence(modified pages, 0) if attributes includes GLOBAL
-                        flush.invalidate(range);
-                    }
-                }
-                // Ascending: vacating its entries may have emptied the subtable; if so,
-                // free it and clear the entry that pointed at it.
-                Step::Ascend { child_depth } => {
-                    // Safety: `entry` is the parent of the just-visited child table,
-                    // which sits at `child_depth`.
-                    let child: Table<A, marker::Mut<'_>> =
-                        unsafe { Table::from_raw_parts(entry.address(), child_depth) };
-
-                    if child.is_empty(physmap, &self.arch) {
-                        let frame = entry.address();
-
-                        *entry = A::PageTableEntry::VACANT;
-
-                        // Safety: tables are always allocated through the frame allocator, and
-                        // are always exactly one frame in size.
-                        unsafe {
-                            frame_allocator.deallocate(frame, A::GRANULE_LAYOUT);
-                        }
-
-                        // TODO fence(all pages, 0) if attributes includes GLOBAL
-                        flush.invalidate_all();
-                    }
-                }
-            }
-
-            Ok(())
+        let mut visitor = UnmapVisitor {
+            frame_allocator,
+            flush,
         };
 
-        // Safety: `unmap` is infallible
+        // Safety: `UnmapVisitor` is infallible.
         unsafe {
             self.root_page_table
                 .borrow_mut()
-                .visit_mut(virt, physmap, &self.arch, unmap)
+                .visit::<S, _>(virt, physmap, &self.arch, &mut visitor)
                 .unwrap_unchecked();
         }
     }
@@ -657,6 +529,275 @@ impl<A: Arch> HardwareAddressSpace<A> {
                 flush,
             )?;
         }
+
+        Ok(())
+    }
+}
+
+/// [`Visitor`] for [`map_contiguous`](HardwareAddressSpace::map_contiguous)
+struct MapVisitor<'a, F> {
+    phys: PhysicalAddress,
+    attributes: MemoryAttributes,
+    frame_allocator: F,
+    flush: &'a mut Flush,
+}
+
+impl<A, S, F> Visitor<A, S> for MapVisitor<'_, F>
+where
+    A: MapsAt<S>,
+    S: PageSize,
+    F: FrameAllocator,
+{
+    type Error = AllocError;
+
+    fn descend(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        index: u16,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<Option<PhysicalAddress>, AllocError> {
+        // Safety: the walk only descends through in-bounds indices.
+        let entry = unsafe { table.get(index, physmap, arch) };
+
+        // If a table already exists: simply descend into it
+        if entry.is_table() {
+            return Ok(Some(entry.address()));
+        }
+
+        debug_assert!(entry.is_vacant());
+
+        // If no table exists: allocate the intermediate table to descend into.
+        let frame =
+            self.frame_allocator
+                .allocate_contiguous_zeroed(A::GRANULE_LAYOUT, physmap, arch)?;
+
+        // Safety: the walk only descends through in-bounds indices.
+        unsafe { table.set(index, A::PageTableEntry::new_table(frame), physmap, arch) };
+
+        // TODO fence(all pages, 0) if attributes includes GLOBAL
+        self.flush.invalidate_all();
+
+        Ok(Some(frame))
+    }
+
+    fn fill(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        first: u16,
+        count: u16,
+        va: VirtualAddress,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<(), AllocError> {
+        debug_assert!((first as usize + count as usize) <= table.level().entries() as usize);
+
+        let mut entry_virt = table.entry_address(first, physmap);
+        let mut phys = self.phys;
+
+        for _ in 0..count {
+            // Precondition: the range is unmapped, so every slot is vacant.
+            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            debug_assert!(unsafe { arch.read::<A::PageTableEntry>(entry_virt) }.is_vacant());
+
+            let leaf = A::PageTableEntry::new_leaf(phys, self.attributes);
+            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            unsafe { arch.write(entry_virt, leaf) };
+
+            entry_virt = entry_virt.add(size_of::<A::PageTableEntry>());
+            phys = phys.add(S::BYTES);
+        }
+
+        self.phys = phys;
+
+        // TODO fence(modified pages, 0) if attributes includes GLOBAL
+        // TODO we can omit the fence here and lazily change the mapping in the fault handler
+        self.flush
+            .invalidate(Range::from_start_len(va, count as usize * S::BYTES));
+
+        Ok(())
+    }
+}
+
+/// [`Visitor`] for [`remap_contiguous`](HardwareAddressSpace::remap_contiguous)
+struct RemapVisitor<'a> {
+    phys: PhysicalAddress,
+    flush: &'a mut Flush,
+}
+
+impl<A, S> Visitor<A, S> for RemapVisitor<'_>
+where
+    A: MapsAt<S>,
+    S: PageSize,
+{
+    type Error = Infallible;
+
+    fn fill(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        first: u16,
+        count: u16,
+        va: VirtualAddress,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<(), Infallible> {
+        let mut entry_virt = table.entry_address(first, physmap);
+        let mut phys = self.phys;
+
+        for _ in 0..count {
+            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            let old = unsafe { arch.read::<A::PageTableEntry>(entry_virt) };
+            debug_assert!(
+                old.is_leaf(),
+                "virtual address range must be mapped at page size {}",
+                S::BYTES,
+            );
+
+            let new = A::PageTableEntry::new_leaf(phys, old.attributes());
+            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            unsafe { arch.write(entry_virt, new) };
+
+            entry_virt = entry_virt.add(size_of::<A::PageTableEntry>());
+            phys = phys.add(S::BYTES);
+        }
+
+        self.phys = phys;
+
+        // TODO fence(modified pages, 0) if attributes includes GLOBAL
+        self.flush
+            .invalidate(Range::from_start_len(va, count as usize * S::BYTES));
+
+        Ok(())
+    }
+}
+
+/// [`Visitor`] for [`set_attributes`](HardwareAddressSpace::set_attributes)
+struct SetAttributesVisitor<'a> {
+    attributes: MemoryAttributes,
+    flush: &'a mut Flush,
+}
+
+impl<A, S> Visitor<A, S> for SetAttributesVisitor<'_>
+where
+    A: MapsAt<S>,
+    S: PageSize,
+{
+    type Error = Infallible;
+
+    fn fill(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        first: u16,
+        count: u16,
+        va: VirtualAddress,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<(), Infallible> {
+        let mut entry_virt = table.entry_address(first, physmap);
+
+        for _ in 0..count {
+            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            let old = unsafe { arch.read::<A::PageTableEntry>(entry_virt) };
+            debug_assert!(
+                old.is_leaf(),
+                "virtual address range must be mapped at page size {}",
+                S::BYTES,
+            );
+
+            let new = A::PageTableEntry::new_leaf(old.address(), self.attributes);
+            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            unsafe { arch.write(entry_virt, new) };
+
+            entry_virt = entry_virt.add(size_of::<A::PageTableEntry>());
+        }
+
+        // TODO fence(modified pages, 0) if attributes includes GLOBAL
+        // TODO we can omit the fence here IF the attributes are MORE PERMISSIVE than before and
+        //  lazily change the mapping in the fault handler
+        self.flush
+            .invalidate(Range::from_start_len(va, count as usize * S::BYTES));
+
+        Ok(())
+    }
+}
+
+/// [`Visitor`] for [`unmap`](HardwareAddressSpace::unmap)
+struct UnmapVisitor<'a, F> {
+    frame_allocator: F,
+    flush: &'a mut Flush,
+}
+
+impl<A, S, F> Visitor<A, S> for UnmapVisitor<'_, F>
+where
+    A: MapsAt<S>,
+    S: PageSize,
+    F: FrameAllocator,
+{
+    type Error = Infallible;
+
+    fn ascend(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        index: u16,
+        child_base: PhysicalAddress,
+        child_depth: u8,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<(), Infallible> {
+        // `ascend` is called after we may have run `fill` to free all its pages on the subtable.
+        // If its empty now, clear and free the table itself.
+
+        // Safety: `child_base`/`child_depth` name the just-visited child table, and we
+        // inherit `table`'s mutable access to the tree.
+        let child: Table<A, marker::Mut<'_>> =
+            unsafe { Table::from_raw_parts(child_base, child_depth) };
+
+        if child.is_empty(physmap, arch) {
+            // Safety: the walk only ascends through in-bounds indices.
+            unsafe { table.set(index, A::PageTableEntry::VACANT, physmap, arch) };
+
+            // Safety: tables are always allocated through the frame allocator, and are
+            // always exactly one frame in size. `child_base` is that frame.
+            unsafe {
+                self.frame_allocator
+                    .deallocate(child_base, A::GRANULE_LAYOUT);
+            }
+
+            // TODO fence(all pages, 0) if attributes includes GLOBAL
+            self.flush.invalidate_all();
+        }
+
+        Ok(())
+    }
+
+    fn fill(
+        &mut self,
+        table: &mut Table<A, marker::Mut<'_>>,
+        first: u16,
+        count: u16,
+        va: VirtualAddress,
+        physmap: &PhysMap,
+        arch: &A,
+    ) -> Result<(), Infallible> {
+        let mut entry_virt = table.entry_address(first, physmap);
+
+        for _ in 0..count {
+            debug_assert!(
+                // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+                unsafe { arch.read::<A::PageTableEntry>(entry_virt) }.is_leaf(),
+                "virtual address range must be mapped at page size {}",
+                S::BYTES,
+            );
+
+            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            unsafe { arch.write(entry_virt, A::PageTableEntry::VACANT) };
+
+            entry_virt = entry_virt.add(size_of::<A::PageTableEntry>());
+        }
+
+        // TODO fence(modified pages, 0) if attributes includes GLOBAL
+        self.flush
+            .invalidate(Range::from_start_len(va, count as usize * S::BYTES));
 
         Ok(())
     }
