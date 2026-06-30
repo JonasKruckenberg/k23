@@ -16,7 +16,7 @@ use std::range::Range;
 
 use criterion::measurement::WallTime;
 use criterion::{
-    criterion_group, criterion_main, BatchSize, BenchmarkGroup, Criterion, Throughput,
+    BatchSize, BenchmarkGroup, Criterion, Throughput, criterion_group, criterion_main,
 };
 use mem_core::arch::riscv64::{Riscv64Sv39, Riscv64Sv48, Riscv64Sv57};
 use mem_core::arch::{Arch, MapsAt, PageTableLevel};
@@ -144,7 +144,7 @@ struct World<A: Arch> {
 /// Builds a fresh address space over `region`.
 fn fresh_world<A: Arch>(region: Range<PhysicalAddress>) -> World<A> {
     let bump = BumpAlloc::new(region);
-    let physmap = PhysMap::new_identity(iter::once(region));
+    let physmap = PhysMap::new_identity::<Size4KiB>(iter::once(region));
     let aspace = HardwareAddressSpace::new(FlatArch::<A>::new(), &physmap, &bump)
         .expect("root page-table allocation");
     World {

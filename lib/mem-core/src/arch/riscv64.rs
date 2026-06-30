@@ -309,6 +309,7 @@ mycelium_bitfield::enum_from_bits! {
 }
 
 impl super::PageTableEntry for PageTableEntry {
+    #[inline]
     fn new_leaf(address: PhysicalAddress, attributes: MemoryAttributes) -> Self {
         let address_raw = address.get() >> PAGE_OFFSET_BITS;
 
@@ -322,6 +323,7 @@ impl super::PageTableEntry for PageTableEntry {
             .with(Self::EXECUTE, attributes.allows_execution())
     }
 
+    #[inline]
     fn new_table(address: PhysicalAddress) -> Self {
         let address_raw = address.get() >> PAGE_OFFSET_BITS;
 
@@ -334,15 +336,18 @@ impl super::PageTableEntry for PageTableEntry {
 
     const VACANT: Self = Self::new();
 
+    #[inline]
     fn is_vacant(&self) -> bool {
         !self.get(Self::VALID)
     }
 
+    #[inline]
     fn is_leaf(&self) -> bool {
         self.get(Self::VALID)
             && (self.get(Self::READ) || (self.get(Self::WRITE) || self.get(Self::EXECUTE)))
     }
 
+    #[inline]
     fn is_table(&self) -> bool {
         self.get(Self::VALID)
             && !self.get(Self::READ)
@@ -350,10 +355,12 @@ impl super::PageTableEntry for PageTableEntry {
             && !self.get(Self::EXECUTE)
     }
 
+    #[inline]
     fn address(&self) -> PhysicalAddress {
         PhysicalAddress::new(self.get(Self::ADDRESS) << PAGE_OFFSET_BITS)
     }
 
+    #[inline]
     fn attributes(&self) -> MemoryAttributes {
         let write_or_execute = match (self.get(Self::WRITE), self.get(Self::EXECUTE)) {
             (true, false) => WriteOrExecute::Write,

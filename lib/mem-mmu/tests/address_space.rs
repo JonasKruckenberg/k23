@@ -211,11 +211,11 @@ mod proptests {
             ///
             /// A contiguous physical block mapped to a contiguous virtual range that
             /// straddles a leaf-table boundary must map every virtual page to the
-            /// matching physical page, in order. This currently fails for two
-            /// compounding reasons:
-            ///  - `PageTableEntries::next` (utils.rs) overshoots the per-entry sub-range
-            ///    when the range start is not aligned to the level's page size.
-            ///  - `visit_mut` (table.rs) descends sibling subtables LIFO.
+            /// matching physical page, in order. Guards against two historical bugs:
+            ///  - `PageTableEntries::next` (utils.rs) overshooting the per-entry
+            ///    sub-range when the range start is not aligned to the level's page size.
+            ///  - the walk (table.rs) descending sibling subtables LIFO rather than in
+            ///    ascending address order.
             #[test]
             fn map_contiguous_across_table_boundary(
                 pages_before in 1usize..=8,
