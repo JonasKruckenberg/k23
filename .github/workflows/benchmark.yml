@@ -41,7 +41,7 @@ jobs:
           && needs.changed-targets.result == 'success')
       ) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -54,7 +54,7 @@ jobs:
       # Always restore the latest baseline so PRs compare against main.
       # Saving is gated to push-on-main below so PRs cannot poison the baseline.
       - name: restore criterion baseline
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: bench
           key: bench-${{ github.sha }}
@@ -63,7 +63,7 @@ jobs:
       - run: nix develop .#ci --command just benchmark '${{ needs.changed-targets.outputs.impacted }}'
       - name: save criterion baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: bench
           key: bench-${{ github.sha }}
