@@ -1,7 +1,8 @@
 name: Release
 
 # Nightly release: once a day, build every k23 image (each image kind × target
-# platform) from the tip of `main` and republish them as the `nightly` prerelease.
+# platform) from the tip of `main` and publish them as a dated `nightly-<date>`
+# prerelease.
 
 on:
   schedule:
@@ -9,7 +10,6 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # One rolling release; if a manual run overlaps the scheduled one, keep the newest.
   group: release-nightly
   cancel-in-progress: true
 
@@ -60,7 +60,7 @@ jobs:
       # paths are content-addressed and not safe to reference directly. A failed
       # build fails this leg, so its image is absent and no release is published.
       - name: build ${{ matrix.output }}
-        run: nix develop .#ci --command buck2 build ${{ matrix.target }} --target-platforms ${{ matrix.platform }} --out ${{ matrix.output }}
+        run: nix develop .#ci --command buck2 build ${{ matrix.target }} -m release --target-platforms ${{ matrix.platform }} --out ${{ matrix.output }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -68,10 +68,8 @@ jobs:
           path: ${{ matrix.output }}
           if-no-files-found: error
 
-  # Collect every built image and force-move the rolling `nightly` release/tag to
-  # this commit. Runs once, after the whole matrix, so the asset uploads don't
-  # race. `needs: build` requires every leg to succeed, so a broken image keeps
-  # the previous nightly in place rather than publishing a partial release.
+  # Collect every built image and publish them as a dated `nightly-<date>`
+  # prerelease.
   publish:
     needs: build
     runs-on: ubuntu-latest
@@ -82,14 +80,19 @@ jobs:
           path: artifacts
           merge-multiple: true # flatten every artifact into `artifacts/`
 
-      # Delete first so the tag does not keep pointing at the previous commit.
-      - name: publish rolling nightly
+      - name: publish nightly
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete nightly --cleanup-tag --yes || true
-          gh release create nightly artifacts/* \
+          set -euo pipefail
+          tag="nightly-$(date -u +%F)"
+
+          # Replace the day's release if a manual run repeats it.
+          gh release delete "$tag" --cleanup-tag --yes || true
+
+          # `--generate-notes` fills in the title and a "What's Changed" changelog,
+          # diffed against the previous nightly tag (GitHub picks it automatically).
+          gh release create "$tag" artifacts/* \
             --prerelease \
             --target "${{ github.sha }}" \
-            --title "Nightly $(date -u +%F)" \
-            --notes "Rolling build from ${{ github.sha }}."
+            --generate-notes
