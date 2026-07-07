@@ -3288,6 +3288,12 @@ cargo.rust_library(
     ],
 )
 
+alias(
+    name = "pin-project-lite",
+    actual = ":pin-project-lite-0.2",
+    visibility = ["PUBLIC"],
+)
+
 http_archive(
     name = "pin-project-lite-0.2.17.crate",
     sha256 = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd",

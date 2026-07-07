@@ -1,0 +1,63 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load("//build:bench.bzl", "rust_benchmark")
+load("//build:loom.bzl", "rust_loom_test")
+
+_DEPS = [
+    "//lib/util:util",
+    "//lib/spin:spin",
+
+    "//third-party:log",
+    "//third-party:cordyceps",
+    "//third-party:cfg-if",
+    "//third-party:mycelium-bitfield",
+    "//third-party:pin-project-lite",
+]
+
+rust_library(
+    name = "heartbeat",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["PUBLIC"],
+    deps = _DEPS,
+    tests = [":heartbeat_unittests", ":heartbeat_loom_tests"],
+)
+
+rust_test(
+    name = "heartbeat_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS,
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+# Host-only criterion benchmark: the balanced-binary-tree sum from the Spice
+# example, sequential vs. the heartbeat scheduler at a range of hart counts.
+rust_benchmark(
+    name = "heartbeat_benchmarks",
+    srcs = ["benches/binary_tree.rs"],
+    crate_root = "benches/binary_tree.rs",
+    deps = [
+        ":heartbeat",
+        "//third-party:criterion",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+# Model-checks the park/wake protocol and the idle-queue registration handshake.
+# See `src/loom_tests.rs` for why the scope stops there.
+rust_loom_test(
+    name = "heartbeat_loom_tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "heartbeat",
+    deps = _DEPS + [
+        "//third-party:loom",
+    ],
+)
+
+rust_binary(
+    name = "heartbeat-example",
+    srcs = ["examples/binary_tree.rs"],
+    crate_root = "examples/binary_tree.rs",
+    deps = [":heartbeat"],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)

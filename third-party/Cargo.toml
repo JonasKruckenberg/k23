@@ -30,6 +30,7 @@ static_assertions = "1.1.0"
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
 critical-section = { version = "1.2.0", default-features = false, features = ["restore-state-bool"] }
 uefi = { version = "0.37", features = [ "alloc", "global_allocator" ] }
+pin-project-lite = "0.2.17"
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }
