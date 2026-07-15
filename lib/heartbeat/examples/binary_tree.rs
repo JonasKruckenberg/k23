@@ -189,7 +189,7 @@ fn main() {
                             .unwrap()
                             .push(&raw const *worker.heartbeat_flag() as usize);
 
-                        let _ = worker.main_loop();
+                        worker.main_loop();
                     })
                 })
                 .collect();

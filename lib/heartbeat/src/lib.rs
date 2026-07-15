@@ -133,7 +133,6 @@
 //! instead — see [`ParkVTable`]'s stickiness requirement.
 
 // #![no_std]
-#![feature(never_type)]
 
 mod loom;
 #[cfg(all(test, loom))]
@@ -422,12 +421,7 @@ impl<'a> Worker<'a> {
 
     /// Run shared jobs, and sleep when there are none. Returns once the scheduler
     /// is [`stop`](Scheduler::stop)ped.
-    ///
-    /// # Errors
-    ///
-    /// Always `Err(())` — it only ever returns because the scheduler is stopping,
-    /// and it can produce no value.
-    pub fn main_loop(&mut self) -> Result<!, ()> {
+    pub fn main_loop(&mut self) {
         loop {
             let work = {
                 let mut synced = self.scheduler.synced.lock();
@@ -475,8 +469,6 @@ impl<'a> Worker<'a> {
                 None => self.header.park.park(),
             }
         }
-
-        Err(())
     }
 
     /// Run `f` with fork/join access to this worker.
@@ -1078,7 +1070,7 @@ mod tests {
                             .unwrap()
                             .push(ptr::from_ref(worker.heartbeat_flag()) as usize);
 
-                        let _ = worker.main_loop();
+                        worker.main_loop();
                     })
                 })
                 .collect();

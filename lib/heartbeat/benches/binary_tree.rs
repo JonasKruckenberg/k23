@@ -144,7 +144,7 @@ fn bench_harts(group: &mut BenchmarkGroup<'_, WallTime>, root: &Node, harts: usi
                         .unwrap()
                         .push(&raw const *worker.heartbeat_flag() as usize);
 
-                    let _ = worker.main_loop();
+                    worker.main_loop();
                 })
             })
             .collect();
