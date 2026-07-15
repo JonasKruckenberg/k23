@@ -83,7 +83,7 @@ fn wake_racing_park_is_never_lost() {
             })
         };
 
-        // Exactly `Worker::await_shared_job`.
+        // Exactly `Worker::work_until`'s park loop.
         while !ready.load(Ordering::Acquire) {
             park.park();
         }

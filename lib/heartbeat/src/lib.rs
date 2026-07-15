@@ -34,7 +34,7 @@
 //!   function taking `&mut Scope` makes every frame's scope address escape, so
 //!   LLVM pins it to a stack slot and P1 silently evaporates (measured: the
 //!   entire benefit). Cold paths take `&Worker` and rebuild their own context —
-//!   see [`Worker::await_shared_job`].
+//!   see [`Worker::work_until`].
 //! - **P3 — Hoist loads above the fork.** A load written *after* a join
 //!   (`node.value + l + r`) gets sunk by LLVM below both recursive calls, onto
 //!   every frame's critical path. Loaded *before* the fork it waits out the
@@ -55,7 +55,7 @@
 //!   unlinked" traps disappear. See [`Worker::new`], [`Job::stub`].
 //! - **P7 — Inline discipline.** `#[inline(always)]` on `fork_join` and `call`
 //!   (the whole hot path must dissolve into the caller); `#[cold]` on
-//!   `heartbeat`; `#[inline(never)]` on `await_shared_job` (keeps the join's
+//!   `heartbeat`; `#[inline(never)]` on `work_until` (keeps the join's
 //!   fast path small enough to stay inline).
 //! - **P8 — Overlap closure and result in one union.** [`Stage`] stores `F`
 //!   and `R` in the same bytes; which is live follows from the job state, so a
@@ -141,7 +141,7 @@ mod park;
 
 use core::cell::{Cell, UnsafeCell};
 use core::fmt;
-use core::mem::{ManuallyDrop, offset_of};
+use core::mem::{offset_of, ManuallyDrop};
 use core::ptr::{self, NonNull};
 
 use cordyceps::list;
@@ -436,53 +436,7 @@ impl<'a> Worker<'a> {
     /// Run shared jobs, and sleep when there are none. Returns once the scheduler
     /// is [`stop`](Scheduler::stop)ped.
     pub fn main_loop(&mut self) {
-        loop {
-            let work = {
-                let mut synced = self.scheduler.synced.lock();
-
-                // `park` can return without anybody having dequeued us: a thief that
-                // ran one of our promoted jobs unparks us once it has published the
-                // result, and that token can land long after we joined the job and
-                // went idle. Take ourselves back out of the list before doing
-                // anything else — a worker that is about to run a job must not be
-                // holding a place in `idle`, because running it means it might
-                // promote, and promoting needs these very links.
-                synced.remove_idle(&self.header);
-
-                // Read under the lock, and `stop` writes it under the lock: seeing
-                // `false` here means `stop` has not drained `idle` yet, so it is
-                // guaranteed to find the node we are about to push.
-                if self.scheduler.is_stopping() {
-                    break;
-                }
-
-                match Scheduler::take_oldest_shared_work(&mut synced) {
-                    Some(work) => Some(work),
-                    // No work *and* registered as idle, decided together under the
-                    // guard. This is the whole point of taking the lock: we cannot
-                    // fall asleep while a job is sitting in `shared`.
-                    None => {
-                        synced.push_idle(&self.header);
-                        None
-                    }
-                }
-            };
-
-            match work {
-                Some((job, owner)) => {
-                    // An idle worker's own list is empty, so the executing scope
-                    // starts at the head.
-                    let mut scope = Scope {
-                        worker: self,
-                        job_tail: self.job_head,
-                    };
-                    scope.execute_job(job, owner);
-                }
-                // The guard is gone by now, so this never sleeps holding the lock.
-                // Whoever wakes us removed us from `idle` first.
-                None => self.header.park.park(),
-            }
-        }
+        self.work_until(|| self.scheduler.is_stopping());
     }
 
     /// Run `f` with fork/join access to this worker.
@@ -582,34 +536,42 @@ impl<'a> Worker<'a> {
         }
     }
 
-    /// Wait for one of our promoted jobs to come back, helping out in the meantime.
+    /// Pull and run shared jobs until `done`; park when there is nothing to pull.
     ///
-    /// `is_ready` belongs to the one job we are joining: several of our jobs can be
-    /// in flight at once, and their thieves finish in whatever order they like, so a
-    /// per-worker flag could not tell us *which* job is done. The unpark is only a
-    /// hint — any of our thieves, or a promoter with fresh work, may have sent it —
-    /// so the flag, not the wakeup, is what we trust.
+    /// The entire taker side of the scheduler, shared by its two users:
+    /// [`main_loop`](Worker::main_loop) runs it until [`stop`](Scheduler::stop),
+    /// and a join whose job was stolen runs it until the thief publishes the
+    /// result ([`fork_join`](Scope::fork_join)).
+    ///
+    /// `done` is checked under the guard, in the same critical section that
+    /// cleans up a stale registration and decides between taking work and
+    /// registering as idle — so every exit is deregistered and empty-handed,
+    /// and a worker can never fall asleep while a job sits in `shared`.
     ///
     /// A `Worker` method on purpose: this is `fork_join`'s cold path, and taking
     /// `&mut Scope` here would make every frame's scope address escape into this
     /// out-of-line call — pinning the scope to a stack slot and undoing the
-    /// whole by-value discipline. Taking only the worker keeps the hot path's
-    /// scope a pure register value.
+    /// whole by-value discipline (P2). Taking only the worker keeps the hot
+    /// path's scope a pure register value.
     #[inline(never)]
-    fn await_shared_job(&self, is_ready: &AtomicBool) {
+    fn work_until(&self, done: impl Fn() -> bool) {
         loop {
             let work = {
                 let mut synced = self.scheduler.synced.lock();
 
-                // The same stale-token cleanup as `main_loop`: our thief's
-                // unpark can land long after an advertise-wake already pulled
-                // us off the list. Take ourselves back out before anything
+                // Stale-token cleanup: our unpark can land long after an
+                // advertise-wake already pulled us off the list (a thief's
+                // result token, say). Take ourselves back out before anything
                 // else — a worker about to run a job (or return to user code)
                 // must not hold a place in `idle`, because running means
                 // promoting, and promoting needs these very links.
+                //
+                // For `stop`: it writes `stopping` under this lock, so seeing
+                // `false` in `done` here means it has not drained `idle` yet
+                // and is guaranteed to find the node we may push below.
                 synced.remove_idle(&self.header);
 
-                if is_ready.load(Ordering::Acquire) {
+                if done() {
                     break;
                 }
 
@@ -641,13 +603,14 @@ impl<'a> Worker<'a> {
             };
 
             if let Some((job, owner)) = work {
-                // Our queued list is empty right now: the job we are awaiting
+                // Our own queued list is empty right now — `main_loop` workers
+                // run nothing of their own, and for a joiner the job it awaits
                 // was promoted, a promoted job is older than anything queued —
                 // so everything older was promoted before it — and everything
-                // younger has already been joined. Helping therefore starts
-                // from the head, where its forks stay reachable by
-                // [`shift`](Worker::shift) (upstream's `executeJob`/`begin()`
-                // discipline, assert included).
+                // younger has already been joined. Executing from the head
+                // keeps the job's forks reachable by [`shift`](Worker::shift)
+                // (upstream's `executeJob`/`begin()` discipline, assert
+                // included).
                 // Safety: the stub outlives the worker (`Worker::new`'s contract).
                 debug_assert!(unsafe { self.job_head.as_ref() }.next.get().is_null());
                 let mut scope = Scope {
@@ -859,7 +822,14 @@ impl Scope<'_, '_> {
             let b = ManuallyDrop::into_inner(unsafe { job.stage.into_inner().f });
             call(self.worker, self.job_tail, b)
         } else {
-            self.worker.await_shared_job(&job.is_ready);
+            // Stolen: pull and run other shared jobs until the thief publishes
+            // ours. `is_ready` is per-job on purpose: several of our jobs can
+            // be in flight at once and finish in any order, so only a flag on
+            // the job itself can say *this* one is done — the unpark is only a
+            // hint (any of our thieves, or a promoter with fresh work, may
+            // have sent it); the flag is what we trust.
+            self.worker
+                .work_until(|| job.is_ready.load(Ordering::Acquire));
 
             // Safety: `is_ready` is set, so whoever ran the job replaced the closure
             // with its result and will never touch the stage again.
@@ -923,7 +893,7 @@ impl<F, R> TypedJob<F, R> {
         ) where
             F: FnOnce(Scope<'_, '_>) -> R,
         {
-            // Are we running our *own* promoted job? `await_shared_job` steals from
+            // Are we running our *own* promoted job? `work_until` steals from
             // `shared`, and what it finds may well be the very job it is waiting for.
             // There is nobody to wake in that case — we are who would have been woken
             // — and unparking ourselves would leave a token nobody consumes, which
@@ -1169,7 +1139,7 @@ mod tests {
     /// helping — push onto a detached node. With the heartbeat flag held high
     /// continuously, *every* fork promotes, so every join takes the
     /// promoted-job path and (with no other worker to steal) runs its own job
-    /// through `await_shared_job`'s "help out" arm — the "empty local list"
+    /// through `work_until`'s "help out" arm — the "empty local list"
     /// path (upstream's `Worker.begin()` assert).
     #[test]
     fn sequential_forks_survive_aggressive_promotion() {
