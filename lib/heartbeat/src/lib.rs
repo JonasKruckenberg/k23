@@ -178,10 +178,19 @@ struct Synced {
 
 impl Synced {
     /// Register `worker` as idle.
+    ///
+    /// The caller must guarantee `worker` is not linked into [`Synced::shared`]
+    /// — the lists share one set of links — which is equivalent to its
+    /// `shared_job` slot being empty (the two change together, under the lock
+    /// the caller already holds).
     fn push_idle(&mut self, worker: &WorkerHeader) {
         debug_assert!(
             !worker.in_idle_list.load(Ordering::Relaxed),
             "worker registered as idle twice"
+        );
+        debug_assert!(
+            worker.shared_job.load(Ordering::Relaxed).is_null(),
+            "a worker registering as idle must not be advertising (the lists share links)"
         );
         worker.in_idle_list.store(true, Ordering::Relaxed);
         self.idle.push_back(NonNull::from_ref(worker));
@@ -232,6 +241,11 @@ impl Scheduler {
     }
 
     /// Ask every worker in [`Worker::main_loop`] to return. Idempotent.
+    ///
+    /// May transiently pop (and wake) joiners waiting out a stolen job; they
+    /// re-register until their join completes, which it always does — a thief
+    /// finishes the job it is running regardless of `stopping` — so this drain
+    /// terminates.
     pub fn stop(&self) {
         {
             // Under the lock, so it cannot land between a worker finding no work
@@ -573,8 +587,8 @@ impl<'a> Worker<'a> {
     /// `is_ready` belongs to the one job we are joining: several of our jobs can be
     /// in flight at once, and their thieves finish in whatever order they like, so a
     /// per-worker flag could not tell us *which* job is done. The unpark is only a
-    /// hint — any of our thieves may have sent it — so the flag, not the wakeup, is
-    /// what we trust.
+    /// hint — any of our thieves, or a promoter with fresh work, may have sent it —
+    /// so the flag, not the wakeup, is what we trust.
     ///
     /// A `Worker` method on purpose: this is `fork_join`'s cold path, and taking
     /// `&mut Scope` here would make every frame's scope address escape into this
@@ -583,10 +597,47 @@ impl<'a> Worker<'a> {
     /// scope a pure register value.
     #[inline(never)]
     fn await_shared_job(&self, is_ready: &AtomicBool) {
-        while !is_ready.load(Ordering::Acquire) {
+        loop {
             let work = {
                 let mut synced = self.scheduler.synced.lock();
-                Scheduler::take_oldest_shared_work(&mut synced)
+
+                // The same stale-token cleanup as `main_loop`: our thief's
+                // unpark can land long after an advertise-wake already pulled
+                // us off the list. Take ourselves back out before anything
+                // else — a worker about to run a job (or return to user code)
+                // must not hold a place in `idle`, because running means
+                // promoting, and promoting needs these very links.
+                synced.remove_idle(&self.header);
+
+                if is_ready.load(Ordering::Acquire) {
+                    break;
+                }
+
+                match Scheduler::take_oldest_shared_work(&mut synced) {
+                    Some(work) => Some(work),
+                    // Register as idle, decided together with "there is
+                    // nothing to pull" under the guard. Being in `idle` means
+                    // a heartbeat's advertise now wakes blocked joiners too,
+                    // instead of letting available parallelism sleep until the
+                    // joiner's own job completes.
+                    //
+                    // **Unless we are advertising.** A joiner can get here
+                    // with an older promotion of its own still unclaimed (the
+                    // job being joined was stolen while the slot holds an
+                    // older one), and a worker in `shared` must never enter
+                    // `idle`: the two lists share one set of links, so pushing
+                    // here would silently corrupt both. Checked under this
+                    // lock, which is what the slot changes under. Such a
+                    // joiner waits on its own token exactly as before — its
+                    // wake comes from its thief, or from whoever steals the
+                    // advertised job.
+                    None => {
+                        if self.header.shared_job.load(Ordering::Relaxed).is_null() {
+                            synced.push_idle(&self.header);
+                        }
+                        None
+                    }
+                }
             };
 
             if let Some((job, owner)) = work {
@@ -604,13 +655,13 @@ impl<'a> Worker<'a> {
                     job_tail: self.job_head,
                 };
                 scope.execute_job(job, owner);
-                continue;
+            } else {
+                // The guard is gone by now, so this never sleeps holding the
+                // lock. Whoever wakes us — our thief publishing the result, or
+                // a promoter with fresh work — removed us from `idle` first or
+                // left a token.
+                self.header.park.park();
             }
-
-            // We are not idle — we have a job outstanding — so we never enter the
-            // idle list, and wait on our own token instead. Nobody else can hand our
-            // job back to us; whoever ran it unparks us.
-            self.header.park.park();
         }
     }
 
