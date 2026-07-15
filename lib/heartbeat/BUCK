@@ -61,3 +61,14 @@ rust_binary(
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
+
+# Adversarial benchmarks: idle-transition latency (`short`), skew (`skewed`),
+# and — via HEARTBEAT_SHORT_N=1000 — the tiny-scope case.
+rust_binary(
+    name = "heartbeat-adversarial",
+    srcs = ["examples/adversarial.rs"],
+    crate_root = "examples/adversarial.rs",
+    deps = [":heartbeat"],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
