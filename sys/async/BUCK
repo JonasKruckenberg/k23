@@ -32,7 +32,7 @@ rust_library(
         "DEFAULT": [],
     }),
     deps = _DEPS + select({
-        "constraints//:env[kernel]": ["//lib/panic-unwind:panic-unwind"],
+        "constraints//:env[kernel]": ["//sys/panic-unwind:panic-unwind"],
         "DEFAULT": [],
     }),
     tests = [":kasync_tests", ":kasync_loom_tests", ":kasync_benchmarks"],

@@ -5,11 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use alloc::boxed::Box;
 use core::arch::naked_asm;
 use core::cell::Cell;
 use core::ops::ControlFlow;
 
+use backtrace::Backtrace;
 use cpu_local::cpu_local;
 use gimli::RiscV;
 use mem_core::VirtualAddress;
@@ -20,7 +20,6 @@ use riscv::{
 
 use crate::arch::PAGE_SIZE;
 use crate::arch::trap::Trap;
-use crate::backtrace::Backtrace;
 use crate::state::{cpu_local, global};
 use crate::{TRAP_STACK_SIZE_PAGES, irq};
 
@@ -378,9 +377,6 @@ fn handle_kernel_exception(
         Err(e) => tracing::error!("backtrace unavailable: {e}; epc={epc}"),
     }
 
-    // FIXME it would be great to get rid of the allocation here :/
-    let payload = Box::new(cause);
-
     // Unwinding runs on the kernel stack and never returns through the trap
     // epilogue, so restore the per-CPU trap invariants by hand before
     // leaving: `sscratch` must hold the trap-stack-top (next trap's
@@ -396,7 +392,7 @@ fn handle_kernel_exception(
     }
 
     // Safety: `regs` was captured on trap entry.
-    unsafe { panic_unwind::begin_unwind(payload, regs, epc.add(1).get()) };
+    unsafe { panic_unwind::begin_unwind(regs, epc.add(1).get()) };
 }
 
 fn handle_recursive_fault(frame: &unwind::Registers, epc: VirtualAddress) -> ! {
@@ -416,12 +412,9 @@ fn handle_recursive_fault(frame: &unwind::Registers, epc: VirtualAddress) -> ! {
         Err(e) => tracing::error!("backtrace unavailable: {e}; epc={epc}"),
     }
 
-    // FIXME it would be great to get rid of the allocation here :/
-    let payload = Box::new("recursive fault in trap handler");
-
     // Safety: `regs` was captured on trap entry.
     unsafe {
-        panic_unwind::begin_unwind(payload, regs, epc.get());
+        panic_unwind::begin_unwind(regs, epc.get());
     }
 }
 
@@ -558,7 +551,7 @@ mod tests {
             let _ = unsafe { ptr::null::<usize>().read_volatile() };
             unreachable!("expected kernel trap to unwind past this");
         });
-        let _payload = result.expect_err("expected kernel trap to unwind via panic");
+        result.expect_err("expected kernel trap to unwind via panic");
 
         assert_trap_invariants_clean("after kernel trap");
     }

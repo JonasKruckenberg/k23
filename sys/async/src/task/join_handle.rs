@@ -5,13 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use alloc::boxed::Box;
-use alloc::string::String;
-use core::any::Any;
 use core::fmt;
 use core::future::Future;
 use core::marker::PhantomData;
-use core::ops::Deref;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -41,7 +37,7 @@ pub struct JoinError<T> {
 #[non_exhaustive]
 pub enum JoinErrorKind {
     Cancelled { completed: bool },
-    Panic(Box<dyn Any + Send + 'static>),
+    Panic,
 }
 
 // === impl JoinHandle ===
@@ -250,9 +246,9 @@ impl JoinError<()> {
 }
 
 impl<T> JoinError<T> {
-    pub(super) fn panic(id: Id, err: Box<dyn Any + Send + 'static>) -> Self {
+    pub(super) fn panic(id: Id) -> Self {
         Self {
-            kind: JoinErrorKind::Panic(err),
+            kind: JoinErrorKind::Panic,
             id,
             output: None,
         }
@@ -288,67 +284,7 @@ impl<T> JoinError<T> {
     //     }
     //     ```
     pub fn is_panic(&self) -> bool {
-        matches!(&self.kind, JoinErrorKind::Panic(_))
-    }
-
-    /// Consumes the join error, returning the object with which the task panicked.
-    ///
-    /// # Panics
-    ///
-    /// `into_panic()` panics if the `Error` does not represent the underlying
-    /// task terminating with a panic. Use `is_panic` to check the error reason
-    /// or `try_into_panic` for a variant that does not panic.
-    ///
-    /// # Examples
-    //
-    // ```should_panic
-    // use std::panic;
-    //
-    // #[tokio::main]
-    // async fn main() {
-    //     let err = tokio::spawn(async {
-    //         panic!("boom");
-    //     }).await.unwrap_err();
-    //
-    //     if err.is_panic() {
-    //         // Resume the panic on the main task
-    //         panic::begin_unwind(err.into_panic());
-    //     }
-    // }
-    // ```
-    #[track_caller]
-    pub fn into_panic(self) -> Box<dyn Any + Send + 'static> {
-        self.try_into_panic()
-            .expect("`JoinError` reason is not a panic.")
-    }
-
-    /// Consumes the join error, returning the object with which the task
-    /// panicked if the task terminated due to a panic. Otherwise, `self` is
-    /// returned.
-    ///
-    // # Examples
-    //
-    // ```should_panic
-    // use std::panic;
-    //
-    // let err = tokio::spawn(async {
-    //     panic!("boom");
-    // }).await.unwrap_err();
-    //
-    // if let Ok(reason) = err.try_into_panic() {
-    //     /// Resume the panic on the main task
-    //     panic::begin_unwind(reason);
-    // }
-    // ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an `Err(Self)` when the error was **not** a panic.
-    pub fn try_into_panic(self) -> Result<Box<dyn Any + Send + 'static>, Self> {
-        match self.kind {
-            JoinErrorKind::Panic(p) => Ok(p),
-            _ => Err(self),
-        }
+        matches!(&self.kind, JoinErrorKind::Panic)
     }
 
     /// Returns a [task ID] that identifies the task which errored relative to
@@ -377,13 +313,8 @@ impl<T> fmt::Display for JoinError<T> {
             JoinErrorKind::Cancelled { completed: true } => {
                 write!(fmt, "task {} was cancelled after completion", self.id)
             }
-            JoinErrorKind::Panic(p) => {
-                write!(
-                    fmt,
-                    "task {} panicked with message {:?}",
-                    self.id,
-                    panic_payload_as_str(p.deref())
-                )
+            JoinErrorKind::Panic => {
+                write!(fmt, "task {} panicked", self.id)
             }
         }
     }
@@ -397,26 +328,11 @@ impl<T> fmt::Debug for JoinError<T> {
                 "JoinError::Cancelled({:?}, completed: {completed})",
                 self.id
             ),
-            JoinErrorKind::Panic(p) => {
-                write!(
-                    fmt,
-                    "JoinError::Panic({:?}, {:?}, ...)",
-                    self.id,
-                    panic_payload_as_str(p.deref())
-                )
+            JoinErrorKind::Panic => {
+                write!(fmt, "JoinError::Panic({:?}, ...)", self.id)
             }
         }
     }
 }
 
 impl<T> core::error::Error for JoinError<T> {}
-
-fn panic_payload_as_str(payload: &dyn Any) -> &str {
-    if let Some(&s) = payload.downcast_ref::<&'static str>() {
-        s
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.as_str()
-    } else {
-        "Box<dyn Any>"
-    }
-}

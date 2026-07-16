@@ -186,6 +186,7 @@ changed-targets CHANGES BASE_JSONL UNIVERSE='root//...':
     if awk -v paths="{{ _pessimistic_paths }}" '
         BEGIN { n = split(paths, p, " ") }
         {
+            if ($2 ~ /(^|\/)BUCK$/ && $1 != "M") { found=1; exit }
             for (i = 1; i <= n; i++)
                 if (p[i] ~ /\/$/ ? index($2, p[i]) == 1 : $2 == p[i]) { found=1; exit }
         }

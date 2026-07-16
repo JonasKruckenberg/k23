@@ -17,11 +17,11 @@ _DEPS = [
     "//lib/wast:wast",
     "//lib/fastrand:fastrand",
     "//lib/abort:abort",
-    "//lib/panic-unwind:panic-unwind",
+    "//sys/panic-unwind:panic-unwind",
     "//lib/util:util",
     "//lib/mem-core:mem-core",
     "//lib/arrayvec:arrayvec",
-    "//lib/backtrace:backtrace",
+    "//sys/backtrace:backtrace",
     # third-party dependencies
     "//third-party:rustc-demangle",
     "//third-party:log",

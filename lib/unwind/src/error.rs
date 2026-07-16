@@ -11,8 +11,6 @@ use core::fmt::{Display, Formatter};
 pub enum Error {
     /// Gimli error
     Gimli(gimli::Error),
-    /// Rust cannot catch foreign exceptions
-    ForeignException,
     /// Reached the end of the stack without finding a landing pad
     EndOfStack,
     /// The personality function is not a Rust personality function
@@ -33,7 +31,6 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::Gimli(err) => write!(f, "Gimli error: {err}"),
-            Error::ForeignException => write!(f, "Rust cannot catch foreign exceptions"),
             Error::EndOfStack => write!(f, "End of stack"),
             Error::DifferentPersonality => write!(
                 f,
