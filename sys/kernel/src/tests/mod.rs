@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 mod args;
+mod panic;
 mod printer;
 mod smoke;
 mod spectest;

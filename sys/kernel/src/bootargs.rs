@@ -21,8 +21,8 @@
 use core::num::NonZeroUsize;
 
 use anyhow::{Context, anyhow};
+use backtrace::BacktraceStyle;
 
-use crate::backtrace::BacktraceStyle;
 use crate::device_tree::DeviceTree;
 use crate::tracing::Filter;
 

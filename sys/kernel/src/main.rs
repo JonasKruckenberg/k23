@@ -19,7 +19,6 @@ extern crate panic_unwind;
 
 mod allocator;
 mod arch;
-mod backtrace;
 mod bootargs;
 mod device_tree;
 mod irq;
@@ -49,7 +48,6 @@ use mem_core::PhysicalAddress;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
-use crate::backtrace::Backtrace;
 use crate::device_tree::DeviceTree;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::state::{CpuLocal, Global};
@@ -78,28 +76,6 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
-    panic_unwind::set_hook(|info| {
-        log::error!("CPU {info}");
-
-        // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
-        //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
-        //  is no good way to do conditional compilation based on the opt-level.
-        const MAX_BACKTRACE_FRAMES: usize = 32;
-
-        match backtrace::__rust_end_short_backtrace(Backtrace::<MAX_BACKTRACE_FRAMES>::capture) {
-            Ok(bt) => {
-                log::error!("{bt}");
-
-                if bt.frames_omitted {
-                    log::warn!(
-                        "Stack trace was larger than backtrace buffer, omitted some frames."
-                    );
-                }
-            }
-            Err(err) => log::error!("backtrace unavailable: {err}"),
-        }
-    });
-
     // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
     // bubble up to this point is also a good idea since we can perform some last cleanup and
     // print an error message.

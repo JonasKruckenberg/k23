@@ -5,6 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#![no_std]
+#![cfg(target_os = "none")]
+
 mod print;
 mod symbolize;
 
@@ -19,7 +22,7 @@ use spin::OnceLock;
 use symbolize::SymbolizeContext;
 use unwind::FrameIter;
 
-use crate::backtrace::print::BacktraceFmt;
+use crate::print::BacktraceFmt;
 
 static BACKTRACE_INFO: OnceLock<BacktraceInfo> = OnceLock::new();
 
@@ -87,7 +90,7 @@ impl BacktraceInfo {
 
     fn symbolize_context(&self) -> &SymbolizeContext<'static> {
         self.symbolize_context.get_or_init(|| {
-            tracing::debug!("Setting up symbolize context...");
+            log::debug!("Setting up symbolize context...");
 
             let debuginfo = xmas_elf::ElfFile::new(self.debuginfo).unwrap();
             SymbolizeContext::new(debuginfo, self.kernel_virt_base).unwrap()

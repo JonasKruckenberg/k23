@@ -7,7 +7,7 @@
 
 use abort::abort;
 
-use crate::exception::Exception;
+use crate::exception::UnwindException;
 use crate::utils::with_context;
 use crate::{Error, FrameIter, arch, raise_exception_phase2};
 
@@ -36,7 +36,7 @@ pub fn ensure_rust_personality_routine(ptr: u64) -> crate::Result<()> {
 /// to continue unwinding the stack. This is what transfers control back to the unwinder.
 #[inline(never)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
+pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut UnwindException) -> ! {
     with_context(|regs, pc| {
         let frames = FrameIter::from_registers(regs.clone(), pc);
 

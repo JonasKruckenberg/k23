@@ -2,13 +2,17 @@ rust_library(
     name = "backtrace",
     srcs = glob(["src/**/*.rs"]),
     deps = [
+        "//sys/loader-api:loader-api",
+        "//lib/unwind:unwind",
+        "//lib/spin:spin",
         "//lib/addr2line:addr2line",
         "//lib/arrayvec:arrayvec",
-        "//lib/unwind:unwind",
+        "//lib/mem-core:mem-core",
         "//third-party:gimli",
         "//third-party:xmas-elf",
         "//third-party:rustc-demangle",
         "//third-party:fallible-iterator",
+        "//third-party:log",
     ],
     visibility = ["PUBLIC"],
 )

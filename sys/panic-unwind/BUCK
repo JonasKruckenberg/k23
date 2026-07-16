@@ -3,9 +3,9 @@ rust_library(
     srcs = glob(["src/**/*.rs"]),
     deps = [
         "//lib/unwind:unwind",
-        "//lib/spin:spin",
         "//lib/cpu-local:cpu-local",
         "//lib/abort:abort",
+        "//sys/backtrace:backtrace",
         "//third-party:log",
     ],
     visibility = ["PUBLIC"],

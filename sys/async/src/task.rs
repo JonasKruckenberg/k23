@@ -872,7 +872,9 @@ where
             } else if #[cfg(feature = "unwind")] {
                 let result = panic_unwind::catch_unwind(poll);
             } else {
-                let result = Ok(poll());
+                // No unwinding runtime: the poll cannot fail, but the `Err` arm
+                // below still needs a concrete error type.
+                let result: Result<_, ()> = Ok(poll());
             }
         }
 
@@ -882,8 +884,8 @@ where
                 *self = Stage::Ready(Ok(ready));
                 Poll::Ready(())
             }
-            Err(err) => {
-                *self = Stage::Ready(Err(JoinError::panic(id, err)));
+            Err(_) => {
+                *self = Stage::Ready(Err(JoinError::panic(id)));
                 Poll::Ready(())
             }
         }

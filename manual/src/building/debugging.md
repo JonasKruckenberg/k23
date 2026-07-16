@@ -70,7 +70,7 @@ gdb-remote localhost:1234
 Quite often, you will need to stop the kernel when a panic occurs, to inspect the state of the system. For this you can
 set a breakpoint on the `rust_panic` symbol which is a special unmangled function for exactly this purpose (this
 technique mirrors Rusts `std` library and is implemented in the `panic-unwind`
-crate [here](../../../lib/panic-unwind/src/lib.rs)).
+crate [here](../../../sys/panic-unwind/src/lib.rs)).
 
 Using LLDB you can set a breakpoint with the following command:
 

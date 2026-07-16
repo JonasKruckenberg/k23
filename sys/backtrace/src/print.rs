@@ -9,8 +9,8 @@
 
 use core::fmt;
 
-use crate::backtrace::BacktraceStyle;
-use crate::backtrace::symbolize::{Symbol, SymbolName};
+use crate::BacktraceStyle;
+use crate::symbolize::{Symbol, SymbolName};
 
 const HEX_WIDTH: usize = 2 + 2 * size_of::<usize>();
 

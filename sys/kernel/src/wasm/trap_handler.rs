@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::Cell;
@@ -120,7 +119,7 @@ impl From<TrapKind> for TrapReason {
 }
 
 pub enum UnwindReason {
-    Panic(Box<dyn core::any::Any + Send>),
+    Panic,
     Trap(TrapReason),
 }
 
@@ -164,7 +163,7 @@ where
     match unwind_state {
         None => Ok(()),
         Some((UnwindReason::Trap(reason), backtrace)) => Err(Trap { reason, backtrace }),
-        Some((UnwindReason::Panic(payload), _)) => panic_unwind::resume_unwind(payload),
+        Some((UnwindReason::Panic, _)) => panic_unwind::resume_unwind(),
     }
 }
 
@@ -281,7 +280,7 @@ impl Activation {
             // hypothetical backtrace to and it doesn't really make sense to try
             // in the first place since this is a Rust problem rather than a
             // Wasm problem.
-            UnwindReason::Panic(_) => None,
+            UnwindReason::Panic => None,
             // // And if we are just propagating an existing trap that already has
             // // a backtrace attached to it, then there is no need to capture a
             // // new backtrace either.
@@ -413,7 +412,7 @@ where
         };
 
         panic_unwind::catch_unwind(AssertUnwindSafe(f))
-            .unwrap_or_else(|payload| (T::SENTINEL, Some(UnwindReason::Panic(payload))))
+            .unwrap_or_else(|()| (T::SENTINEL, Some(UnwindReason::Panic)))
     }
 }
 
