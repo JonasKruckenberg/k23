@@ -784,7 +784,10 @@ cargo.rust_library(
     crate = "cordyceps",
     crate_root = "cordyceps-0.3.4.crate/src/lib.rs",
     edition = "2021",
-    features = ["default"],
+    features = [
+        "alloc",
+        "default",
+    ],
     visibility = [],
 )
 
@@ -2749,6 +2752,57 @@ cargo.rust_library(
     ],
 )
 
+alias(
+    name = "maitake-sync",
+    actual = ":maitake-sync-0.3",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "maitake-sync-0.3.0.crate",
+    sha256 = "3d77c365d697828821727b9bc09e6bc3c518b8c63804e79e1be5a5ae091a7c5f",
+    strip_prefix = "maitake-sync-0.3.0",
+    urls = ["https://static.crates.io/crates/maitake-sync/0.3.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "maitake-sync-0.3",
+    srcs = [":maitake-sync-0.3.0.crate"],
+    crate = "maitake_sync",
+    crate_root = "maitake-sync-0.3.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "maitake_sync",
+        "CARGO_CRATE_NAME": "maitake_sync",
+        "CARGO_MANIFEST_DIR": "maitake-sync-0.3.0.crate",
+        "CARGO_PKG_AUTHORS": "Eliza Weisman <eliza@elizas.website>",
+        "CARGO_PKG_DESCRIPTION": "No-std async synchronization primitives from Maitake",
+        "CARGO_PKG_HOMEPAGE": "https://mycelium.elizas.website",
+        "CARGO_PKG_NAME": "maitake-sync",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/hawkw/mycelium",
+        "CARGO_PKG_RUST_VERSION": "1.61.0",
+        "CARGO_PKG_VERSION": "0.3.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "3",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "alloc",
+        "default",
+    ],
+    visibility = [],
+    deps = [
+        ":cordyceps-0.3",
+        ":mutex-traits-1",
+        ":mycelium-bitfield-0.1",
+        ":pin-project-1",
+        ":portable-atomic-1",
+    ],
+)
+
 http_archive(
     name = "matchers-0.2.0.crate",
     sha256 = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9",
@@ -2868,6 +2922,23 @@ cargo.rust_library(
         ":adler2-2",
         ":simd-adler32-0.3",
     ],
+)
+
+http_archive(
+    name = "mutex-traits-1.0.1.crate",
+    sha256 = "3929f2b5633d29cf7b6624992e5f3c1e9334f1193423e12d17be4faf678cde3f",
+    strip_prefix = "mutex-traits-1.0.1",
+    urls = ["https://static.crates.io/crates/mutex-traits/1.0.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "mutex-traits-1",
+    srcs = [":mutex-traits-1.0.1.crate"],
+    crate = "mutex_traits",
+    crate_root = "mutex-traits-1.0.1.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
 )
 
 alias(
@@ -3366,6 +3437,27 @@ cargo.rust_library(
     edition = "2018",
     visibility = [],
     deps = [":plotters-backend-0.3"],
+)
+
+http_archive(
+    name = "portable-atomic-1.14.0.crate",
+    sha256 = "3d20d5497ef88037a52ff98267d066e7f11fcc5e99bbfbd58a42336193aacec3",
+    strip_prefix = "portable-atomic-1.14.0",
+    urls = ["https://static.crates.io/crates/portable-atomic/1.14.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "portable-atomic-1",
+    srcs = [":portable-atomic-1.14.0.crate"],
+    crate = "portable_atomic",
+    crate_root = "portable-atomic-1.14.0.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "default",
+        "fallback",
+    ],
+    visibility = [],
 )
 
 http_archive(

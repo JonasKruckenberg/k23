@@ -21,6 +21,7 @@ smallvec = { version = "1", default-features = false }
 xmas-elf = "0.10.0"
 rustc-demangle = "0.1"
 cordyceps = "0.3.4"
+maitake-sync = "0.3.0"
 mycelium-bitfield = "0.1.5"
 bumpalo = { version = "3.17.0", features = ["collections"] }
 pin-project = "1.1.10"

@@ -9,7 +9,7 @@ use alloc::sync::Arc;
 use core::num::NonZero;
 
 use hashbrown::HashMap;
-use kasync::sync::wait_queue::WaitQueue;
+use maitake_sync::wait_queue::WaitQueue;
 use spin::{IrqRwLock, LazyLock};
 
 use crate::state::cpu_local;
@@ -56,7 +56,7 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     }
 }
 
-pub async fn next_event(irq_num: u32) -> Result<(), kasync::Closed> {
+pub async fn next_event(irq_num: u32) -> Result<(), maitake_sync::Closed> {
     // Register the wait entry *before* unmasking.  If we unmasked first, the
     // interrupt could fire between irq_unmask and QUEUES.write(), and
     // trigger_irq would find no queue entry and drop the wakeup.  Worse, if

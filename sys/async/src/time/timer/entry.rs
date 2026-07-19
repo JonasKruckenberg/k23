@@ -11,10 +11,10 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use cordyceps::{Linked, list};
+use maitake_sync::wait_cell::WaitCell;
 use pin_project::pin_project;
 use util::loom_const_fn;
 
-use crate::sync::wait_cell::WaitCell;
 use crate::time::Ticks;
 
 /// An entry in a timing [`Wheel`][crate::time::timer::Wheel].
