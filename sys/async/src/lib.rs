@@ -11,15 +11,14 @@
 
 #![cfg_attr(not(any(test, feature = "__bench")), no_std)]
 #![feature(debug_closure_helpers)]
-#![feature(never_type)]
 #![feature(allocator_api)]
+
 extern crate alloc;
 
 pub mod block_on;
 mod error;
 pub mod executor;
 pub mod loom;
-pub mod sync;
 pub mod task;
 pub mod time;
 

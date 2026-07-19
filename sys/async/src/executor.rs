@@ -17,13 +17,13 @@ use cordyceps::mpsc_queue::{MpscQueue, TryDequeueError};
 use cpu_local::collection::CpuLocal;
 use fastrand::FastRand;
 use futures::pin_mut;
+use maitake_sync::wait_queue::WaitQueue;
 use spin::Backoff;
 
 use crate::error::{Closed, SpawnError};
 use crate::executor::steal::{Injector, Stealer, TryStealError};
 use crate::future::Either;
 use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize};
-use crate::sync::wait_queue::WaitQueue;
 use crate::task::{Header, JoinHandle, PollResult, TaskBuilder, TaskRef};
 
 #[derive(Debug)]
@@ -253,18 +253,20 @@ impl Worker {
         match res {
             Either::Left((val, _)) => Ok(val),
             // The `main_loop` future either never returns or always returns Err(Closed)
-            Either::Right((Err(err), _)) => Err(err),
+            Either::Right((_)) => Err(Closed(())),
         }
     }
 
-    async fn main_loop(&mut self) -> Result<!, Closed> {
+    async fn main_loop(&mut self) {
         loop {
             if self.tick().has_remaining {
                 continue;
             }
 
             tracing::trace!("worker {} going to sleep...", self.id);
-            self.executor.sleepers.wait().await?;
+            if self.executor.sleepers.wait().await.is_err() {
+                break;
+            }
             tracing::trace!("worker woke up");
         }
     }

@@ -50,6 +50,7 @@ _DEPS = [
     "//third-party:cranelift-frontend",
     "//third-party:cranelift-entity",
     "//third-party:wasmtime-slab",
+    "//third-party:maitake-sync"
 ] + select({
     "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
     "DEFAULT": [],

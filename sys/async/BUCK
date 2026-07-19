@@ -16,6 +16,7 @@ _DEPS = [
     "//third-party:bitflags",
     "//third-party:pin-project",
     "//third-party:futures",
+    "//third-party:maitake-sync"
 ]
 
 _TEST_DEPS = [
