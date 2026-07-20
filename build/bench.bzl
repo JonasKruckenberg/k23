@@ -52,5 +52,6 @@ def rust_benchmark(name, modifiers = [], visibility = None, **kwargs):
         name = name,
         binary = ":" + bin_name,
         target_compatible_with = [host_configuration.os, host_configuration.cpu],
+        modifiers = _DEFAULT_MODIFIERS + modifiers,
         visibility = visibility,
     )
