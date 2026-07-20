@@ -1,0 +1,47 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load("//build:bench.bzl", "rust_benchmark")
+load("//build:loom.bzl", "rust_loom_test")
+
+_DEPS = [
+    "//lib/util:util",
+    "//third-party:cfg-if",
+]
+
+rust_library(
+    name = "ringbuf",
+    srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS,
+    visibility = ["PUBLIC"],
+    tests = [":ringbuf_unittests", ":ringbuf_loom_tests"],
+)
+
+# Unit tests live inline under `#[cfg(test)]` so they can reach `remap` and `SHUFFLE_BITS`, which
+# are private. The crate becomes a std crate under `cfg(test)`, giving the concurrency tests
+# threads. Deps repeat the library's own, since this target recompiles `src/`.
+rust_test(
+    name = "ringbuf_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS,
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+# Same sources, built with `--cfg=loom`: `src/loom.rs` swaps `core`/`std` atomics for loom's and
+# the tests scale their thread and message counts down for the model checker.
+rust_loom_test(
+    name = "ringbuf_loom_tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "ringbuf",
+    deps = _DEPS + ["//third-party:loom"],
+)
+
+rust_benchmark(
+    name = "ringbuf_benchmarks",
+    srcs = ["benches/queue.rs"],
+    crate_root = "benches/queue.rs",
+    deps = [
+        ":ringbuf",
+        "//third-party:criterion",
+    ],
+    visibility = ["PUBLIC"],
+)

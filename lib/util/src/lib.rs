@@ -13,5 +13,5 @@ mod cache_padded;
 mod checked_maybe_uninit;
 mod loom;
 
-pub use cache_padded::CachePadded;
+pub use cache_padded::{CACHE_LINE_SIZE, CachePadded};
 pub use checked_maybe_uninit::{CheckedMaybeUninit, MaybeUninitExt};

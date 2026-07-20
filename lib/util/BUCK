@@ -1,8 +1,13 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 
+_DEPS = [
+    "//third-party:cfg-if"
+]
+
 rust_library(
     name = "util",
     srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS,
     visibility = ["PUBLIC"],
     tests = [":util_unittests"],
 )
@@ -10,6 +15,7 @@ rust_library(
 rust_test(
     name = "util_unittests",
     srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS,
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
