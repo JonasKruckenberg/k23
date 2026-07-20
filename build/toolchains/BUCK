@@ -197,6 +197,8 @@ rust_toolchain(
     allow_lints = ALLOW,
     rustc_flags = [
         "-Zunstable-options",
+        "-Cdebug-assertions=off",
+        "-Coverflow-checks=off"
     ] + select({
         "constraints//:env[loader]": [],
         "DEFAULT": ["-Cpanic=unwind"],
