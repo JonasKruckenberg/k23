@@ -23,7 +23,7 @@ jobs:
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -34,7 +34,7 @@ jobs:
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
       - name: restore fuzz corpus
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
