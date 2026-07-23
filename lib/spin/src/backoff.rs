@@ -43,7 +43,8 @@ impl Backoff {
     ///
     /// # Panics
     ///
-    /// Panics if the `max` exponent is larger than [`Self::DEFAULT_MAX_EXPONENT`].
+    /// Panics if the `max` exponent is larger than
+    /// [`Self::DEFAULT_MAX_EXPONENT`].
     #[must_use]
     pub fn with_max_exponent(max: u8) -> Self {
         assert!(max <= Self::DEFAULT_MAX_EXPONENT);

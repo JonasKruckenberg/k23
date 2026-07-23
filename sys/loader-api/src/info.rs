@@ -30,12 +30,13 @@ pub struct BootInfo {
 
     /// A map of the physical memory regions of the underlying machine.
     ///
-    /// The loader parses this information from the firmware and also reports regions used
-    /// during initial mapping. Regions marked as usable can be freely
-    /// used by the kernel.
+    /// The loader parses this information from the firmware and also reports
+    /// regions used during initial mapping. Regions marked as usable can be
+    /// freely used by the kernel.
     ///
-    /// Note: Memory regions are *guaranteed* to not overlap and be sorted by their start address.
-    /// But they might not be optimally packed, i.e. adjacent regions that could be merged are not.
+    /// Note: Memory regions are *guaranteed* to not overlap and be sorted by
+    /// their start address. But they might not be optimally packed, i.e.
+    /// adjacent regions that could be merged are not.
     pub memory_regions: MemoryRegions,
 
     /// Virtual address of the loaded kernel image.
@@ -44,12 +45,12 @@ pub struct BootInfo {
     pub tls_template: TlsTemplate,
     /// Physical memory region where the kernel's debuginfo ELF resides.
     ///
-    /// Contains the `.symtab` and `.debug_*` sections stripped from the runnable kernel
-    /// image.
+    /// Contains the `.symtab` and `.debug_*` sections stripped from the
+    /// runnable kernel image.
     pub kernel_debuginfo_phys: Option<Range<PhysicalAddress>>,
 
-    /// Trampoline that was identity-mapped into the kernel address space for handoff.
-    /// Can safely be unmapped and reused by the kernel.
+    /// Trampoline that was identity-mapped into the kernel address space for
+    /// handoff. Can safely be unmapped and reused by the kernel.
     pub handoff_trampoline_virt: Range<VirtualAddress>,
 
     pub physmap: PhysMap,
@@ -62,10 +63,11 @@ pub struct BootInfo {
 #[derive(Debug, Clone)]
 pub struct FirmwareTables {
     /// ACPI RSDP — kernel walks the XSDT for MADT, SRAT, SLIT, …. Firmware
-    /// pointer, passed through verbatim (not staged — see [`Self::stage_tables`]).
+    /// pointer, passed through verbatim (not staged — see
+    /// [`Self::stage_tables`]).
     pub raw_rsdp: Option<PhysicalAddress>,
-    /// FDT blob — kernel walks `/cpus`, `/memory`, …. Points at the loader-owned
-    /// copy once [`Self::stage_tables`] has run.
+    /// FDT blob — kernel walks `/cpus`, `/memory`, …. Points at the
+    /// loader-owned copy once [`Self::stage_tables`] has run.
     pub raw_fdt: Option<PhysicalAddress>,
     /// SMBIOS3 entry point — opaque to the loader. Points at the loader-owned
     /// copy once [`Self::stage_tables`] has run.
@@ -77,7 +79,8 @@ pub struct FirmwareTables {
 #[repr(C)]
 pub struct UartInfo {
     /// Virtual range of the register block, mapped by the loader as device
-    /// memory. Directly dereferenceable once the kernel address space is active.
+    /// memory. Directly dereferenceable once the kernel address space is
+    /// active.
     pub regs: Range<VirtualAddress>,
     /// Input clock to the baud-rate generator in Hz (`clock-frequency`).
     pub clock_frequency: u32,
@@ -135,7 +138,8 @@ pub struct MemoryRegion {
 #[non_exhaustive]
 #[repr(u8)]
 pub enum MemoryRegionKind {
-    /// Memory in which errors have been detected or which is otherwise unusable.
+    /// Memory in which errors have been detected or which is otherwise
+    /// unusable.
     Unusable,
     /// Unused conventional memory, can be used by the kernel.
     Usable,
@@ -238,8 +242,8 @@ pub struct TlsTemplate {
     /// The size of the TLS segment in memory
     pub mem_size: usize,
     /// The size of the TLS segment in the elf file.
-    /// If the TLS segment contains zero-initialized data (tbss) then this size will be smaller than
-    /// `mem_size`
+    /// If the TLS segment contains zero-initialized data (tbss) then this size
+    /// will be smaller than `mem_size`
     pub file_size: usize,
     pub align: usize,
 }

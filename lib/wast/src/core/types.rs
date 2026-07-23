@@ -116,9 +116,11 @@ pub enum AbstractHeapType {
     /// A reference to any host value: externref. This is part of the reference
     /// types proposal.
     Extern,
-    /// A reference to a wasm exception. This is part of the exceptions proposal.
+    /// A reference to a wasm exception. This is part of the exceptions
+    /// proposal.
     Exn,
-    /// A reference to a wasm continuation. This is part of the stack switching proposal.
+    /// A reference to a wasm continuation. This is part of the stack switching
+    /// proposal.
     Cont,
     /// A reference to any reference value: anyref. This is part of the GC
     /// proposal.
@@ -138,9 +140,11 @@ pub enum AbstractHeapType {
     NoExtern,
     /// The bottom type of the anyref hierarchy. Part of the GC proposal.
     None,
-    /// The bottom type of the exnref hierarchy. Part of the exceptions proposal.
+    /// The bottom type of the exnref hierarchy. Part of the exceptions
+    /// proposal.
     NoExn,
-    /// The bottom type of the contref hierarchy. Part of the stack switching proposal.
+    /// The bottom type of the contref hierarchy. Part of the stack switching
+    /// proposal.
     NoCont,
 }
 

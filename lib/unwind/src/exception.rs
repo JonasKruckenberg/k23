@@ -9,10 +9,10 @@ use core::ffi::c_int;
 
 use abort::abort;
 
-/// The header the unwinder threads through a landing pad. Its layout is fixed by
-/// the ABI the compiler-generated personality and landing-pad code expect: the
-/// pointer arrives in `UNWIND_DATA_REG` and round-trips through the cleanup pad
-/// back to `_Unwind_Resume` unchanged.
+/// The header the unwinder threads through a landing pad. Its layout is fixed
+/// by the ABI the compiler-generated personality and landing-pad code expect:
+/// the pointer arrives in `UNWIND_DATA_REG` and round-trips through the cleanup
+/// pad back to `_Unwind_Resume` unchanged.
 ///
 /// What the pointer refers to is opaque to this crate — callers own it and
 /// recover whatever sits at it on the catch side.

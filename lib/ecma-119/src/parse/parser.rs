@@ -22,8 +22,8 @@ pub(crate) struct Parser<'a> {
     pub(crate) pos: usize,
     /// When `true`, every `read_validated` call checks semantic invariants and
     /// returns an error on violation.  When `false`, validation is
-    /// skipped (lenient / "best-effort" mode for real-world images that bend the
-    /// spec).
+    /// skipped (lenient / "best-effort" mode for real-world images that bend
+    /// the spec).
     pub(crate) strict: bool,
 }
 

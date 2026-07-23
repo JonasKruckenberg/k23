@@ -16,9 +16,9 @@ use spin::OnceLock;
 static MAX_ASID: OnceLock<u16> = OnceLock::new();
 
 pub fn init() {
-    // Determine the number of supported ASID bits. The ASID is a "WARL" (Write Any Values, Reads Legal Values)
-    // so we can write all 1s to and see which ones "stick".
-    // Safety: register access
+    // Determine the number of supported ASID bits. The ASID is a "WARL" (Write Any
+    // Values, Reads Legal Values) so we can write all 1s to and see which ones
+    // "stick". Safety: register access
     unsafe {
         let orig = satp::read();
         satp::set(orig.mode(), 0xFFFF, orig.ppn());

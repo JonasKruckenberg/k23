@@ -111,9 +111,9 @@ impl CraneliftCompiler {
 
     /// Raise a trap if the native function returned `false`
     ///
-    /// Host functions use a number of sentinel values to signal that generated code should
-    /// begin to unwind, but the most common is `false`. This is used by all host functions and most
-    /// builtins too.
+    /// Host functions use a number of sentinel values to signal that generated
+    /// code should begin to unwind, but the most common is `false`. This is
+    /// used by all host functions and most builtins too.
     pub fn raise_if_host_trapped(
         &self,
         builder: &mut FunctionBuilder<'_>,
@@ -228,8 +228,9 @@ impl Compiler for CraneliftCompiler {
         types: &ModuleTypes,
         index: DefinedFuncIndex,
     ) -> crate::Result<CompiledFunction> {
-        // This function has a special calling convention where all arguments and return values
-        // are passed through an array in memory (so we can have dynamic function signatures in rust)
+        // This function has a special calling convention where all arguments and return
+        // values are passed through an array in memory (so we can have dynamic
+        // function signatures in rust)
         let pointer_type = self.isa.pointer_type();
         let index = translation.module.func_index(index);
         let sig_index = translation.module.functions[index]
@@ -290,8 +291,9 @@ impl Compiler for CraneliftCompiler {
             values_vec_len,
         );
 
-        // Array-call functions signal traps through a boolean return value. If we reached
-        // this point Wasm executed without issue, so we need to return a "true" value.
+        // Array-call functions signal traps through a boolean return value. If we
+        // reached this point Wasm executed without issue, so we need to return
+        // a "true" value.
         let true_return = builder.ins().iconst(ir::types::I8, 1);
         builder.ins().return_(&[true_return]);
         builder.finalize();
@@ -517,11 +519,13 @@ impl FunctionCompiler<'_> {
             //     .buffer
             //     .get_srclocs_sorted()
             //     .into_iter()
-            //     .map(|&MachSrcLoc { start, end, loc }| (loc, start, end - start));
+            //     .map(|&MachSrcLoc { start, end, loc }| (loc, start, end -
+            // start));
 
-            // compiled_function.metadata_mut().address_map = collect_address_map(
-            //     u32::try_from(compiled_function.buffer.data().len()).unwrap(),
-            //     srclocs,
+            // compiled_function.metadata_mut().address_map =
+            // collect_address_map(
+            //     u32::try_from(compiled_function.buffer.data().len()).
+            // unwrap(),     srclocs,
             // )
             //     .into_boxed_slice();
         }

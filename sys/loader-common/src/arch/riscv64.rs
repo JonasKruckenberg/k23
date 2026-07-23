@@ -37,14 +37,17 @@ pub fn get_ticks() -> u64 {
 ///
 /// the caller needs to ensure a number of prerequisites:
 ///
-/// 1. the kernel must loaded and mapped into the kernel address space, BSS segments zeroed, and relocations applied
-/// 2. boot hart stack and TLS block must be mapped into the kernel address space and initialized
+/// 1. the kernel must loaded and mapped into the kernel address space, BSS
+///    segments zeroed, and relocations applied
+/// 2. boot hart stack and TLS block must be mapped into the kernel address
+///    space and initialized
 /// 3. physical memory must be mapped into the kernel address space
 /// 4. UART device (if any) must be mapped into the kernel address space
 /// 5. interrupts must be disabled
-/// 6. the handoff trampoline's own code pages must be identity-mapped (phys == virt)
-///    in `aspace`, so the instruction fetch immediately after `csrw satp` (which turns
-///    the MMU on) resolves at the trampoline PC rather than faulting.
+/// 6. the handoff trampoline's own code pages must be identity-mapped (phys ==
+///    virt) in `aspace`, so the instruction fetch immediately after `csrw satp`
+///    (which turns the MMU on) resolves at the trampoline PC rather than
+///    faulting.
 pub unsafe fn handoff(
     aspace_layout: KernelAspaceLayout,
     kernel: &RelocatedKernel,
@@ -73,15 +76,18 @@ pub unsafe fn handoff(
 ///
 /// the caller needs to ensure a number of prerequisites:
 ///
-/// 1. the kernel must loaded and mapped into the kernel address space, BSS segments zeroed, and relocations applied
-/// 2. boot hart stack and TLS block must be mapped into the kernel address space and initialized
+/// 1. the kernel must loaded and mapped into the kernel address space, BSS
+///    segments zeroed, and relocations applied
+/// 2. boot hart stack and TLS block must be mapped into the kernel address
+///    space and initialized
 /// 3. physical memory must be mapped into the kernel address space
 /// 4. UART device (if any) must be mapped into the kernel address space
 /// 5. interrupts must be disabled
-/// 6. the trampoline's own code pages must be identity-mapped (phys == virt) in the
-///    table loaded into `satp_value`, so the instruction fetch immediately after
-///    `csrw satp` (which turns the MMU on) resolves at the trampoline PC rather than
-///    faulting. `mapping::map_handoff_trampoline` establishes this mapping.
+/// 6. the trampoline's own code pages must be identity-mapped (phys == virt) in
+///    the table loaded into `satp_value`, so the instruction fetch immediately
+///    after `csrw satp` (which turns the MMU on) resolves at the trampoline PC
+///    rather than faulting. `mapping::map_handoff_trampoline` establishes this
+///    mapping.
 #[unsafe(link_section = ".text.handoff_trampoline")]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]

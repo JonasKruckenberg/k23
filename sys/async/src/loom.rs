@@ -70,8 +70,8 @@ cfg_if! {
 //
 //             impl<F: Future> Future for TrackFuture<F> {
 //                 type Output = TrackFuture<F::Output>;
-//                 fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//                     let this = self.project();
+//                 fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) ->
+// Poll<Self::Output> {                     let this = self.project();
 //                     this.inner.poll(cx).map(|inner| TrackFuture {
 //                         inner,
 //                         track: this.track.clone(),
@@ -80,8 +80,8 @@ cfg_if! {
 //             }
 //
 //             impl<F> TrackFuture<F> {
-//                 /// Wrap a `Future` in a `TrackFuture` that participates in Loom's
-//                 /// leak checking.
+//                 /// Wrap a `Future` in a `TrackFuture` that participates in
+// Loom's                 /// leak checking.
 //                 #[track_caller]
 //                 pub(crate) fn new(inner: F) -> Self {
 //                     Self {
@@ -97,8 +97,8 @@ cfg_if! {
 //             }
 //
 //             #[track_caller]
-//             pub(crate) fn track_future<F: Future>(inner: F) -> TrackFuture<F> {
-//                 TrackFuture::new(inner)
+//             pub(crate) fn track_future<F: Future>(inner: F) -> TrackFuture<F>
+// {                 TrackFuture::new(inner)
 //             }
 //
 //             // PartialEq impl so that `assert_eq!(..., Ok(...))` works

@@ -32,7 +32,8 @@ static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 pub fn init(boot_info: &BootInfo, rx: Receiver, sched: &'static Executor, num_cpus: usize) {
     // The `Barrier` below is here so that the maybe verbose startup logging is
     // out of the way before dropping the user into the kernel shell. If we don't
-    // wait for the last CPU to have finished initializing it will mess up the shell output.
+    // wait for the last CPU to have finished initializing it will mess up the shell
+    // output.
     static SYNC: OnceLock<Barrier> = OnceLock::new();
     let barrier = SYNC.get_or_init(|| Barrier::new(num_cpus));
 
@@ -116,8 +117,8 @@ const PANIC: Command = Command::new("panic")
 const FAULT: Command = Command::new("fault")
     .with_help("cause a CPU fault (null pointer dereference). use with caution.")
     .with_fn(|_| {
-        // Safety: This actually *is* unsafe and *is* causing problematic behaviour, but that is exactly what
-        // we want here!
+        // Safety: This actually *is* unsafe and *is* causing problematic behaviour, but
+        // that is exactly what we want here!
         unsafe {
             core::ptr::dangling::<u8>().read_volatile();
         }

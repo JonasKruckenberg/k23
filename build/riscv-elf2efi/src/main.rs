@@ -41,9 +41,10 @@ fn main() -> anyhow::Result<()> {
     let input = fs::File::open(&args.input)
         .with_context(|| format!("Failed to open file '{}'", args.input.display()))?;
 
-    // Safety: yes the file *could* be modified while we hold it, BUT: doing that is something
-    // the user has to deliberately do (stupid) and will at-worst result in a corrupted output.
-    // Re-running the build will fix this, so not a big deal.
+    // Safety: yes the file *could* be modified while we hold it, BUT: doing that is
+    // something the user has to deliberately do (stupid) and will at-worst
+    // result in a corrupted output. Re-running the build will fix this, so not
+    // a big deal.
     let in_data = unsafe {
         memmap2::Mmap::map(&input)
             .with_context(|| format!("Failed to map file '{}'", args.input.display()))?

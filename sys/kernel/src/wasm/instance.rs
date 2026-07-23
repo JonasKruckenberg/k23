@@ -17,13 +17,15 @@ use crate::wasm::{Extern, Func, Global, Memory, Table};
 
 /// An instantiated WebAssembly module.
 ///
-/// This is the main representation of all runtime state associated with a running WebAssembly module.
+/// This is the main representation of all runtime state associated with a
+/// running WebAssembly module.
 ///
 /// # Instance and `VMContext`
 ///
-/// `Instance` and `VMContext` are essentially two halves of the same data structure. `Instance` is
-/// the privileged host-side half responsible for administrating execution, while `VMContext` holds the
-/// actual data that is accessed by compiled WASM code.
+/// `Instance` and `VMContext` are essentially two halves of the same data
+/// structure. `Instance` is the privileged host-side half responsible for
+/// administrating execution, while `VMContext` holds the actual data that is
+/// accessed by compiled WASM code.
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
 pub struct Instance(Stored<InstanceData>);
@@ -49,8 +51,9 @@ impl Instance {
     ///
     /// # Safety
     ///
-    /// This functions assumes the provided `imports` have already been validated and typechecked for
-    /// compatibility with the `module` being instantiated.
+    /// This functions assumes the provided `imports` have already been
+    /// validated and typechecked for compatibility with the `module` being
+    /// instantiated.
     pub(crate) unsafe fn new_unchecked(
         store: &mut StoreOpaque,
         const_eval: &mut ConstExprEvaluator,
@@ -150,7 +153,8 @@ impl Instance {
         }
 
         let instance = &mut store[self.0]; // Reborrow the &mut InstanceHandle
-        // Safety: we just took `instance` from the store, so all its exports must also belong to the store
+        // Safety: we just took `instance` from the store, so all its exports must also
+        // belong to the store
         let item =
             unsafe { Extern::from_export(instance.handle.get_export_by_index(entity), store) };
         let data = &mut store[self.0];
@@ -162,7 +166,8 @@ impl Instance {
         store.has_instance(self.0)
     }
 
-    /// Print a debug representation of this instances `VMContext` to the logger.
+    /// Print a debug representation of this instances `VMContext` to the
+    /// logger.
     pub fn debug_vmctx(self, store: &StoreOpaque) {
         store[self.0].handle.debug_vmctx();
     }

@@ -42,13 +42,13 @@ pub fn per_cpu_init_early(cpuid: usize) {
     CPUID.get_or_init(|| cpuid);
 }
 
-/// Perform early initialization of the tracing subsystem. This will enable printing of `log` and `span`
-/// events, but no spans yet.
+/// Perform early initialization of the tracing subsystem. This will enable
+/// printing of `log` and `span` events, but no spans yet.
 ///
 /// `tx` is the console's transmit half, used as the log sink. It lives in this
 /// `'static` subscriber because logging starts before the allocator is up; raw
-/// writers (e.g. shell echo) share it via [`with_console_tx`]. Pass `None` when the
-/// platform has no console — output is then discarded.
+/// writers (e.g. shell echo) share it via [`with_console_tx`]. Pass `None` when
+/// the platform has no console — output is then discarded.
 ///
 /// This should be called as early in the boot process as possible.
 pub fn init_early(tx: Sender) {
@@ -78,7 +78,8 @@ where
     SUBSCRIBER.get().unwrap().output.make_writer.with_tx(f)
 }
 
-/// Fully initialize the subsystem, after this point tracing [`Span`]s will be processed as well.
+/// Fully initialize the subsystem, after this point tracing [`Span`]s will be
+/// processed as well.
 pub fn init(filter: Filter) {
     let subscriber = SUBSCRIBER
         .get()

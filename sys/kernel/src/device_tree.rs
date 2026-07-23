@@ -83,7 +83,8 @@ struct BumpBytes {
 }
 
 impl BumpBytes {
-    /// Reattach a lifetime to the underlying bytes and return them as a `&[u8]`.
+    /// Reattach a lifetime to the underlying bytes and return them as a
+    /// `&[u8]`.
     ///
     /// # Safety
     ///
@@ -224,7 +225,8 @@ impl DeviceTree {
     ///
     /// # Safety
     ///
-    /// 1. The caller must ensure that `ptr` is a valid address of a flattened device tree.
+    /// 1. The caller must ensure that `ptr` is a valid address of a flattened
+    ///    device tree.
     /// 2. The caller must ensure that `ptr` is correctly `u32`-aligned.
     pub unsafe fn from_fdt(ptr: VirtualAddress) -> crate::Result<Self> {
         // Safety: ensured by caller
@@ -428,7 +430,8 @@ impl<'arena> Device<'arena> {
         })
     }
 
-    /// Iterate the `interrupts-extended` property as `(parent, IrqSource)` pairs.
+    /// Iterate the `interrupts-extended` property as `(parent, IrqSource)`
+    /// pairs.
     pub fn interrupts_extended(
         self,
         devtree: &'arena DeviceTree,
@@ -552,7 +555,8 @@ impl<'a> Iterator for Children<'a> {
     }
 }
 
-/// Depth-first iterator over a device's descendants, yielding `(depth, device)`.
+/// Depth-first iterator over a device's descendants, yielding `(depth,
+/// device)`.
 pub struct Descendants<'a> {
     stack: SmallVec<[Children<'a>; 6]>,
     current: Children<'a>,

@@ -71,8 +71,8 @@ impl<const N: usize> FromStr for DStr<N> {
     }
 }
 
-// a-characters: d-characters plus SPACE and `! " % & ' ( ) * + , - . / : ; < = > ?`
-// (ECMA-119 §7.4.2).
+// a-characters: d-characters plus SPACE and `! " % & ' ( ) * + , - . / : ; < =
+// > ?` (ECMA-119 §7.4.2).
 // Fields are padded with SPACE (`0x20`) to fill the fixed width.
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Hash, FromBytes, IntoBytes, Immutable, KnownLayout,
@@ -155,7 +155,8 @@ impl<const N: usize> Validate for FileId<N> {
 }
 
 impl<const N: usize> FileId<N> {
-    /// Creates a `FileId` from raw bytes, validating file-identifier constraints.
+    /// Creates a `FileId` from raw bytes, validating file-identifier
+    /// constraints.
     ///
     /// # Errors
     ///

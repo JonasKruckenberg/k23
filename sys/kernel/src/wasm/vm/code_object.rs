@@ -87,7 +87,8 @@ impl CodeObject {
         if base.is_null() {
             &[]
         } else {
-            // Safety: we have checked the slice is valid (both above and through construction)
+            // Safety: we have checked the slice is valid (both above and through
+            // construction)
             unsafe { slice::from_raw_parts(self.mmap.as_ptr(), self.len) }
         }
     }

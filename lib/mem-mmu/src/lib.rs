@@ -7,8 +7,8 @@
 
 //! The hardware page-table engine: the single layer in k23 that manipulates
 //! architecture page tables. Layered on top of `mem-core`'s memory vocabulary
-//! (`Arch`, addresses, `PhysMap`, `FrameAllocator`); the virtual-memory subsystem
-//! (`vmem`) is in turn layered on top of this.
+//! (`Arch`, addresses, `PhysMap`, `FrameAllocator`); the virtual-memory
+//! subsystem (`vmem`) is in turn layered on top of this.
 
 #![no_std]
 

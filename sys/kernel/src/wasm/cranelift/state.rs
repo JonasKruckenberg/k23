@@ -17,21 +17,24 @@ use crate::wasm::cranelift::{CraneliftGlobal, CraneliftTable};
 use crate::wasm::indices::{FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TypeIndex};
 
 pub struct FuncTranslationState {
-    /// A stack of values corresponding to the active values in the input wasm function at this
-    /// point.
+    /// A stack of values corresponding to the active values in the input wasm
+    /// function at this point.
     pub(crate) stack: Vec<Value>,
-    /// A stack of active control flow operations at this point in the input wasm function.
+    /// A stack of active control flow operations at this point in the input
+    /// wasm function.
     pub(crate) control_stack: Vec<ControlStackFrame>,
-    /// Is the current translation state still reachable? This is false when translating operators
-    /// like End, Return, or Unreachable.
+    /// Is the current translation state still reachable? This is false when
+    /// translating operators like End, Return, or Unreachable.
     pub(crate) reachable: bool,
     /// Indirect call signatures that have been created by
     /// `FuncEnvironment::get_indirect_sig()`.
-    /// Stores both the signature reference and the number of WebAssembly arguments
+    /// Stores both the signature reference and the number of WebAssembly
+    /// arguments
     signatures: HashMap<TypeIndex, (SigRef, usize)>,
     /// Imported and local functions that have been crated
     /// through `TranslationEnvironment::get_direct_func`.
-    /// Stores both the function reference and the number of WebAssembly arguments
+    /// Stores both the function reference and the number of WebAssembly
+    /// arguments
     functions: HashMap<FuncIndex, (FuncRef, usize)>,
     tables: HashMap<TableIndex, CraneliftTable>,
     memories: HashMap<MemoryIndex, CraneliftMemory>,
@@ -66,8 +69,9 @@ impl FuncTranslationState {
 
     /// Initialize the state for compiling a function with the given signature.
     ///
-    /// This resets the state to containing only a single block representing the whole function.
-    /// The exit block is the last block in the function which will contain the return instruction.
+    /// This resets the state to containing only a single block representing the
+    /// whole function. The exit block is the last block in the function
+    /// which will contain the return instruction.
     pub(crate) fn initialize(&mut self, sig: &ir::Signature, exit_block: Block) {
         self.clear();
         self.push_block(
@@ -122,7 +126,8 @@ impl FuncTranslationState {
 
     /// Pop the top `n` values on the stack.
     ///
-    /// The popped values are not returned. Use `peekn` to look at them before popping.
+    /// The popped values are not returned. Use `peekn` to look at them before
+    /// popping.
     pub(crate) fn popn(&mut self, n: usize) {
         self.ensure_length_is_at_least(n);
         let new_len = self.stack.len().wrapping_sub(n);
@@ -281,15 +286,17 @@ impl FuncTranslationState {
     }
 }
 
-/// A control stack frame can be an `if`, a `block` or a `loop`, each one having the following
-/// fields:
+/// A control stack frame can be an `if`, a `block` or a `loop`, each one having
+/// the following fields:
 ///
-/// - `destination`: reference to the `Block` that will hold the code after the control block;
+/// - `destination`: reference to the `Block` that will hold the code after the
+///   control block;
 /// - `num_return_values`: number of values returned by the control block;
-/// - `original_stack_size`: size of the value stack at the beginning of the control block.
+/// - `original_stack_size`: size of the value stack at the beginning of the
+///   control block.
 ///
-/// The `loop` frame has a `header` field that references the `Block` that contains the beginning
-/// of the body of the loop.
+/// The `loop` frame has a `header` field that references the `Block` that
+/// contains the beginning of the body of the loop.
 #[derive(Debug)]
 pub enum ControlStackFrame {
     If {
@@ -432,11 +439,12 @@ impl ControlStackFrame {
     /// Pop values from the value stack so that it is left at the state it was
     /// before this control-flow frame.
     pub fn truncate_value_stack_to_original_size(&self, stack: &mut Vec<Value>) {
-        // The "If" frame pushes its parameters twice, so they're available to the else block
-        // (see also `FuncTranslationState::push_if`).
-        // Yet, the original_stack_size member accounts for them only once, so that the else
-        // block can see the same number of parameters as the consequent block. As a matter of
-        // fact, we need to subtract an extra number of parameter values for if blocks.
+        // The "If" frame pushes its parameters twice, so they're available to the else
+        // block (see also `FuncTranslationState::push_if`).
+        // Yet, the original_stack_size member accounts for them only once, so that the
+        // else block can see the same number of parameters as the consequent
+        // block. As a matter of fact, we need to subtract an extra number of
+        // parameter values for if blocks.
         let num_duplicated_params = match self {
             &ControlStackFrame::If {
                 num_param_values, ..

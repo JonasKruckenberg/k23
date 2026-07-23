@@ -35,7 +35,8 @@ impl<'a> Frame<'a> {
 
     /// Sets the value of this frames instruction pointer.
     ///
-    /// When paired with [`Frame::restore`] this will transfer control to the instruction pointer.
+    /// When paired with [`Frame::restore`] this will transfer control to the
+    /// instruction pointer.
     pub fn set_ip(&mut self, value: usize) {
         self.regs[self.return_address_register] = value;
     }
@@ -50,11 +51,13 @@ impl<'a> Frame<'a> {
         self.fde.initial_address()
     }
 
-    /// Returns the address of the function's personality routine handler if any.
+    /// Returns the address of the function's personality routine handler if
+    /// any.
     ///
-    /// This personality routine does language-specific clean up when unwinding the stack frames.
-    /// Not all frames have a pointer to a personality routine defined, but for Rust `catch_unwind`
-    /// and frames that need to perform `Drop` cleanup do.
+    /// This personality routine does language-specific clean up when unwinding
+    /// the stack frames. Not all frames have a pointer to a personality
+    /// routine defined, but for Rust `catch_unwind` and frames that need to
+    /// perform `Drop` cleanup do.
     pub fn personality(&self) -> Option<u64> {
         // Safety: we have to trust the DWARF info here
         self.fde.personality().map(|x| unsafe { deref_pointer(x) })
@@ -62,25 +65,30 @@ impl<'a> Frame<'a> {
 
     /// Returns `true` if this Frame belongs to a signal trampoline handler.
     ///
-    /// Usually the return address points to one past the actual call instruction since that
-    /// is where we need to transfer control to when returning, but in the context of a signal
-    /// handler (or a machine exception handler that doesn't use a separate exception stack)
-    /// the frame that is pushed to the stack points its return address to the instruction we
-    /// need to return to directly (since that is the instruction we interrupted).
+    /// Usually the return address points to one past the actual call
+    /// instruction since that is where we need to transfer control to when
+    /// returning, but in the context of a signal handler (or a machine
+    /// exception handler that doesn't use a separate exception stack)
+    /// the frame that is pushed to the stack points its return address to the
+    /// instruction we need to return to directly (since that is the
+    /// instruction we interrupted).
     ///
-    /// The return value of `is_signal_trampoline` should be used to adjust the address accordingly.
+    /// The return value of `is_signal_trampoline` should be used to adjust the
+    /// address accordingly.
     ///
-    /// Note that this is only useful *if* you actually use a shared stack for signal/trap handlers
-    /// if you have separate stacks then you can disregard this information (and it is likely you
-    /// don't have any frames marked as signal trampolines anyway).
+    /// Note that this is only useful *if* you actually use a shared stack for
+    /// signal/trap handlers if you have separate stacks then you can
+    /// disregard this information (and it is likely you don't have any
+    /// frames marked as signal trampolines anyway).
     pub fn is_signal_trampoline(&self) -> bool {
         self.fde.is_signal_trampoline()
     }
 
     /// Return a pointer to the language specific data area LSDA.
     ///
-    /// The format of this region is language dependent, but in Rusts case it holds information
-    /// about whether the landing pad is a `catch_unwind` or a `Drop` cleanup impl.
+    /// The format of this region is language dependent, but in Rusts case it
+    /// holds information about whether the landing pad is a `catch_unwind`
+    /// or a `Drop` cleanup impl.
     pub fn language_specific_data(&self) -> Option<EndianSlice<'a, NativeEndian>> {
         // Safety: we have to trust the DWARF info here
         let addr = self.fde.lsda().map(|x| unsafe { deref_pointer(x) })?;
@@ -99,8 +107,9 @@ impl<'a> Frame<'a> {
 
     /// Sets the value of the specified register.
     ///
-    /// Note that this will only update the representation in this frame not the actual machine register.
-    /// To restore a frames register context see [`Frame::restore`].
+    /// Note that this will only update the representation in this frame not the
+    /// actual machine register. To restore a frames register context see
+    /// [`Frame::restore`].
     pub fn set_reg(&mut self, reg: Register, value: usize) {
         self.regs[reg] = value;
     }
@@ -109,8 +118,9 @@ impl<'a> Frame<'a> {
     ///
     /// # Safety
     ///
-    /// This method is *highly* unsafe because it installs this frames register context, **without
-    /// any checking**. If used improperly, much terrible things will happen, big sadness.
+    /// This method is *highly* unsafe because it installs this frames register
+    /// context, **without any checking**. If used improperly, much terrible
+    /// things will happen, big sadness.
     //
     // You might have noticed that this restore operation never actually jumps anywhere and yet it
     // transfers control and is marked `!` how come?
@@ -120,8 +130,8 @@ impl<'a> Frame<'a> {
     // we want to transfer control to.
     //
     // That's also why this function must never be inlined, if in between restoring the register
-    // context calling `ret` we end up clobbering some registers that would obviously be bad and result
-    // in very awkward to troubleshoot bugs.
+    // context calling `ret` we end up clobbering some registers that would obviously be bad and
+    // result in very awkward to troubleshoot bugs.
     #[inline(never)]
     pub unsafe fn restore(self) -> ! {
         // Safety: caller has to ensure this is safe
@@ -190,16 +200,18 @@ impl<'a> Frame<'a> {
 
             let rule = row
                 .register(reg)
-                // Some architectures (e.g. aarch64) have implicit SameValue rules for callee-saved registers.
+                // Some architectures (e.g. aarch64) have implicit SameValue rules for callee-saved
+                // registers.
                 .unwrap_or_else(|| arch::default_register_rule_for(reg));
 
             match rule {
                 // According to LLVM libunwind (and this appears to be true in practice as well)
                 // leaf functions don't actually store their return address on the stack instead
-                // keeping it in register and there is no explicit EH_FRAME instruction on how to restore it.
-                // (great btw that stuff like this is well documented - not)
-                // This means if the register is the return address register AND there isn't a register
-                // rule for it, we need to maintain it nonetheless.
+                // keeping it in register and there is no explicit EH_FRAME instruction on how to
+                // restore it. (great btw that stuff like this is well documented -
+                // not) This means if the register is the return address register
+                // AND there isn't a register rule for it, we need to maintain it
+                // nonetheless.
                 RegisterRule::Undefined if reg == self.return_address_register => {
                     new_regs[reg] = self.regs[self.return_address_register];
                 }
@@ -290,7 +302,8 @@ impl<'a> Frame<'a> {
 /// ```
 ///
 ///
-/// You can also construct a `FrameIter` from the raw register context and instruction pointer:
+/// You can also construct a `FrameIter` from the raw register context and
+/// instruction pointer:
 ///
 /// ```rust
 /// # use unwind::FrameIter;
@@ -319,7 +332,8 @@ impl Default for FrameIter {
 }
 
 impl FrameIter {
-    /// Construct a new `FrameIter` that will walk the stack beginning at the callsite.
+    /// Construct a new `FrameIter` that will walk the stack beginning at the
+    /// callsite.
     #[inline(always)]
     pub fn new() -> Self {
         with_context(|ctx, ip| Self {
@@ -329,9 +343,11 @@ impl FrameIter {
         })
     }
 
-    /// Construct a new `FrameIter` that will walk the stack beginning at the provided context.
+    /// Construct a new `FrameIter` that will walk the stack beginning at the
+    /// provided context.
     ///
-    /// The two most important values are the stack pointer and the instruction pointer.
+    /// The two most important values are the stack pointer and the instruction
+    /// pointer.
     pub fn from_registers(regs: arch::Registers, ip: usize) -> Self {
         Self {
             regs,
@@ -348,20 +364,21 @@ impl FallibleIterator for FrameIter {
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
         let mut ip = self.ip;
 
-        // The previous call to `Frame::unwind` set the return address to zero (meaning there was no
-        // information on how to restore the return address) this means we're done walking the stack.
-        // Reached end of stack
+        // The previous call to `Frame::unwind` set the return address to zero (meaning
+        // there was no information on how to restore the return address) this
+        // means we're done walking the stack. Reached end of stack
         if ip == 0 {
             return Ok(None);
         }
 
-        // RA points to the *next* instruction, so move it back 1 byte for the call instruction.
+        // RA points to the *next* instruction, so move it back 1 byte for the call
+        // instruction.
         if !self.signal {
             ip -= 1;
         }
 
-        // Construct the frame from the registers and instruction pointer, this will also look up
-        // all the required unwind information.
+        // Construct the frame from the registers and instruction pointer, this will
+        // also look up all the required unwind information.
         let frame = Frame::from_context(&self.regs, ip)?;
         // and then unwind the frame to obtain the next register context
         self.regs = frame.unwind()?;

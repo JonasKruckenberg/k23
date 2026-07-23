@@ -537,7 +537,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         unsafe {
             node.set_pivot(pivot, pos, &mut self.tree.leaf);
         }
-        // Safety: we checked above that the cursor points at a non-max, initialized entry.
+        // Safety: we checked above that the cursor points at a non-max, initialized
+        // entry.
         let (old_start, old_value) = unsafe {
             mem::replace(
                 node.value_mut(pos, &mut self.tree.leaf).assume_init_mut(),
@@ -1030,8 +1031,8 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
         self.raw.is_end()
     }
 
-    /// Returns the pivot of the element that the cursor is currently pointing to,
-    /// or `None` if the cursor is pointing to the end of the tree.
+    /// Returns the pivot of the element that the cursor is currently pointing
+    /// to, or `None` if the cursor is pointing to the end of the tree.
     #[inline]
     pub fn range(&self) -> Option<RangeInclusive<I>> {
         self.entry().map(|(r, _v)| r)
@@ -1050,7 +1051,8 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
     #[inline]
     pub fn entry(&self) -> Option<(RangeInclusive<I>, &'a V)> {
         self.raw.entry().map(|(pivot, value)| {
-            // Safety: `entry()` returns only non-max-pivot and therefore initialized entries.
+            // Safety: `entry()` returns only non-max-pivot and therefore initialized
+            // entries.
             let (start, value) = unsafe { value.as_ref() };
 
             let range = RangeInclusive {
@@ -1082,9 +1084,9 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
 
     /// Returns an iterator starting a the current element.
     ///
-    /// Iterators are more efficient than cursors. Prefer using them if you don't
-    /// need reverse iteration or if you don't need to insert or remove elements in
-    /// the tree.
+    /// Iterators are more efficient than cursors. Prefer using them if you
+    /// don't need reverse iteration or if you don't need to insert or
+    /// remove elements in the tree.
     #[inline]
     pub fn iter(&self) -> Iter<'a, I, V, A> {
         let (node, pos) = self.raw.stack[Height::LEAF];
@@ -1104,7 +1106,8 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
 /// need reverse iteration or if you don't need to insert or remove elements in
 /// the tree.
 ///
-/// This type is returned by [`RangeTree::cursor_mut_at`] and [`RangeTree::cursor_mut`].
+/// This type is returned by [`RangeTree::cursor_mut_at`] and
+/// [`RangeTree::cursor_mut`].
 pub struct CursorMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     raw: RawCursor<I, V, A, &'a mut RangeTree<I, V, A>>,
 }
@@ -1140,8 +1143,8 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
         self.entry().is_none()
     }
 
-    /// Returns the pivot of the element that the cursor is currently pointing to,
-    /// or `None` if the cursor is pointing to the end of the tree.
+    /// Returns the pivot of the element that the cursor is currently pointing
+    /// to, or `None` if the cursor is pointing to the end of the tree.
     #[inline]
     pub fn range(&self) -> Option<RangeInclusive<I>> {
         self.entry().map(|(r, _v)| r)
@@ -1167,7 +1170,8 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     #[inline]
     pub fn entry(&self) -> Option<(RangeInclusive<I>, &V)> {
         self.raw.entry().map(|(pivot, value)| {
-            // Safety: `entry()` returns only non-max-pivot and therefore initialized entries.
+            // Safety: `entry()` returns only non-max-pivot and therefore initialized
+            // entries.
             let (start, value) = unsafe { value.as_ref() };
 
             let range = RangeInclusive {
@@ -1178,13 +1182,14 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
         })
     }
 
-    /// Returns the pivot and a mutable reference to the value that the cursor is
-    /// currently pointing to, or `None` if the cursor is pointing to the end of
-    /// the tree.
+    /// Returns the pivot and a mutable reference to the value that the cursor
+    /// is currently pointing to, or `None` if the cursor is pointing to the
+    /// end of the tree.
     #[inline]
     pub fn entry_mut(&mut self) -> Option<(RangeInclusive<I>, &mut V)> {
         self.raw.entry().map(|(pivot, mut value)| {
-            // Safety: `entry()` returns only non-max-pivot and therefore initialized entries.
+            // Safety: `entry()` returns only non-max-pivot and therefore initialized
+            // entries.
             let (start, value) = unsafe { value.as_mut() };
 
             let range = RangeInclusive {
@@ -1216,9 +1221,9 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
 
     /// Returns an iterator starting a the current element.
     ///
-    /// Iterators are more efficient than cursors. Prefer using them if you don't
-    /// need reverse iteration or if you don't need to insert or remove elements in
-    /// the tree.
+    /// Iterators are more efficient than cursors. Prefer using them if you
+    /// don't need reverse iteration or if you don't need to insert or
+    /// remove elements in the tree.
     #[inline]
     pub fn iter(&self) -> Iter<'_, I, V, A> {
         let (node, pos) = self.raw.stack[Height::LEAF];
@@ -1230,9 +1235,9 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
 
     /// Returns a mutable iterator starting a the current element.
     ///
-    /// Iterators are more efficient than cursors. Prefer using them if you don't
-    /// need reverse iteration or if you don't need to insert or remove elements in
-    /// the tree.
+    /// Iterators are more efficient than cursors. Prefer using them if you
+    /// don't need reverse iteration or if you don't need to insert or
+    /// remove elements in the tree.
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, I, V, A> {
         let (node, pos) = self.raw.stack[Height::LEAF];
@@ -1247,9 +1252,9 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// Unlike [`CursorMut::iter`] the returned iterator has the same lifetime
     /// as the cursor and consumes the cursor.
     ///
-    /// Iterators are more efficient than cursors. Prefer using them if you don't
-    /// need reverse iteration or if you don't need to insert or remove elements in
-    /// the tree.
+    /// Iterators are more efficient than cursors. Prefer using them if you
+    /// don't need reverse iteration or if you don't need to insert or
+    /// remove elements in the tree.
     #[inline]
     #[expect(clippy::should_implement_trait, reason = "this is fine")]
     pub fn into_iter(self) -> Iter<'a, I, V, A> {
@@ -1262,12 +1267,12 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
 
     /// Returns a mutable iterator starting a the current element.
     ///
-    /// Unlike [`CursorMut::iter_mut`] the returned iterator has the same lifetime
-    /// as the cursor and consumes the cursor.
+    /// Unlike [`CursorMut::iter_mut`] the returned iterator has the same
+    /// lifetime as the cursor and consumes the cursor.
     ///
-    /// Iterators are more efficient than cursors. Prefer using them if you don't
-    /// need reverse iteration or if you don't need to insert or remove elements in
-    /// the tree.
+    /// Iterators are more efficient than cursors. Prefer using them if you
+    /// don't need reverse iteration or if you don't need to insert or
+    /// remove elements in the tree.
     #[inline]
     pub fn into_iter_mut(self) -> IterMut<'a, I, V, A> {
         let (node, pos) = self.raw.stack[Height::LEAF];
@@ -1287,9 +1292,9 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// new element at the end of the tree after all other elements.
     ///
     /// It is the user's responsibility to ensure that inserting `pivot` at this
-    /// position does not violate the invariant that all pivots must be in sorted
-    /// order in the tree. Violating this invariant is safe but may cause
-    /// other operations to return incorrect results or panic.
+    /// position does not violate the invariant that all pivots must be in
+    /// sorted order in the tree. Violating this invariant is safe but may
+    /// cause other operations to return incorrect results or panic.
     ///
     /// # Errors
     ///
@@ -1303,9 +1308,9 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// pointing to and returns the previous pivot and value.
     ///
     /// It is the user's responsibility to ensure that inserting `pivot` at this
-    /// position does not violate the invariant that all pivots must be in sorted
-    /// order in the tree. Violating this invariant is safe but may cause
-    /// other operations to return incorrect results or panic.
+    /// position does not violate the invariant that all pivots must be in
+    /// sorted order in the tree. Violating this invariant is safe but may
+    /// cause other operations to return incorrect results or panic.
     ///
     /// # Panics
     ///
@@ -1341,8 +1346,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         let mut node = tree.root;
         while let Some(down) = height.down() {
             stack[height] = (node, pos!(0));
-            // Safety: `height > LEAF` so this MUST be an internal node AND `pos` returned by `search`
-            // points to an initialized entry.
+            // Safety: `height > LEAF` so this MUST be an internal node AND `pos` returned
+            // by `search` points to an initialized entry.
             node = unsafe { node.value(pos!(0), &tree.internal).assume_init_read().0 };
             height = down;
         }

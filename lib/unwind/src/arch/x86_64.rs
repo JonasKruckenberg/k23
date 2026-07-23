@@ -19,7 +19,8 @@ pub const RA: Register = X86_64::RA;
 
 pub const UNWIND_DATA_REG: (Register, Register) = (X86_64::RAX, X86_64::RDX);
 
-/// Returns the default register rule for the given register on this architecture.
+/// Returns the default register rule for the given register on this
+/// architecture.
 pub fn default_register_rule_for(_reg: Register) -> RegisterRule<usize> {
     // As far as I can tell x86_64 has no special requirements
     RegisterRule::Undefined
@@ -122,8 +123,9 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()),
 
 /// # Safety
 ///
-/// This function will restore whatever values are in the given `Context` into the machine registers
-/// **without** performing any sort of validation. The caller must ensure at least:
+/// This function will restore whatever values are in the given `Context` into
+/// the machine registers **without** performing any sort of validation. The
+/// caller must ensure at least:
 /// 1. `RSP` `regs.gp[7]` is a valid, correctly-aligned, writable stack address.
 /// 2. `RA` `regs.ra` is a valid, correctly-aligned, code pointer.
 pub unsafe fn restore_context(regs: &Registers) -> ! {

@@ -43,8 +43,8 @@ const BOOT_HART_STACK_SIZE: usize = 256 * 4096;
 /// establishing the kernel address space or anything else fails `Err` will
 /// be returned.
 ///
-/// The caller should deal with this failure as appropriate. E.g. aborting the boot process,
-/// or choosing a different kernel image.
+/// The caller should deal with this failure as appropriate. E.g. aborting the
+/// boot process, or choosing a different kernel image.
 pub fn boot<S: ImageSource, A: FrameAllocator>(
     minfo: &MachineInfo,
     physical_memory_regions: &[MemoryRegion],
@@ -207,7 +207,8 @@ fn instantiate_stack(
         reason = "`allocate` produces page-size aligned allocations (4KiB), so block is trivially aligned to u64"
     )]
     {
-        // Safety: we just allocated the memory, `allocate_pages` ensures the memory range is valid and initialized
+        // Safety: we just allocated the memory, `allocate_pages` ensures the memory
+        // range is valid and initialized
         let block = unsafe {
             slice::from_raw_parts_mut(
                 block.as_mut_ptr().cast::<u64>(),
@@ -218,7 +219,8 @@ fn instantiate_stack(
         block.fill(0xACE0BACE);
     }
 
-    // Safety: we just allocated the memory, `allocate_pages` ensures the memory range is valid and initialized
+    // Safety: we just allocated the memory, `allocate_pages` ensures the memory
+    // range is valid and initialized
     let block = unsafe { slice::from_raw_parts_mut(block.as_mut_ptr(), stack_size) };
 
     Ok(block)
@@ -235,7 +237,8 @@ fn instantiate_boot_info(
     let block = frame_alloc
         .allocate_contiguous(Layout::from_size_align(size_of::<BootInfo>(), granule).unwrap())?;
 
-    // Safety: we just allocated the memory, `allocate_pages` ensures the memory range is valid and initialized
+    // Safety: we just allocated the memory, `allocate_pages` ensures the memory
+    // range is valid and initialized
     let block = unsafe {
         block
             .as_non_null()
@@ -261,7 +264,8 @@ fn instantiate_boot_info(
 }
 
 /// Combine the discovered UART (physical register block + driver params) with
-/// the virtual range reserved for it into the [`UartInfo`] handed to the kernel.
+/// the virtual range reserved for it into the [`UartInfo`] handed to the
+/// kernel.
 ///
 /// The register block may start at a sub-page offset within its mapping; that
 /// offset is preserved so `regs.start` points at the actual registers.

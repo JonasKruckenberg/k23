@@ -86,8 +86,8 @@ macro_rules! impl_address {
 
             /// Adds an unsigned offset to this address.
             ///
-            /// Panics on overflow when overflow checks are enabled (the default in debug
-            /// builds); otherwise the result wraps around the address space.
+            /// Panics on overflow when overflow checks are enabled (the default in
+            /// debug builds); otherwise the result wraps around the address space.
             #[must_use]
             #[inline]
             pub const fn add(self, offset: usize) -> Self {
@@ -96,15 +96,16 @@ macro_rules! impl_address {
 
             /// Subtracts an unsigned offset from this address.
             ///
-            /// Panics on overflow when overflow checks are enabled (the default in debug
-            /// builds); otherwise the result wraps around the address space.
+            /// Panics on overflow when overflow checks are enabled (the default in
+            /// debug builds); otherwise the result wraps around the address space.
             #[must_use]
             #[inline]
             pub const fn sub(self, offset: usize) -> Self {
                 Self(self.0 - offset)
             }
 
-            /// Adds a signed offset in bytes to this address, panicking if overflow occurred.
+            /// Adds a signed offset in bytes to this address, panicking if overflow
+            /// occurred.
             #[must_use]
             #[inline]
             pub const fn offset(self, offset: isize) -> Self {
@@ -116,36 +117,40 @@ macro_rules! impl_address {
                 }
             }
 
-            /// Adds an unsigned offset to this address, wrapping around at the boundary of the type.
+            /// Adds an unsigned offset to this address, wrapping around at the boundary
+            /// of the type.
             #[must_use]
             #[inline]
             pub const fn wrapping_add(self, offset: usize) -> Self {
                 Self(self.0.wrapping_add(offset))
             }
 
-            /// Subtracts an unsigned offset from this address, wrapping around at the boundary of the type.
+            /// Subtracts an unsigned offset from this address, wrapping around at the
+            /// boundary of the type.
             #[must_use]
             #[inline]
             pub const fn wrapping_sub(self, offset: usize) -> Self {
                 Self(self.0.wrapping_sub(offset))
             }
 
-            /// Adds a signed offset in bytes to this address, wrapping around at the boundary of the type.
+            /// Adds a signed offset in bytes to this address, wrapping around at the
+            /// boundary of the type.
             #[must_use]
             #[inline]
             pub const fn wrapping_offset(self, offset: isize) -> Self {
                 Self(self.0.wrapping_add_signed(offset))
             }
 
-            /// Adds an unsigned offset to this address, saturating at the numeric bounds
-            /// instead of overflowing.
+            /// Adds an unsigned offset to this address, saturating at the numeric
+            /// bounds instead of overflowing.
             #[must_use]
             #[inline]
             pub const fn saturating_add(self, offset: usize) -> Self {
                 Self(self.0.saturating_add(offset))
             }
 
-            /// Adds an unsigned offset to this address, returning `None` if overflow occurred.
+            /// Adds an unsigned offset to this address, returning `None` if overflow
+            /// occurred.
             #[must_use]
             #[inline]
             pub const fn checked_add(self, offset: usize) -> Option<Self> {
@@ -164,8 +169,8 @@ macro_rules! impl_address {
                 self.0.wrapping_sub(origin.0) as isize
             }
 
-            /// Calculates the distance between two addresses in bytes, _where it’s known that `self`
-            /// is equal to or greater than `origin`_.
+            /// Calculates the distance between two addresses in bytes, _where it’s
+            /// known that `self` is equal to or greater than `origin`_.
             ///
             /// # Panics
             ///

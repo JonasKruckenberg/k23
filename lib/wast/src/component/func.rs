@@ -46,7 +46,8 @@ pub enum CoreFuncKind<'a> {
     ///
     /// The core function is actually a member of the canon section.
     Lower(CanonLower<'a>),
-    /// The core function is defined in terms of aliasing a module instance export.
+    /// The core function is defined in terms of aliasing a module instance
+    /// export.
     ///
     /// The core function is actually a member of the core alias section.
     Alias(InlineExportAlias<'a, true>),
@@ -250,7 +251,8 @@ pub enum FuncKind<'a> {
         /// Information relating to the lifting of the core function.
         info: CanonLift<'a>,
     },
-    /// The function is defined in terms of aliasing a component instance export.
+    /// The function is defined in terms of aliasing a component instance
+    /// export.
     ///
     /// The function is actually a member of the alias section.
     Alias(InlineExportAlias<'a, false>),
@@ -338,7 +340,8 @@ impl<'a> Parse<'a> for CanonicalFunc<'a> {
 #[derive(Debug)]
 #[allow(missing_docs)]
 pub enum CanonicalFuncKind<'a> {
-    /// A canonical function that is defined in terms of lifting a core function.
+    /// A canonical function that is defined in terms of lifting a core
+    /// function.
     Lift {
         /// The lifted function's type.
         ty: ComponentTypeUse<'a, ComponentFunctionType<'a>>,
@@ -925,7 +928,8 @@ pub enum CanonOpt<'a> {
     PostReturn(CoreItemRef<'a, kw::func>),
     /// Use the async ABI for lifting or lowering.
     Async,
-    /// Use the specified function to deliver async events to stackless coroutines.
+    /// Use the specified function to deliver async events to stackless
+    /// coroutines.
     Callback(CoreItemRef<'a, kw::func>),
 }
 

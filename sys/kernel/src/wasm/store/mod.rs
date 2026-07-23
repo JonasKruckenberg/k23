@@ -92,13 +92,14 @@ impl<T> DerefMut for Store<T> {
 }
 
 pub struct StoreOpaque {
-    /// The engine this store belongs to, used mainly for compatibility checking and to access the
-    /// global type registry.
+    /// The engine this store belongs to, used mainly for compatibility checking
+    /// and to access the global type registry.
     engine: Engine,
-    /// The instance allocator that manages all the runtime memory for Wasm instances.
+    /// The instance allocator that manages all the runtime memory for Wasm
+    /// instances.
     alloc: &'static (dyn InstanceAllocator + Send + Sync),
-    /// Data that is shared across all instances in this store such as stack limits, epoch pointer etc.
-    /// This field is accessed by guest code
+    /// Data that is shared across all instances in this store such as stack
+    /// limits, epoch pointer etc. This field is accessed by guest code
     vm_store_context: VMStoreContext,
     /// Indexed data within this `Store`, used to store information about
     /// globals, functions, memories, etc.
@@ -107,16 +108,19 @@ pub struct StoreOpaque {
     /// `rooted_host_funcs` below. This structure contains pointers which are
     /// otherwise kept alive by the `Arc` references in `rooted_host_funcs`.
     stored: StoredData,
-    /// The array calling convention requires the first argument to be a `NonNull<VMContext>` pointer
-    /// to the function caller. When calling functions from the host though, there is no active VMContext
-    /// (we aren't the in VM yet after all) so we allocate a fake instance at store creation that we
-    /// can use as the placeholder caller vmctx in these cases. Note that this is easier than special
-    /// casing this (e.g. making the caller argument `Option<NonNull<VMContext>>`) since that would require
-    /// piping around this option all throughout the code. This fake instance lets us keep all code the
-    /// same.
+    /// The array calling convention requires the first argument to be a
+    /// `NonNull<VMContext>` pointer to the function caller. When calling
+    /// functions from the host though, there is no active VMContext
+    /// (we aren't the in VM yet after all) so we allocate a fake instance at
+    /// store creation that we can use as the placeholder caller vmctx in
+    /// these cases. Note that this is easier than special casing this (e.g.
+    /// making the caller argument `Option<NonNull<VMContext>>`) since that
+    /// would require piping around this option all throughout the code.
+    /// This fake instance lets us keep all code the same.
     default_caller: InstanceHandle,
-    /// Used to optimized host->wasm calls when calling a function dynamically (through `Func::call`)
-    /// to avoid allocating a new vector each time a function is called.
+    /// Used to optimized host->wasm calls when calling a function dynamically
+    /// (through `Func::call`) to avoid allocating a new vector each time a
+    /// function is called.
     wasm_vmval_storage: Vec<VMVal>,
 
     host_globals: Vec<VMGlobalDefinition>,
@@ -154,12 +158,14 @@ impl StoreOpaque {
         self.default_caller.vmctx()
     }
 
-    /// Takes the `Vec<VMVal>` storage used for passing arguments using the array call convention.
+    /// Takes the `Vec<VMVal>` storage used for passing arguments using the
+    /// array call convention.
     #[inline]
     pub(super) fn take_wasm_vmval_storage(&mut self) -> Vec<VMVal> {
         mem::take(&mut self.wasm_vmval_storage)
     }
-    /// Returns the `Vec<VMVal>` storage allowing it's allocation to be reused for the next array call.
+    /// Returns the `Vec<VMVal>` storage allowing it's allocation to be reused
+    /// for the next array call.
     #[inline]
     pub(super) fn return_wasm_vmval_storage(&mut self, storage: Vec<VMVal>) {
         self.wasm_vmval_storage = storage;
@@ -189,12 +195,12 @@ impl StoreOpaque {
         // There are a few instances where a "close to zero" pointer is loaded
         // and we expect that to happen:
         //
-        // * Explicitly bounds-checked memories with spectre-guards enabled will
-        //   cause out-of-bounds accesses to get routed to address 0, so allow
-        //   wasm instructions to fault on the null address.
-        // * `call_indirect` when invoking a null function pointer may load data
-        //   from the a `VMFuncRef` whose address is null, meaning any field of
-        //   `VMFuncRef` could be the address of the fault.
+        // * Explicitly bounds-checked memories with spectre-guards enabled will cause
+        //   out-of-bounds accesses to get routed to address 0, so allow wasm
+        //   instructions to fault on the null address.
+        // * `call_indirect` when invoking a null function pointer may load data from
+        //   the a `VMFuncRef` whose address is null, meaning any field of `VMFuncRef`
+        //   could be the address of the fault.
         //
         // In these situations where the address is so small it won't be in any
         // instance, so skip the checks below.

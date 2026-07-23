@@ -77,7 +77,7 @@
 //!
 //! // The item inserted by thread 2 remains in the slab.
 //! assert_eq!(slab.get(key2).unwrap(), "hello from thread two");
-//!```
+//! ```
 //!
 //! If items in the slab must be mutated, a `Mutex` or `RwLock` may be used for
 //! each item, providing granular locking of items rather than of the slab:
@@ -161,9 +161,9 @@
 //!
 //! Since a fixed number of bits are set aside to use for storing the generation
 //! counter, the counter will wrap  around after being incremented a number of
-//! times. To avoid situations where a returned index lives long enough to see the
-//! generation counter wrap around to the same value, it is good to be fairly
-//! generous when configuring the allocation of index bits.
+//! times. To avoid situations where a returned index lives long enough to see
+//! the generation counter wrap around to the same value, it is good to be
+//! fairly generous when configuring the allocation of index bits.
 //!
 //! [`loom`]: https://crates.io/crates/loom
 //! [aba]: https://en.wikipedia.org/wiki/ABA_problem
@@ -171,8 +171,8 @@
 //!
 //! # Performance
 //!
-//! These graphs were produced by [benchmarks] of the sharded slab implementation,
-//! using the [`criterion`] crate.
+//! These graphs were produced by [benchmarks] of the sharded slab
+//! implementation, using the [`criterion`] crate.
 //!
 //! The first shows the results of a benchmark where an increasing number of
 //! items are inserted and then removed into a slab concurrently by five
@@ -291,8 +291,8 @@ pub struct VacantEntry<'a, T, C: cfg::Config = DefaultConfig> {
 ///
 /// Unlike [`Entry`], which borrows the slab, an `OwnedEntry` clones the [`Arc`]
 /// around the slab. Therefore, it keeps the slab from being dropped until all
-/// such guards have been dropped. This means that an `OwnedEntry` may be held for
-/// an arbitrary lifetime.
+/// such guards have been dropped. This means that an `OwnedEntry` may be held
+/// for an arbitrary lifetime.
 ///
 /// # Examples
 ///
@@ -517,8 +517,8 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// [`take`]: Slab::take
     pub fn remove(&self, idx: usize) -> bool {
         // The `Drop` impl for `Entry` calls `remove_local` or `remove_remote` based
-        // on where the guard was dropped from. If the dropped guard was the last one, this will
-        // call `Slot::remove_value` which actually clears storage.
+        // on where the guard was dropped from. If the dropped guard was the last one,
+        // this will call `Slot::remove_value` which actually clears storage.
         let tid = C::unpack_tid(idx);
 
         log::trace!("rm_deferred {:?}", tid);
@@ -661,8 +661,8 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// assert_eq!(value, "hello world");
     /// ```
     ///
-    /// Unlike [`Entry`], an `OwnedEntry` may be stored in a struct which must live
-    /// for the `'static` lifetime:
+    /// Unlike [`Entry`], an `OwnedEntry` may be stored in a struct which must
+    /// live for the `'static` lifetime:
     ///
     /// ```
     /// # use sharded_slab::Slab;
@@ -1038,8 +1038,8 @@ pub(crate) trait Pack<C: cfg::Config>: Sized {
     /// A number consisting of `Self::LEN` 1 bits, starting at the least
     /// significant bit.
     ///
-    /// This is the highest value this type can represent. This number is shifted
-    /// left by `Self::SHIFT` bits to calculate this type's `MASK`.
+    /// This is the highest value this type can represent. This number is
+    /// shifted left by `Self::SHIFT` bits to calculate this type's `MASK`.
     ///
     /// This is computed automatically based on `Self::LEN`.
     const BITS: usize = {
@@ -1049,8 +1049,8 @@ pub(crate) trait Pack<C: cfg::Config>: Sized {
     /// The number of bits to shift a number to pack it into a usize with other
     /// values.
     ///
-    /// This is calculated automatically based on the `LEN` and `SHIFT` constants
-    /// of the previous value.
+    /// This is calculated automatically based on the `LEN` and `SHIFT`
+    /// constants of the previous value.
     const SHIFT: usize = Self::Prev::SHIFT + Self::Prev::LEN;
 
     /// The mask to extract only this type from a packed `usize`.

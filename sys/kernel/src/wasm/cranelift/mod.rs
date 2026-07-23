@@ -29,7 +29,8 @@ use crate::wasm::trap::TRAP_TABLE_OUT_OF_BOUNDS;
 pub(crate) enum CraneliftGlobal {
     /// This is a constant global with a value known at compile time.
     Const(ir::Value),
-    /// This is a variable in memory that should be referenced through a `GlobalValue`.
+    /// This is a variable in memory that should be referenced through a
+    /// `GlobalValue`.
     Memory {
         /// The address of the global variable storage.
         gv: ir::GlobalValue,

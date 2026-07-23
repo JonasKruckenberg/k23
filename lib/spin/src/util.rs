@@ -16,7 +16,8 @@ pub(crate) fn hold_interrupts() -> HeldInterrupts {
 /// An RAII guard that keeps interrupts disabled for as long as it is held.
 pub(crate) struct HeldInterrupts(critical_section::RestoreState);
 
-// this type MUST NOT be `Send` because toggling interrupts is fundamentally a per-hart operation
+// this type MUST NOT be `Send` because toggling interrupts is fundamentally a
+// per-hart operation
 impl !Send for HeldInterrupts {}
 
 impl Drop for HeldInterrupts {

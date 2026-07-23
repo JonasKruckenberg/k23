@@ -50,10 +50,11 @@ impl kasync::block_on::Park for RiscvPark {
         let calling_cpuid = self.hartid;
         tracing::trace!("parking hart {calling_cpuid}");
 
-        // Safety: wfi (wait for interrupt) halts the calling hart until an interrupt is received.
-        // The calling hart will therefore not make any progress until woken by an IPI (from `unpark` below)
-        // or through any other external interrupt.
-        // We also need S-mode interrupts to be enabled on the calling hart (RISC-V Privileged §3.2.3), the HART init
+        // Safety: wfi (wait for interrupt) halts the calling hart until an interrupt is
+        // received. The calling hart will therefore not make any progress until
+        // woken by an IPI (from `unpark` below) or through any other external
+        // interrupt. We also need S-mode interrupts to be enabled on the
+        // calling hart (RISC-V Privileged §3.2.3), the HART init
         // procedure ensures this.
         unsafe { asm!("wfi", options(nomem, nostack, preserves_flags)) };
 

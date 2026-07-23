@@ -191,8 +191,8 @@ pub(crate) trait SimdSearch: Int {
     /// Performs a SIMD search on sorted elements in `pivots`, returning the
     /// index of the first element greater than or equal to `search`.
     ///
-    /// The last element of `pivots` is assumed to always be less than or equal to
-    /// `search`. This is ensured by the outer binary search and the node
+    /// The last element of `pivots` is assumed to always be less than or equal
+    /// to `search`. This is ensured by the outer binary search and the node
     /// invariant. As such the returned index will always be less than
     /// `Self::WIDTH`.
     ///
@@ -303,8 +303,8 @@ mod tests {
 //     ])]
 //     fn search<T: SimdSearch>(bencher: divan::Bencher) {
 //         // The values don't matter because we use branchless searches.
-//         let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
-//         bencher.bench_local(|| {
+//         let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe {
+// std::mem::zeroed() };         bencher.bench_local(|| {
 //             let zero: T = unsafe { std::mem::zeroed() };
 //             let len = PIVOTS_BYTES / std::mem::size_of::<T>();
 //             unsafe { T::search(&pivots.0[..len], divan::black_box(zero)) }
@@ -325,12 +325,12 @@ mod tests {
 //     ])]
 //     fn generic_search<T: SimdSearch>(bencher: divan::Bencher) {
 //         fn generic_search<T: SimdSearch>(pivots: &[T], search: T) -> usize {
-//             pivots[..pivots.len() - 1].partition_point(|&pivot| T::bias_cmp(pivot, search).is_lt())
-//         }
+//             pivots[..pivots.len() - 1].partition_point(|&pivot|
+// T::bias_cmp(pivot, search).is_lt())         }
 //
 //         // The values don't matter because we use branchless searches.
-//         let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
-//         bencher.bench_local(|| {
+//         let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe {
+// std::mem::zeroed() };         bencher.bench_local(|| {
 //             let zero: T = unsafe { std::mem::zeroed() };
 //             let len = PIVOTS_BYTES / std::mem::size_of::<T>();
 //             generic_search(&pivots.0[..len], divan::black_box(zero))

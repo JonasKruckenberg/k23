@@ -16,7 +16,8 @@ use crate::wasm::translate::types::{
 };
 use crate::wasm::translate::{ModuleTypes, TranslatedModule, WasmFuncType, WasmSubType};
 
-/// A type that knows how to convert from `wasmparser` types to types in this crate.
+/// A type that knows how to convert from `wasmparser` types to types in this
+/// crate.
 pub struct WasmparserTypeConverter<'a> {
     types: &'a ModuleTypes,
     module: &'a TranslatedModule,

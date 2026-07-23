@@ -114,8 +114,9 @@ impl<T> OnceLock<T> {
 
     /// Sets the contents of this cell to `value`.
     ///
-    /// May block if another thread is currently attempting to initialize the cell. The cell is
-    /// guaranteed to contain a value when set returns, though not necessarily the one provided.
+    /// May block if another thread is currently attempting to initialize the
+    /// cell. The cell is guaranteed to contain a value when set returns,
+    /// though not necessarily the one provided.
     ///
     /// Returns `Ok(())` if the cell's value was set by this call.
     ///
@@ -133,8 +134,9 @@ impl<T> OnceLock<T> {
     /// Sets the contents of this cell to `value` if the cell was empty, then
     /// returns a reference to it.
     ///
-    /// May block if another thread is currently attempting to initialize the cell. The cell is
-    /// guaranteed to contain a value when set returns, though not necessarily the one provided.
+    /// May block if another thread is currently attempting to initialize the
+    /// cell. The cell is guaranteed to contain a value when set returns,
+    /// though not necessarily the one provided.
     ///
     /// Returns `Ok(&value)` if the cell was empty
     ///
@@ -154,9 +156,11 @@ impl<T> OnceLock<T> {
         }
     }
 
-    /// Takes the value out of this `OnceLock`, moving it back to an uninitialized state.
+    /// Takes the value out of this `OnceLock`, moving it back to an
+    /// uninitialized state.
     ///
-    /// Has no effect and returns `None` if the `OnceLock` hasn't been initialized.
+    /// Has no effect and returns `None` if the `OnceLock` hasn't been
+    /// initialized.
     ///
     /// Safety is guaranteed by requiring a mutable reference.
     #[inline]

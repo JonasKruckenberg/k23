@@ -88,8 +88,9 @@ impl Func {
         params: &[Val],
         results: &mut [Val],
     ) -> crate::Result<()> {
-        // Do the typechecking. Notice how `TypedFunc::call` is essentially the same function
-        // minus this typechecking? Yeah. That's the benefit of the typed function.
+        // Do the typechecking. Notice how `TypedFunc::call` is essentially the same
+        // function minus this typechecking? Yeah. That's the benefit of the
+        // typed function.
         let ty = self.ty(store);
 
         let params_ = ty.params().zip_eq(params);
@@ -112,8 +113,8 @@ impl Func {
         unsafe { self.call_unchecked(store, params, results) }
     }
 
-    /// Calls the given function with the provided arguments and places the results in the provided
-    /// results slice.
+    /// Calls the given function with the provided arguments and places the
+    /// results in the provided results slice.
     ///
     /// # Errors
     ///
@@ -121,17 +122,19 @@ impl Func {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to ensure the provided arguments are of the correct types and that
-    /// the `results` slice has enough space to hold the results of the function.
+    /// It is up to the caller to ensure the provided arguments are of the
+    /// correct types and that the `results` slice has enough space to hold
+    /// the results of the function.
     pub unsafe fn call_unchecked(
         self,
         store: &mut StoreOpaque,
         params: &[Val],
         results: &mut [Val],
     ) -> crate::Result<()> {
-        // This function mainly performs the lowering and lifting of VMVal values from and to Rust.
-        // Because - unlike TypedFunc - we don't have compile-time knowledge about the function type,
-        // we use a heap allocated vec (obtained through `store.take_wasm_vmval_storage()`) to store
+        // This function mainly performs the lowering and lifting of VMVal values from
+        // and to Rust. Because - unlike TypedFunc - we don't have compile-time
+        // knowledge about the function type, we use a heap allocated vec
+        // (obtained through `store.take_wasm_vmval_storage()`) to store
         // our parameters into and read results from.
         //
         // This is obviously a little less efficient, but it's not that big of a deal.
@@ -156,8 +159,8 @@ impl Func {
         let func_ref = unsafe { self.vm_func_ref(store).as_ref() };
 
         // do the actual call
-        // Safety: at this point we have typechecked, we have allocated enough memory for the params
-        // and results, and obtained a valid func ref to call.
+        // Safety: at this point we have typechecked, we have allocated enough memory
+        // for the params and results, and obtained a valid func ref to call.
         unsafe {
             do_call(store, func_ref, &mut values_vec)?;
         }
@@ -355,8 +358,8 @@ fn enter_wasm(store: &mut StoreOpaque) -> Option<VirtualAddress> {
     // // For asynchronous stores then each call happens on a separate native
     // // stack. This means that the previous stack limit is no longer relevant
     // // because we're on a separate stack.
-    // if unsafe { *store.vm_store_context().stack_limit.get() } != VirtualAddress::MAX
-    //     && !store.async_support()
+    // if unsafe { *store.vm_store_context().stack_limit.get() } !=
+    // VirtualAddress::MAX     && !store.async_support()
     // {
     //     return None;
     // }

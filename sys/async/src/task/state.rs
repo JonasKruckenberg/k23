@@ -13,8 +13,8 @@ use util::loom_const_fn;
 use crate::loom::sync::atomic::{self, AtomicUsize, Ordering};
 use crate::task::PollResult;
 
-/// Task state. The task stores its state in an atomic `usize` with various bitfields for the
-/// necessary information. The state has the following layout:
+/// Task state. The task stores its state in an atomic `usize` with various
+/// bitfields for the necessary information. The state has the following layout:
 ///
 /// ```text
 /// | 63     7 | 6        5 | 4             4 | 3      3 | 2   2 | 1       0 |
@@ -76,10 +76,12 @@ enum JoinWakerState {
 pub(super) enum StartPollAction {
     /// Successful transition, it's okay to poll the task.
     Poll,
-    /// Transition failed for some reason - most likely it is already running on another thread
-    /// (which shouldn't happen) - doesn't matter though we shouldn't poll the task.
+    /// Transition failed for some reason - most likely it is already running on
+    /// another thread (which shouldn't happen) - doesn't matter though we
+    /// shouldn't poll the task.
     DontPoll,
-    /// Transition failed because the task was cancelled and its `JoinHandle` waker may need to be woken.
+    /// Transition failed because the task was cancelled and its `JoinHandle`
+    /// waker may need to be woken.
     Cancelled {
         /// If `true`, the task's join waker must be woken.
         wake_join_waker: bool,
@@ -141,11 +143,11 @@ impl State {
         Snapshot(self.val.load(ordering))
     }
 
-    /// Attempt to transition the task from `IDLE` to `POLLING`, the returned enum indicates what
-    /// to the with the task.
+    /// Attempt to transition the task from `IDLE` to `POLLING`, the returned
+    /// enum indicates what to the with the task.
     ///
-    /// This method should always be followed by a call to [`Self::end_poll`] after the actual poll
-    /// is completed.
+    /// This method should always be followed by a call to [`Self::end_poll`]
+    /// after the actual poll is completed.
     #[tracing::instrument(level = "trace")]
     pub(super) fn start_poll(&self) -> StartPollAction {
         let mut should_wait_for_join_waker = false;
@@ -179,9 +181,10 @@ impl State {
         action
     }
 
-    /// Transition the task from `POLLING` to `IDLE`, the returned enum indicates what to do with task.
-    /// The `completed` argument should be set to true if the polled future returned a `Poll::Ready`
-    /// indicating the task is completed and should not be rescheduled.
+    /// Transition the task from `POLLING` to `IDLE`, the returned enum
+    /// indicates what to do with task. The `completed` argument should be
+    /// set to true if the polled future returned a `Poll::Ready` indicating
+    /// the task is completed and should not be rescheduled.
     #[tracing::instrument(level = "trace")]
     pub(super) fn end_poll(&self, completed: bool) -> PollResult {
         let mut should_wait_for_join_waker = false;
@@ -394,7 +397,8 @@ impl State {
     #[tracing::instrument(level = "trace")]
     pub(super) fn cancel(&self) -> bool {
         self.transition(|s| {
-            // you can't cancel a task that has already been canceled, that doesn't make sense.
+            // you can't cancel a task that has already been canceled, that doesn't make
+            // sense.
             if s.get(Snapshot::CANCELLED) {
                 return false;
             }

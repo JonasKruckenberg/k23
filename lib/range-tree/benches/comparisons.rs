@@ -275,8 +275,8 @@ fn bench_lookups_hits(c: &mut Criterion) {
 //     for num_entries in (10..10_000).step_by(1000) {
 //         let mut ranges = (0..num_entries * 2 * MIB)
 //             .step_by(usize::try_from(2 * MIB).unwrap())
-//             .map(|base| Range::from(base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap())))
-//             .collect::<Vec<_>>();
+//             .map(|base| Range::from(base..base + rng.sample(Uniform::new(0, 2
+// * MIB).unwrap())))             .collect::<Vec<_>>();
 //
 //         ranges.shuffle(&mut rng);
 //
@@ -291,8 +291,8 @@ fn bench_lookups_hits(c: &mut Criterion) {
 //         let mut lookups = vec![];
 //         for gap in gaps {
 //             for _ in 0..1_000 {
-//                 let lookup = rng.sample(Uniform::new(gap.start, gap.end).unwrap());
-//                 lookups.push(lookup);
+//                 let lookup = rng.sample(Uniform::new(gap.start,
+// gap.end).unwrap());                 lookups.push(lookup);
 //             }
 //         }
 //
@@ -342,7 +342,8 @@ fn bench_lookups_hits(c: &mut Criterion) {
 //         }
 //
 //         {
-//             let mut map: RangeTree<NonMaxU64, u8> = RangeTree::try_new().unwrap();
+//             let mut map: RangeTree<NonMaxU64, u8> =
+// RangeTree::try_new().unwrap();
 //
 //             for range in &ranges {
 //                 let start = NonMaxU64::new(range.start).unwrap();

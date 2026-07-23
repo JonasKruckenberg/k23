@@ -31,7 +31,8 @@ pub(crate) struct Wheel {
     ticks_per_slot: Ticks,
     /// The number of ticks represented by this entire wheel.
     ticks_per_wheel: Ticks,
-    /// A bitmask for masking out all lower wheels' indices from a `now` timestamp.
+    /// A bitmask for masking out all lower wheels' indices from a `now`
+    /// timestamp.
     wheel_mask: u64,
 }
 

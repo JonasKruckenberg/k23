@@ -119,8 +119,8 @@ impl<R: gimli::Reader> ResUnit<R> {
     ///
     /// Returns an error when parsing the DWARF info fails.
     pub(crate) fn parse_lines(&self, sections: &gimli::Dwarf<R>) -> Result<Option<&Lines>, Error> {
-        // NB: line information is always stored in the main debug file so this does not need
-        // to handle DWOs.
+        // NB: line information is always stored in the main debug file so this does not
+        // need to handle DWOs.
         let Some(ref ilnp) = self.dw_unit.line_program else {
             return Ok(None);
         };
@@ -211,7 +211,8 @@ impl<R: gimli::Reader> ResUnits<R> {
                 continue;
             };
             // We mainly want compile units, but we may need to follow references to entries
-            // within other units for function names.  We don't need anything from type units.
+            // within other units for function names.  We don't need anything from type
+            // units.
             let mut need_unit_range = match header.type_() {
                 gimli::UnitType::Type { .. } | gimli::UnitType::SplitType { .. } => continue,
                 gimli::UnitType::Partial => {
@@ -271,8 +272,8 @@ impl<R: gimli::Reader> ResUnits<R> {
                 // - DW_AT_low_pc/DW_AT_high_pc
                 //
                 // Using DW_AT_ranges before .debug_aranges is possibly an arbitrary choice,
-                // but the feeling is that DW_AT_ranges is more likely to be reliable or complete
-                // if it is present.
+                // but the feeling is that DW_AT_ranges is more likely to be reliable or
+                // complete if it is present.
                 //
                 // .debug_aranges must be used before DW_AT_low_pc/DW_AT_high_pc because
                 // it has been observed on macOS that DW_AT_ranges was not emitted even for
@@ -387,8 +388,8 @@ impl<R: gimli::Reader> ResUnits<R> {
 
     /// Finds the CUs covering the range of addresses given.
     ///
-    /// The range is [low, high) (ie, the upper bound is exclusive). This can return multiple
-    /// ranges for the same unit.
+    /// The range is [low, high) (ie, the upper bound is exclusive). This can
+    /// return multiple ranges for the same unit.
     #[inline]
     pub(crate) fn find_range(
         &self,
@@ -508,7 +509,8 @@ impl<R: gimli::Reader> SupUnits<R> {
     }
 }
 
-/// Iterator over `Location`s in a range of addresses, returned by `Context::find_location_range`.
+/// Iterator over `Location`s in a range of addresses, returned by
+/// `Context::find_location_range`.
 pub struct LocationRangeIter<'ctx, R: gimli::Reader> {
     unit_iter: Box<dyn Iterator<Item = (&'ctx ResUnit<R>, &'ctx gimli::Range)> + 'ctx>,
     iter: Option<LineLocationRangeIter<'ctx>>,

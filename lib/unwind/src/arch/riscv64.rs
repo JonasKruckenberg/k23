@@ -33,7 +33,8 @@ pub const UNWIND_DATA_REG: (Register, Register) = (RiscV::A0, RiscV::A1);
 #[cfg(all(target_feature = "f", not(target_feature = "d")))]
 compile_error!("RISC-V with only F extension is not supported");
 
-/// Returns the default register rule for the given register on this architecture.
+/// Returns the default register rule for the given register on this
+/// architecture.
 pub fn default_register_rule_for(_reg: Register) -> RegisterRule<usize> {
     // As far as I can tell RISCV has no special requirements
     RegisterRule::Undefined
@@ -41,8 +42,8 @@ pub fn default_register_rule_for(_reg: Register) -> RegisterRule<usize> {
 
 /// Register context when unwinding.
 ///
-/// This type is architecture-dependent, but generally holds a copy of all registers that are required
-/// to look up values while unwinding the stack.
+/// This type is architecture-dependent, but generally holds a copy of all
+/// registers that are required to look up values while unwinding the stack.
 #[repr(C)]
 #[derive(Clone, Default)]
 pub struct Registers {
@@ -261,8 +262,9 @@ macro_rules! restore {
 
 /// # Safety
 ///
-/// This function will restore whatever values are in the given `Context` into the machine registers
-/// **without** performing any sort of validation. The caller must ensure at least:
+/// This function will restore whatever values are in the given `Context` into
+/// the machine registers **without** performing any sort of validation. The
+/// caller must ensure at least:
 /// 1. `SP` `regs.gp[2]` is a valid, correctly-aligned, writable stack address.
 pub unsafe fn restore_context(ctx: &Registers) -> ! {
     // Safety: ensured by caller

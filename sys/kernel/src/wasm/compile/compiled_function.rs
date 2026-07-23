@@ -134,8 +134,9 @@ impl Relocation {
                 }
             }
             FinalizedRelocTarget::ExternalName(ExternalName::LibCall(libcall)) => {
-                // cranelift libcalls are a lot like wasm builtins, they are emitted for instructions
-                // that have no ISA equivalent and would be too complicated to emit as JIT code
+                // cranelift libcalls are a lot like wasm builtins, they are emitted for
+                // instructions that have no ISA equivalent and would be too
+                // complicated to emit as JIT code
                 todo!("libcalls {libcall:?}")
             }
             _ => panic!("unsupported relocation target {target:?}"),

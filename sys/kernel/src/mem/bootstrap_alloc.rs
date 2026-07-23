@@ -20,7 +20,8 @@ pub struct BootstrapAllocator<'a> {
 }
 
 impl<'a> BootstrapAllocator<'a> {
-    /// Create a new frame allocator over a given set of physical memory regions.
+    /// Create a new frame allocator over a given set of physical memory
+    /// regions.
     #[must_use]
     pub fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
         Self { regions, offset: 0 }
@@ -61,9 +62,10 @@ impl<'a> BootstrapAllocator<'a> {
         for region in self.regions.iter().rev() {
             // only consider regions that we haven't already exhausted
             if offset < region.len() {
-                // Allocating a contiguous range has different requirements than "regular" allocation
-                // contiguous are rare and often happen in very critical paths where e.g. virtual
-                // memory is not available yet. So we rather waste some memory than outright crash.
+                // Allocating a contiguous range has different requirements than "regular"
+                // allocation contiguous are rare and often happen in very
+                // critical paths where e.g. virtual memory is not available
+                // yet. So we rather waste some memory than outright crash.
                 if region.len() - offset < requested_size {
                     tracing::warn!(
                         "Skipped memory region {region:?} since it was too small to fulfill request for {requested_size} bytes. Wasted {} bytes in the process...",

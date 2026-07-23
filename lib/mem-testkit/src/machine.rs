@@ -25,8 +25,8 @@ use crate::arch::EmulateArch;
 use crate::frame_allocator::TestFrameAllocator;
 use crate::memory::Memory;
 
-/// A "virtual machine" that emulates a given architecture. It is intended to be used in tests
-/// and supports modeling the following properties:
+/// A "virtual machine" that emulates a given architecture. It is intended to be
+/// used in tests and supports modeling the following properties:
 ///
 /// - multiple, discontiguous physical memory regions
 /// - per-cpu virtual->physical address translation buffers
@@ -57,12 +57,13 @@ where
 }
 
 impl<A: Arch> Machine<A> {
-    /// Bootstrap an address space for this machine. Will set up initial page table and
-    /// frame allocator.
+    /// Bootstrap an address space for this machine. Will set up initial page
+    /// table and frame allocator.
     ///
     /// # Panics
     ///
-    /// Panics if the machine lacks enough physical memory for the root page table or the physmap.
+    /// Panics if the machine lacks enough physical memory for the root page
+    /// table or the physmap.
     pub fn bootstrap_address_space<S>(
         &self,
         physmap_start: VirtualAddress,
@@ -99,8 +100,9 @@ impl<A: Arch> Machine<A> {
             // NB: use the desired physmap (ie the one used after bootstrapping)
             let region_virt = chosen_physmap.phys_to_virt_range(region_phys);
 
-            // Safety: we just created the address space and `BootstrapAllocator` checks its regions to
-            // not be overlapping (1.). It will also align regions to at least page size (2., 3.).
+            // Safety: we just created the address space and `BootstrapAllocator` checks its
+            // regions to not be overlapping (1.). It will also align regions to
+            // at least page size (2., 3.).
             unsafe {
                 address_space.map_contiguous::<S>(
                     region_virt,
@@ -112,12 +114,13 @@ impl<A: Arch> Machine<A> {
                 ).expect("Machine does not have enough physical memory for physmap. Consider increasing configured physical memory sizes.");
             }
         }
-        // Safety: we're going to invalidate the entire address space after bootstrapping. No need
-        // to flush in between.
+        // Safety: we're going to invalidate the entire address space after
+        // bootstrapping. No need to flush in between.
         unsafe { flush.ignore() };
 
-        // Safety: we just created the address space, so don't have any pointers into it. In hosted tests
-        // the programs memory and CPU registers are outside the address space anyway.
+        // Safety: we just created the address space, so don't have any pointers into
+        // it. In hosted tests the programs memory and CPU registers are outside
+        // the address space anyway.
         unsafe { address_space.activate() };
 
         (address_space, frame_allocator, chosen_physmap)
@@ -128,7 +131,8 @@ impl<A: Arch> Machine<A> {
         self.0.memory.regions()
     }
 
-    /// Reads the value from `address` without moving it. This leaves the memory in `address` unchanged.
+    /// Reads the value from `address` without moving it. This leaves the memory
+    /// in `address` unchanged.
     ///
     /// This method **does not** support reads crossing page boundaries.
     ///
@@ -138,8 +142,9 @@ impl<A: Arch> Machine<A> {
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::read`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of [`ptr::read`],
+    /// namely behavior is undefined if any of the following conditions are
+    /// violated:
     ///
     /// - `address` must be [valid] for reads.
     /// - `address` must be properly aligned.
@@ -172,8 +177,8 @@ impl<A: Arch> Machine<A> {
         }
     }
 
-    /// Overwrites the memory location pointed to by `address` with the given value without reading
-    /// or dropping the old value.
+    /// Overwrites the memory location pointed to by `address` with the given
+    /// value without reading or dropping the old value.
     ///
     /// This method **does not** support writes crossing page boundaries.
     ///
@@ -183,8 +188,9 @@ impl<A: Arch> Machine<A> {
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::write`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of [`ptr::write`],
+    /// namely behavior is undefined if any of the following conditions are
+    /// violated:
     ///
     /// - `address` must be [valid] for writes.
     /// - `address` must be properly aligned.
@@ -216,7 +222,8 @@ impl<A: Arch> Machine<A> {
         }
     }
 
-    /// Reads `count` bytes of memory starting at `address`. This leaves the memory in `address` unchanged.
+    /// Reads `count` bytes of memory starting at `address`. This leaves the
+    /// memory in `address` unchanged.
     ///
     /// This method **does not** support reads crossing page boundaries.
     ///
@@ -226,12 +233,14 @@ impl<A: Arch> Machine<A> {
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`slice::from_raw_parts`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of
+    /// [`slice::from_raw_parts`], namely behavior is undefined if any of
+    /// the following conditions are violated:
     ///
     /// - `address` must be non-null and [valid] for reads of `count` bytes.
     /// - `address` must be properly aligned.
-    /// - The memory referenced by the returned slice must not be mutated for the duration its lifetime.
+    /// - The memory referenced by the returned slice must not be mutated for
+    ///   the duration its lifetime.
     pub unsafe fn read_bytes(&self, asid: u16, address: VirtualAddress, count: usize) -> &[u8] {
         if let Some((phys, attrs, level)) = self.cpu().translate(asid, address) {
             assert!(attrs.allows_read());
@@ -259,8 +268,8 @@ impl<A: Arch> Machine<A> {
     ///
     /// [`memset`]: https://en.cppreference.com/w/c/string/byte/memset
     ///
-    /// Contrary to [`Self::read`], [`Self::write`], and [`Self::write_bytes`] this **does**
-    /// support writes crossing page boundaries.
+    /// Contrary to [`Self::read`], [`Self::write`], and [`Self::write_bytes`]
+    /// this **does** support writes crossing page boundaries.
     ///
     /// # Panics
     ///
@@ -268,20 +277,23 @@ impl<A: Arch> Machine<A> {
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::write_bytes`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of
+    /// [`ptr::write_bytes`], namely behavior is undefined if any of the
+    /// following conditions are violated:
     ///
     /// - `address` must be non-null and [valid] for writes of `count` bytes.
     /// - `address` must be properly aligned.
     ///
-    /// Note that even if the effectively copied size is 0, the pointer must be properly aligned.
+    /// Note that even if the effectively copied size is 0, the pointer must be
+    /// properly aligned.
     ///
     /// [valid]:
     /// [`ptr::write_bytes`]: core::ptr::write_bytes()
     ///
-    /// Additionally, note using this method one can easily introduce to undefined behavior (UB)
-    /// later if the written bytes are not a valid representation of some T. **Use this to write
-    /// bytes only** If you need a way to write a type to some address, use [`Self::write`].
+    /// Additionally, note using this method one can easily introduce to
+    /// undefined behavior (UB) later if the written bytes are not a valid
+    /// representation of some T. **Use this to write bytes only** If you
+    /// need a way to write a type to some address, use [`Self::write`].
     pub unsafe fn write_bytes(&self, asid: u16, address: VirtualAddress, value: u8, count: usize) {
         let mut bytes_remaining = count;
         let mut address = address;
@@ -302,13 +314,15 @@ impl<A: Arch> Machine<A> {
         }
     }
 
-    /// Reads the value from physical address `address` bypassing address translation and attribute
-    /// checks. Reads the value without moving it leaving the memory in `address` unchanged.
+    /// Reads the value from physical address `address` bypassing address
+    /// translation and attribute checks. Reads the value without moving it
+    /// leaving the memory in `address` unchanged.
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::read`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of [`ptr::read`],
+    /// namely behavior is undefined if any of the following conditions are
+    /// violated:
     ///
     /// - `address` must be [valid] for reads.
     /// - `address` must be properly aligned.
@@ -323,16 +337,18 @@ impl<A: Arch> Machine<A> {
         unsafe { self.0.memory.read(address) }
     }
 
-    /// Overwrites the memory location pointed to by physical address `address` bypassing address
-    /// translation and attribute checks. Overwrites the location with the given value without reading
-    /// or dropping the old value.
+    /// Overwrites the memory location pointed to by physical address `address`
+    /// bypassing address translation and attribute checks. Overwrites the
+    /// location with the given value without reading or dropping the old
+    /// value.
     ///
     /// This method **does not** support writes crossing page boundaries.
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::write`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of [`ptr::write`],
+    /// namely behavior is undefined if any of the following conditions are
+    /// violated:
     ///
     /// - `address` must be [valid] for writes.
     /// - `address` must be properly aligned.
@@ -346,49 +362,55 @@ impl<A: Arch> Machine<A> {
         unsafe { self.0.memory.write(address, value) }
     }
 
-    /// Reads `count` bytes of memory starting at physical address `address` bypassing address
-    /// translation and attribute checks. This leaves the memory in `address` unchanged.
+    /// Reads `count` bytes of memory starting at physical address `address`
+    /// bypassing address translation and attribute checks. This leaves the
+    /// memory in `address` unchanged.
     ///
     /// This method **does not** support reads crossing page boundaries.
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`slice::from_raw_parts`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of
+    /// [`slice::from_raw_parts`], namely behavior is undefined if any of
+    /// the following conditions are violated:
     ///
     /// - `address` must be non-null and [valid] for reads of `count` bytes.
     /// - `address` must be properly aligned.
-    /// - The memory referenced by the returned slice must not be mutated for the duration its lifetime.
+    /// - The memory referenced by the returned slice must not be mutated for
+    ///   the duration its lifetime.
     pub fn read_bytes_phys(&self, address: PhysicalAddress, count: usize) -> &[u8] {
         self.0.memory.read_bytes(address, count)
     }
 
-    /// Sets `count` bytes of memory starting at physical address `address` to `val`. This
-    /// bypassing address translation and attribute checks.
+    /// Sets `count` bytes of memory starting at physical address `address` to
+    /// `val`. This bypassing address translation and attribute checks.
     ///
     /// `write_bytes` behaves like C's [`memset`].
     ///
     /// [`memset`]: https://en.cppreference.com/w/c/string/byte/memset
     ///
-    /// Contrary to [`Self::read`], [`Self::write`], and [`Self::write_bytes`] this **does**
-    /// support writes crossing page boundaries.
+    /// Contrary to [`Self::read`], [`Self::write`], and [`Self::write_bytes`]
+    /// this **does** support writes crossing page boundaries.
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::write_bytes`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of
+    /// [`ptr::write_bytes`], namely behavior is undefined if any of the
+    /// following conditions are violated:
     ///
     /// - `address` must be non-null and [valid] for writes of `count` bytes.
     /// - `address` must be properly aligned.
     ///
-    /// Note that even if the effectively copied size is 0, the pointer must be properly aligned.
+    /// Note that even if the effectively copied size is 0, the pointer must be
+    /// properly aligned.
     ///
     /// [valid]:
     /// [`ptr::write_bytes`]: core::ptr::write_bytes()
     ///
-    /// Additionally, note using this method one can easily introduce to undefined behavior (UB)
-    /// later if the written bytes are not a valid representation of some T. **Use this to write
-    /// bytes only** If you need a way to write a type to some address, use [`Self::write`].
+    /// Additionally, note using this method one can easily introduce to
+    /// undefined behavior (UB) later if the written bytes are not a valid
+    /// representation of some T. **Use this to write bytes only** If you
+    /// need a way to write a type to some address, use [`Self::write`].
     pub fn write_bytes_phys(&self, address: PhysicalAddress, value: u8, count: usize) {
         self.0.memory.write_bytes(address, value, count);
     }
@@ -403,15 +425,16 @@ impl<A: Arch> Machine<A> {
         self.cpu_mut().set_active_page_table(address);
     }
 
-    /// Invalidates existing virtual address translation entries for address space `asid` in the
-    /// give `address_range`.
+    /// Invalidates existing virtual address translation entries for address
+    /// space `asid` in the give `address_range`.
     pub fn invalidate(&self, asid: u16, address_range: Range<VirtualAddress>) {
         let mut cpu = self.cpu_mut();
 
         cpu.invalidate(asid, address_range, &self.0.memory);
     }
 
-    /// Invalidates all existing virtual address translation entries for address space `asid`.
+    /// Invalidates all existing virtual address translation entries for address
+    /// space `asid`.
     pub fn invalidate_all(&self, asid: u16) {
         let mut cpu = self.cpu_mut();
 
@@ -474,7 +497,8 @@ impl<A: Arch> Cpu<A> {
         self.page_table = Some(address);
     }
 
-    /// Invalidate page table mappings for the given virtual address `range` and `asid`.
+    /// Invalidate page table mappings for the given virtual address `range` and
+    /// `asid`.
     ///
     /// # Panics
     ///
@@ -513,7 +537,8 @@ impl<A: Arch> Cpu<A> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure `table` points at a valid, initialized page table.
+    /// The caller must ensure `table` points at a valid, initialized page
+    /// table.
     unsafe fn reload_map(
         &mut self,
         asid: u16,
@@ -572,8 +597,9 @@ impl<A: Arch> MachineBuilder<A, MissingMemory> {
 }
 
 impl<A: Arch> MachineBuilder<A, MissingMemory> {
-    /// Sets the size and alignments(s) of the machines physical memory regions. The exact
-    /// addresses will be chosen at random and can be retrieved via [`Machine::memory_regions`].
+    /// Sets the size and alignments(s) of the machines physical memory regions.
+    /// The exact addresses will be chosen at random and can be retrieved
+    /// via [`Machine::memory_regions`].
     ///
     /// # Panics
     ///

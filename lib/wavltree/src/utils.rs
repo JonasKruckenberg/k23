@@ -63,8 +63,8 @@ pub fn get_link_parity<T: Linked + ?Sized>(p_x: Link<T>) -> bool {
     }
 }
 
-/// Returns whether the given `node` is a 2-child of `parent` ie whether the rank-difference
-/// between `node` and `parent` is 2.
+/// Returns whether the given `node` is a 2-child of `parent` ie whether the
+/// rank-difference between `node` and `parent` is 2.
 pub fn node_is_2_child<T: Linked + ?Sized>(node: NonNull<T>, parent: NonNull<T>) -> bool {
     let node_links = unsafe { T::links(node).as_ref() };
     let parent_links = unsafe { T::links(parent).as_ref() };
@@ -116,8 +116,8 @@ where
             let parent = unsafe { T::links(curr).as_ref() }.parent()?;
             let parent_links = unsafe { T::links(parent).as_ref() };
 
-            // if we have a parent, and we're not their right/greater child, that parent is our
-            // next node
+            // if we have a parent, and we're not their right/greater child, that parent is
+            // our next node
             if parent_links.right() != Some(curr) {
                 return Some(parent);
             }
@@ -143,8 +143,8 @@ where
             let parent = unsafe { T::links(curr).as_ref() }.parent()?;
             let parent_links = unsafe { T::links(parent).as_ref() };
 
-            // if we have a parent, and we're not their left/lesser child, that parent is our
-            // previous node
+            // if we have a parent, and we're not their left/lesser child, that parent is
+            // our previous node
             if parent_links.left() != Some(curr) {
                 return Some(parent);
             }

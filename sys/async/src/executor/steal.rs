@@ -41,13 +41,15 @@ impl Injector {
         })
     }
 
-    /// Attempt to steal from this `Injector`, the returned [`Stealer`] will grant exclusive access to
-    /// steal from the `Injector` until it is dropped.
+    /// Attempt to steal from this `Injector`, the returned [`Stealer`] will
+    /// grant exclusive access to steal from the `Injector` until it is
+    /// dropped.
     ///
     /// # Errors
     ///
-    /// When stealing from the target is not possible, either because its queue is *empty*
-    /// or because there is *already an active stealer*, an error is returned.
+    /// When stealing from the target is not possible, either because its queue
+    /// is *empty* or because there is *already an active stealer*, an error
+    /// is returned.
     pub fn try_steal(&self) -> Result<Stealer<'_>, TryStealError> {
         Stealer::new(&self.run_queue, &self.queued)
     }
@@ -67,7 +69,8 @@ impl Injector {
 pub struct Stealer<'queue> {
     queue: mpsc_queue::Consumer<'queue, Header>,
     tasks: &'queue AtomicUsize,
-    /// The initial task count in the target queue when this `Stealer` was created.
+    /// The initial task count in the target queue when this `Stealer` was
+    /// created.
     task_snapshot: NonZeroUsize,
 }
 

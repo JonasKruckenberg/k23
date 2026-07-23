@@ -23,8 +23,8 @@ use crate::device_tree::{Device, DeviceTree};
 /// The CPU the loader handed control to.
 ///
 /// The boot CPU takes id zero by definition rather than by enumeration, so that
-/// a [`LogicalCpuId`] exists from the first instruction of `kmain` — long before there
-/// is a device tree to enumerate.
+/// a [`LogicalCpuId`] exists from the first instruction of `kmain` — long
+/// before there is a device tree to enumerate.
 pub const BOOT: LogicalCpuId = LogicalCpuId::new(0);
 
 /// Held by [`CURRENT`] until this CPU is assigned an id. Ids are dense and
@@ -112,7 +112,8 @@ impl Cpus {
         Ok(this)
     }
 
-    /// The number of CPUs in the system, one past the largest [`LogicalCpuId`] in use.
+    /// The number of CPUs in the system, one past the largest [`LogicalCpuId`]
+    /// in use.
     pub fn len(&self) -> usize {
         self.hartids.len()
     }
@@ -142,7 +143,8 @@ impl Cpus {
             .zip(self.hartids.iter().copied())
     }
 
-    /// Give `hartid` the next free [`LogicalCpuId`], reporting whether it has one.
+    /// Give `hartid` the next free [`LogicalCpuId`], reporting whether it has
+    /// one.
     ///
     /// A hart that already has an id keeps it — the boot hart also turns up in
     /// the device-tree walk — so only running out of slots returns `false`.
@@ -161,7 +163,8 @@ impl Cpus {
 ///
 /// # Errors
 ///
-/// Returns an error if the node has no `reg` property, or it isn't a cell value.
+/// Returns an error if the node has no `reg` property, or it isn't a cell
+/// value.
 pub fn hartid_of(devtree: &DeviceTree, node: Device<'_>) -> crate::Result<usize> {
     let reg = node
         .property(devtree, "reg")

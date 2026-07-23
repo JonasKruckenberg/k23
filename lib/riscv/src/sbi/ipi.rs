@@ -13,8 +13,9 @@ use super::{EID_IPI, sbi_call};
 /// `hart_mask_base + k`. Pass `hart_mask_base = -1` to broadcast to all harts.
 ///
 /// The [SBI spec][spec] states the hart_mask_base is the "starting hartid". In
-/// practice [OpenSBI `sbi_ipi_send_many`][opensbi] and [Linux `__sbi_send_ipi_v02`][linux]
-/// treat this as meaning "the bit position(s) in hart_mask PLUS the hart_mask_base" is the final HART ID.
+/// practice [OpenSBI `sbi_ipi_send_many`][opensbi] and [Linux
+/// `__sbi_send_ipi_v02`][linux] treat this as meaning "the bit position(s) in
+/// hart_mask PLUS the hart_mask_base" is the final HART ID.
 ///
 /// [spec]: https://github.com/riscv-non-isa/riscv-sbi-doc/blob/master/src/ext-ipi.adoc
 /// [opensbi]: https://github.com/riscv-software-src/opensbi/blob/master/lib/sbi/sbi_ipi.c

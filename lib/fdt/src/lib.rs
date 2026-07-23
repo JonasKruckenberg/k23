@@ -63,8 +63,8 @@ pub struct Node<'dt> {
     raw: &'dt [u32],
     strings: StringsBlock<'dt>,
     structs: StructsBlock<'dt>,
-    /// Cell counts governing this node's `reg`, inherited while walking the tree
-    /// (see [`Node::cell_sizes`]).
+    /// Cell counts governing this node's `reg`, inherited while walking the
+    /// tree (see [`Node::cell_sizes`]).
     cell_sizes: CellSizes,
 }
 
@@ -150,7 +150,8 @@ impl<'dt> Fdt<'dt> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure that the pointer is valid and points to a valid FDT.
+    /// The caller must ensure that the pointer is valid and points to a valid
+    /// FDT.
     pub unsafe fn from_ptr(ptr: *const u32) -> Result<Self, Error> {
         // Safety: ensured by caller
         unsafe {
@@ -319,14 +320,15 @@ impl<'dt> Node<'dt> {
 
     /// The `#address-cells` / `#size-cells` that govern this node's `reg`.
     ///
-    /// Resolved from the nearest ancestor that declares them, falling back to the
-    /// spec defaults (`1 / 2`).
+    /// Resolved from the nearest ancestor that declares them, falling back to
+    /// the spec defaults (`1 / 2`).
     #[must_use]
     pub fn cell_sizes(&self) -> CellSizes {
         self.cell_sizes
     }
 
-    /// The node's `reg` decoded with its governing [`cell_sizes`](Self::cell_sizes).
+    /// The node's `reg` decoded with its governing
+    /// [`cell_sizes`](Self::cell_sizes).
     ///
     /// # Errors
     ///

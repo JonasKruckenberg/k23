@@ -12,8 +12,8 @@ use crate::interrupt;
 struct SingleHartCriticalSection;
 set_impl!(SingleHartCriticalSection);
 
-// Safety: we return the `RawRestoreState` that we expect callers to pass to `release`.
-// all other contract invariants must be upheld by the caller.
+// Safety: we return the `RawRestoreState` that we expect callers to pass to
+// `release`. all other contract invariants must be upheld by the caller.
 unsafe impl Impl for SingleHartCriticalSection {
     unsafe fn acquire() -> RawRestoreState {
         cfg_if::cfg_if! {

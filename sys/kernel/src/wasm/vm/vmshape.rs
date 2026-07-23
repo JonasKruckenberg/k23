@@ -229,7 +229,8 @@ impl VMShape {
             count.checked_mul(u32::from(size)).unwrap()
         }
 
-        /// Align an offset used in this module to a specific byte-width by rounding up
+        /// Align an offset used in this module to a specific byte-width by
+        /// rounding up
         #[inline]
         fn align(offset: u32, width: u32) -> u32 {
             offset.div_ceil(width) * width

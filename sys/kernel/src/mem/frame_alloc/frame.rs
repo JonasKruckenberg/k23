@@ -26,11 +26,14 @@ const MAX_REFCOUNT: usize = isize::MAX as usize;
 
 /// A thread-safe reference-counted pointer to a frame of physical memory.
 ///
-/// This type is similar to [`alloc::sync::Arc`][1] and provides shared ownership of a [`FrameInfo`] instance
-/// and by extension its associated physical memory. Just like [`Arc`][1] invoking [`clone`][Frame::clone] will
-/// produce a new `Frame` instance, which points to the same [`FrameInfo`] instance as the source `Frame`, while
-/// increasing its reference count. When the last `Frame` is dropped instance is dropped, the underlying
-/// [`FrameInfo`] is marked as *free* and returned to the frame allocator freelists.
+/// This type is similar to [`alloc::sync::Arc`][1] and provides shared
+/// ownership of a [`FrameInfo`] instance and by extension its associated
+/// physical memory. Just like [`Arc`][1] invoking [`clone`][Frame::clone] will
+/// produce a new `Frame` instance, which points to the same [`FrameInfo`]
+/// instance as the source `Frame`, while increasing its reference count. When
+/// the last `Frame` is dropped instance is dropped, the underlying
+/// [`FrameInfo`] is marked as *free* and returned to the frame allocator
+/// freelists.
 ///
 /// [1]: [alloc::sync::Arc]
 pub struct Frame {
@@ -39,7 +42,8 @@ pub struct Frame {
 }
 
 pub struct FrameInfo {
-    /// Links to other frames in a freelist either a global `Arena` or cpu-local page cache.
+    /// Links to other frames in a freelist either a global `Arena` or cpu-local
+    /// page cache.
     links: list::Links<FrameInfo>,
     /// Number of references to this frame, zero indicates a free frame.
     refcount: AtomicUsize,
@@ -59,16 +63,18 @@ unsafe impl Sync for Frame {}
 impl Clone for Frame {
     /// Makes a clone of the `Frame`.
     ///
-    /// This creates reference to the same `FrameInfo`, increasing the reference count by one.
+    /// This creates reference to the same `FrameInfo`, increasing the reference
+    /// count by one.
     fn clone(&self) -> Self {
-        // Increase the reference count by one. Using relaxed ordering, as knowledge of the
-        // original reference prevents other threads from erroneously deleting
-        // the object.
+        // Increase the reference count by one. Using relaxed ordering, as knowledge of
+        // the original reference prevents other threads from erroneously
+        // deleting the object.
         //
         // Again, restating what the `Arc` implementation quotes from the
         // [Boost documentation][1]:
         //
-        // > Increasing the reference counter can always be done with memory_order_relaxed: New
+        // > Increasing the reference counter can always be done with
+        // > memory_order_relaxed: New
         // > references to an object can only be formed from an existing
         // > reference, and passing an existing reference from one thread to
         // > another must already provide any required synchronization.
@@ -77,15 +83,17 @@ impl Clone for Frame {
         let old_size = self.info().refcount.fetch_add(1, Ordering::Relaxed);
         debug_assert_ne!(old_size, 0);
 
-        // Just like with `Arc` we want to prevent excessive refcounts in the case that we are leaking
-        // `Frame`s somewhere (which we really shouldn't but just in case). Overflowing the refcount
-        // would *really* bad as it would treat the frame as free and potentially cause a use-after-free
+        // Just like with `Arc` we want to prevent excessive refcounts in the case that
+        // we are leaking `Frame`s somewhere (which we really shouldn't but just
+        // in case). Overflowing the refcount would *really* bad as it would
+        // treat the frame as free and potentially cause a use-after-free
         // scenario. Realistically this branch should never be taken.
         //
-        // Also worth noting: Just like `Arc`, the refcount could still overflow when in between
-        // the load above and this check some other cpu increased the refcount from `isize::MAX` to
-        // `usize::MAX` but that seems unlikely. The other option, doing the comparison and update in
-        // one conditional atomic operation produces much worse code, so if its good enough for the
+        // Also worth noting: Just like `Arc`, the refcount could still overflow when in
+        // between the load above and this check some other cpu increased the
+        // refcount from `isize::MAX` to `usize::MAX` but that seems unlikely.
+        // The other option, doing the comparison and update in one conditional
+        // atomic operation produces much worse code, so if its good enough for the
         // standard library, it is good enough for us.
         assert!(old_size <= MAX_REFCOUNT, "Frame refcount overflow");
 
@@ -96,20 +104,22 @@ impl Clone for Frame {
 impl Drop for Frame {
     /// Drops the `Frame`.
     ///
-    /// This will decrement the reference count. If the reference count reaches zero
-    /// then this frame will be marked as free and returned to the frame allocator.
+    /// This will decrement the reference count. If the reference count reaches
+    /// zero then this frame will be marked as free and returned to the
+    /// frame allocator.
     fn drop(&mut self) {
         if self.info().refcount.fetch_sub(1, Ordering::Release) != 1 {
             return;
         }
 
         // Ensure uses of `FrameInfo` happen before freeing it.
-        // Because it is marked `Release`, the decreasing of the reference count synchronizes
-        // with this `Acquire` fence. This means that use of `FrameInfo` happens before decreasing
-        // the reference count, which happens before this fence, which happens before freeing `FrameInfo`.
+        // Because it is marked `Release`, the decreasing of the reference count
+        // synchronizes with this `Acquire` fence. This means that use of
+        // `FrameInfo` happens before decreasing the reference count, which
+        // happens before this fence, which happens before freeing `FrameInfo`.
         //
-        // This section of the [Boost documentation][1] as quoted in Rusts `Arc` implementation and
-        // may explain further:
+        // This section of the [Boost documentation][1] as quoted in Rusts `Arc`
+        // implementation and may explain further:
         //
         // > It is important to enforce any possible access to the object in one
         // > thread (through an existing reference) to *happen before* deleting
@@ -144,10 +154,12 @@ impl Frame {
 
     #[inline]
     fn info(&self) -> &FrameInfo {
-        // Safety: Through `Clone` and `Drop` we're guaranteed that the FrameInfo remains valid as long as
-        // this Frame is alive, we also know that `FrameInfo` is `Sync` and therefore - analogous to `Arc` -
+        // Safety: Through `Clone` and `Drop` we're guaranteed that the FrameInfo
+        // remains valid as long as this Frame is alive, we also know that
+        // `FrameInfo` is `Sync` and therefore - analogous to `Arc` -
         // handing out an immutable reference is fine.
-        // Because it is an immutable reference, safe code can also not move out of `FrameInner`.
+        // Because it is an immutable reference, safe code can also not move out of
+        // `FrameInner`.
         unsafe { self.ptr.as_ref() }
     }
 
@@ -247,7 +259,8 @@ impl FrameInfo {
     }
 
     /// Private accessor used in `frame_alloc/arena.rs` to mark the frame
-    /// that was previously "wired" as free before we push it into the buddy allocator freelist
+    /// that was previously "wired" as free before we push it into the buddy
+    /// allocator freelist
     pub(crate) fn mark_as_free_for_freelist(&self) {
         self.refcount.store(0, Ordering::Release);
     }

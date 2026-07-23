@@ -15,9 +15,10 @@ struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 
 /// The inlined kernel debuginfo.
 ///
-/// Contains the `.symtab` and `.debug_*` sections stripped from the kernel binary.
-/// The loader hands a pointer to this blob to the kernel via [`BootInfo::kernel_debuginfo_phys`]
-/// so the backtrace subsystem can resolve symbols.
+/// Contains the `.symtab` and `.debug_*` sections stripped from the kernel
+/// binary. The loader hands a pointer to this blob to the kernel via
+/// [`BootInfo::kernel_debuginfo_phys`] so the backtrace subsystem can resolve
+/// symbols.
 ///
 /// [`BootInfo::kernel_debuginfo_phys`]: loader_api::BootInfo::kernel_debuginfo_phys
 static INLINED_KERNEL_DEBUGINFO_BYTES: KernelDebuginfoBytes =

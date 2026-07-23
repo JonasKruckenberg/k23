@@ -57,7 +57,8 @@ pub fn init(
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, _flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
-        // Safety: `init` is called during startup where the kernel address space is the only address space available
+        // Safety: `init` is called during startup where the kernel address space is the
+        // only address space available
         let mut aspace = unsafe {
             AddressSpace::from_active_kernel(
                 hw_aspace,

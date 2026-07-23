@@ -13,12 +13,12 @@
 //! aligning addresses.
 //!
 //! The markers are deliberately **architecture-independent**: a byte size is a
-//! byte size on every target, so they are defined once here and re-exported, and
-//! calling code never needs `cfg`-gated size types. *Which* sizes a given
+//! byte size on every target, so they are defined once here and re-exported,
+//! and calling code never needs `cfg`-gated size types. *Which* sizes a given
 //! architecture can actually place as a leaf is expressed separately, by the
-//! [`MapsAt`][crate::arch::MapsAt] bridge — a marker existing does not imply every
-//! arch supports it. Naming `map::<Size512GiB>` on an arch without a 512 GiB leaf
-//! level is therefore a clean unsatisfied-bound compile error.
+//! [`MapsAt`][crate::arch::MapsAt] bridge — a marker existing does not imply
+//! every arch supports it. Naming `map::<Size512GiB>` on an arch without a 512
+//! GiB leaf level is therefore a clean unsatisfied-bound compile error.
 
 mod sealed {
     pub trait Sealed {}
@@ -27,11 +27,11 @@ mod sealed {
 /// A page-table leaf granularity, named independently of any architecture.
 ///
 /// A pure compile-time selector — the marker types are never instantiated as
-/// values, only used as type parameters. Implemented only by the markers in this
-/// module; the set is sealed.
+/// values, only used as type parameters. Implemented only by the markers in
+/// this module; the set is sealed.
 pub trait PageSize: 'static + sealed::Sealed {
-    /// Base-2 logarithm of [`BYTES`][Self::BYTES] — i.e. the number of low address
-    /// bits a page of this size spans.
+    /// Base-2 logarithm of [`BYTES`][Self::BYTES] — i.e. the number of low
+    /// address bits a page of this size spans.
     const SHIFT: u8;
 
     /// The size of this page in bytes.

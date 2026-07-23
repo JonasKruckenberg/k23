@@ -20,24 +20,27 @@ use crate::mem::{AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Perm
 
 /// A memory mapping.
 ///
-/// This is essentially a handle to an [`AddressSpaceRegion`] with convenience methods for userspace
-/// specific needs such as copying from and to memory.
+/// This is essentially a handle to an [`AddressSpaceRegion`] with convenience
+/// methods for userspace specific needs such as copying from and to memory.
 #[derive(Debug)]
 pub struct Mmap {
     aspace: Option<Arc<Mutex<AddressSpace>>>,
     range: Range<VirtualAddress>,
 }
 
-// Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
+// Safety: All mutations of the `*mut AddressSpaceRegion` are happening through
+// a `&mut AddressSpace`
 unsafe impl Send for Mmap {}
-// Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
+// Safety: All mutations of the `*mut AddressSpaceRegion` are happening through
+// a `&mut AddressSpace`
 unsafe impl Sync for Mmap {}
 
 impl Mmap {
     /// Creates a new empty `Mmap`.
     ///
-    /// Note that the size of this cannot be changed after the fact, all accessors will return empty
-    /// slices and permission changing methods will always fail.
+    /// Note that the size of this cannot be changed after the fact, all
+    /// accessors will return empty slices and permission changing methods
+    /// will always fail.
     pub const fn new_empty() -> Self {
         Self {
             aspace: None,
@@ -48,7 +51,8 @@ impl Mmap {
         }
     }
 
-    /// Creates a new read-write (`RW`) memory mapping in the given address space.
+    /// Creates a new read-write (`RW`) memory mapping in the given address
+    /// space.
     pub fn new_zeroed(
         aspace: Arc<Mutex<AddressSpace>>,
         len: usize,
@@ -223,7 +227,8 @@ impl Mmap {
         ptr
     }
 
-    /// Returns a mutable pointer to the start of the memory mapped by this `Mmap`.
+    /// Returns a mutable pointer to the start of the memory mapped by this
+    /// `Mmap`.
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
         if self.range.is_empty() {
@@ -248,7 +253,8 @@ impl Mmap {
         self.len() == 0
     }
 
-    /// Mark this memory mapping as executable (`RX`) this will by-design make it not-writable too.
+    /// Mark this memory mapping as executable (`RX`) this will by-design make
+    /// it not-writable too.
     pub fn make_executable(
         &mut self,
         aspace: &mut AddressSpace,
@@ -258,7 +264,8 @@ impl Mmap {
         self.protect(aspace, Permissions::READ | Permissions::EXECUTE)
     }
 
-    /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.
+    /// Mark this memory mapping as read-only (`R`) essentially removing the
+    /// write permission.
     pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_readonly: {:?}", self.range);
         self.protect(aspace, Permissions::READ)
@@ -320,7 +327,8 @@ impl Mmap {
 
 impl Drop for Mmap {
     fn drop(&mut self) {
-        // A `None` means the Mmap got created through `Mmap::new_empty` so there is nothing to unmap
+        // A `None` means the Mmap got created through `Mmap::new_empty` so there is
+        // nothing to unmap
         if let Some(aspace) = &self.aspace {
             aspace.with_lock(|aspace| aspace.unmap(self.range).unwrap());
         }

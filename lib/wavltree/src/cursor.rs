@@ -26,8 +26,8 @@ where
     ///
     /// # Safety
     ///
-    /// Caller has to ensure the ptr is *never* used to move out of the current location, as the tree
-    /// requires pinned memory locations.
+    /// Caller has to ensure the ptr is *never* used to move out of the current
+    /// location, as the tree requires pinned memory locations.
     pub unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }
@@ -83,8 +83,8 @@ where
     ///
     /// # Safety
     ///
-    /// Caller has to ensure the ptr is *never* used to move out of the current location, as the tree
-    /// requires pinned memory locations.
+    /// Caller has to ensure the ptr is *never* used to move out of the current
+    /// location, as the tree requires pinned memory locations.
     pub unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }

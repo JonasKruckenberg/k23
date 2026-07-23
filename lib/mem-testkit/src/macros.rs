@@ -5,14 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-/// Emit a copy of `$body` for each architecture in the list, aliasing `$arch` to
-/// that architecture's type inside a module named after it.
+/// Emit a copy of `$body` for each architecture in the list, aliasing `$arch`
+/// to that architecture's type inside a module named after it.
 ///
-/// The architectures are listed explicitly at the call site rather than baked into
-/// the macro, so the matrix — including the `#[cfg(not(miri))]` gates that drop the
-/// extra paging modes under Miri — is visible while reading the test. (The page-walk
-/// logic is identical across paging modes; running all three only triples Miri's
-/// interpreter time without adding coverage.)
+/// The architectures are listed explicitly at the call site rather than baked
+/// into the macro, so the matrix — including the `#[cfg(not(miri))]` gates that
+/// drop the extra paging modes under Miri — is visible while reading the test.
+/// (The page-walk logic is identical across paging modes; running all three
+/// only triples Miri's interpreter time without adding coverage.)
 ///
 /// ```ignore
 /// for_arch!(A in [Riscv64Sv39, #[cfg(not(miri))] Riscv64Sv48] {
@@ -40,16 +40,17 @@ macro_rules! for_arch {
     (@items { $($body:item)* }) => { $($body)* };
 }
 
-/// Like [`for_arch!`], but for generic test functions: each `fn name<A: Arch>()`
-/// is instantiated once per architecture in the list. The arch list (and its Miri
-/// `#[cfg]` gates) is spelled out at the call site for the same reason — see
-/// [`for_arch!`].
+/// Like [`for_arch!`], but for generic test functions: each `fn name<A:
+/// Arch>()` is instantiated once per architecture in the list. The arch list
+/// (and its Miri `#[cfg]` gates) is spelled out at the call site for the same
+/// reason — see [`for_arch!`].
 ///
 /// The type parameter may carry additional bounds beyond the leading one (e.g.
-/// `fn map<A: Arch + MapsAt<Size4KiB>>()` for tests that map at a fixed page size);
-/// the leading bound is a plain trait name and each further `+ Bound` a path. A bare
-/// trait-name leading bound (rather than an arbitrary path) is what lets the macro
-/// find the closing `>` unambiguously — a `tt`-greedy bound list cannot.
+/// `fn map<A: Arch + MapsAt<Size4KiB>>()` for tests that map at a fixed page
+/// size); the leading bound is a plain trait name and each further `+ Bound` a
+/// path. A bare trait-name leading bound (rather than an arbitrary path) is
+/// what lets the macro find the closing `>` unambiguously — a `tt`-greedy bound
+/// list cannot.
 ///
 /// ```ignore
 /// archtest!([Riscv64Sv39, #[cfg(not(miri))] Riscv64Sv48] {

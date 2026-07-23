@@ -85,7 +85,8 @@ pub fn translate_operator(
         return Ok(());
     }
 
-    // Given that we believe the current block is reachable, the FunctionBuilder ought to agree.
+    // Given that we believe the current block is reachable, the FunctionBuilder
+    // ought to agree.
     debug_assert!(!builder.is_unreachable());
 
     match op {
@@ -2637,9 +2638,10 @@ pub fn translate_operator(
     Ok(())
 }
 
-/// Deals with a Wasm instruction located in an unreachable portion of the code. Most of them
-/// are dropped but special ones like `End` or `Else` signal the potential end of the unreachable
-/// portion so the translation state must be updated accordingly.
+/// Deals with a Wasm instruction located in an unreachable portion of the code.
+/// Most of them are dropped but special ones like `End` or `Else` signal the
+/// potential end of the unreachable portion so the translation state must be
+/// updated accordingly.
 fn translate_unreachable_operator(
     validator: &FuncValidator<impl WasmModuleResources>,
     op: &Operator,
@@ -2713,8 +2715,9 @@ fn translate_unreachable_operator(
                         builder.switch_to_block(else_block);
 
                         // Again, no need to push the parameters for the `else`,
-                        // since we already did when we saw the original `if`. See
-                        // the comment for translating `Operator::Else` in
+                        // since we already did when we saw the original `if`.
+                        // See the comment for
+                        // translating `Operator::Else` in
                         // `translate_operator` for details.
                     }
                 }
@@ -2762,8 +2765,9 @@ fn translate_unreachable_operator(
                 builder.switch_to_block(frame.following_code());
                 builder.seal_block(frame.following_code());
 
-                // And add the return values of the block but only if the next block is reachable
-                // (which corresponds to testing if the stack depth is 1)
+                // And add the return values of the block but only if the next block is
+                // reachable (which corresponds to testing if the stack depth is
+                // 1)
                 stack.extend_from_slice(builder.block_params(frame.following_code()));
                 state.reachable = true;
             }
@@ -3184,8 +3188,8 @@ fn type_of(operator: &Operator) -> Type {
     }
 }
 
-/// Some SIMD operations only operate on I8X16 in CLIF; this will convert them to that type by
-/// adding a bitcast if necessary.
+/// Some SIMD operations only operate on I8X16 in CLIF; this will convert them
+/// to that type by adding a bitcast if necessary.
 fn optionally_bitcast_vector(
     value: Value,
     needed_type: Type,
@@ -3205,9 +3209,10 @@ fn is_non_canonical_v128(ty: Type) -> bool {
     matches!(ty, I64X2 | I32X4 | I16X8 | F32X4 | F64X2)
 }
 
-/// Append each value in `values` to `out` as a `BlockArg`, casting any 128-bit vector values
-/// of "non-canonical" type (meaning, not I8X16) to I8X16 first. Appends rather than overwrites
-/// so the same `out` buffer can be filled with multiple parameter lists back-to-back.
+/// Append each value in `values` to `out` as a `BlockArg`, casting any 128-bit
+/// vector values of "non-canonical" type (meaning, not I8X16) to I8X16 first.
+/// Appends rather than overwrites so the same `out` buffer can be filled with
+/// multiple parameter lists back-to-back.
 fn canonicalise_v128_values(
     out: &mut SmallVec<[BlockArg; 16]>,
     builder: &mut FunctionBuilder,
@@ -3226,8 +3231,8 @@ fn canonicalise_v128_values(
     }
 }
 
-/// Generate a `jump` instruction, but first cast all 128-bit vector values to I8X16 if they
-/// don't have that type.
+/// Generate a `jump` instruction, but first cast all 128-bit vector values to
+/// I8X16 if they don't have that type.
 fn canonicalise_then_jump(
     builder: &mut FunctionBuilder,
     destination: ir::Block,
@@ -3256,9 +3261,9 @@ fn canonicalise_brif(
         .brif(cond, block_then, then_args, block_else, else_args)
 }
 
-/// A helper for popping and bitcasting a single value; since SIMD values can lose their type by
-/// using v128 (i.e. CLIF's I8x16) we must re-type the values using a bitcast to avoid CLIF
-/// typing issues.
+/// A helper for popping and bitcasting a single value; since SIMD values can
+/// lose their type by using v128 (i.e. CLIF's I8x16) we must re-type the values
+/// using a bitcast to avoid CLIF typing issues.
 fn pop1_with_bitcast(
     state: &mut FuncTranslationState,
     needed_type: Type,
@@ -3267,9 +3272,9 @@ fn pop1_with_bitcast(
     optionally_bitcast_vector(state.pop1(), needed_type, builder)
 }
 
-/// A helper for popping and bitcasting two values; since SIMD values can lose their type by
-/// using v128 (i.e. CLIF's I8x16) we must re-type the values using a bitcast to avoid CLIF
-/// typing issues.
+/// A helper for popping and bitcasting two values; since SIMD values can lose
+/// their type by using v128 (i.e. CLIF's I8x16) we must re-type the values
+/// using a bitcast to avoid CLIF typing issues.
 fn pop2_with_bitcast(
     state: &mut FuncTranslationState,
     needed_type: Type,
@@ -3307,8 +3312,9 @@ fn bitcast_arguments<'a>(
 
     let pairs = filtered_param_types.zip_eq(arguments);
 
-    // The arguments which need to be bitcasted are those which have some vector type but the type
-    // expected by the parameter is not the same vector type as that of the provided argument.
+    // The arguments which need to be bitcasted are those which have some vector
+    // type but the type expected by the parameter is not the same vector type
+    // as that of the provided argument.
     pairs
         .filter(|(param_type, _)| param_type.is_vector())
         .filter(|(param_type, arg)| {
@@ -3321,19 +3327,21 @@ fn bitcast_arguments<'a>(
                 arg_type
             );
 
-            // This is the same check that would be done by `optionally_bitcast_vector`, except we
-            // can't take a mutable borrow of the FunctionBuilder here, so we defer inserting the
-            // bitcast instruction to the caller.
+            // This is the same check that would be done by `optionally_bitcast_vector`,
+            // except we can't take a mutable borrow of the FunctionBuilder
+            // here, so we defer inserting the bitcast instruction to the
+            // caller.
             arg_type != *param_type
         })
         .collect()
 }
 
-/// A helper for bitcasting a sequence of return values for the function currently being built. If
-/// a value is a vector type that does not match its expected type, this will modify the value in
-/// place to point to the result of a `bitcast`. This conversion is necessary to parse Wasm
-/// code that uses `V128` as function parameters (or implicitly in block parameters) and still use
-/// specific CLIF types (e.g. `I32X4`) in the function body.
+/// A helper for bitcasting a sequence of return values for the function
+/// currently being built. If a value is a vector type that does not match its
+/// expected type, this will modify the value in place to point to the result of
+/// a `bitcast`. This conversion is necessary to parse Wasm code that uses
+/// `V128` as function parameters (or implicitly in block parameters) and still
+/// use specific CLIF types (e.g. `I32X4`) in the function body.
 pub fn bitcast_wasm_returns(
     arguments: &mut [Value],
     builder: &mut FunctionBuilder,
@@ -3349,7 +3357,8 @@ pub fn bitcast_wasm_returns(
     }
 }
 
-/// Like `bitcast_wasm_returns`, but for the parameters being passed to a specified callee.
+/// Like `bitcast_wasm_returns`, but for the parameters being passed to a
+/// specified callee.
 fn bitcast_wasm_params(
     callee_signature: ir::SigRef,
     arguments: &mut [Value],

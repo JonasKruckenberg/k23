@@ -10,9 +10,10 @@ use core::range::Range;
 
 use crate::{AddressRangeExt, PageSize, PhysicalAddress, VirtualAddress};
 
-/// Describes the region of virtual memory that maps all of physical memory. This region is used
-/// by the virtual memory subsystem to access memory where only the physical address is known (e.g.
-/// zeroing frames of memory in the frame allocator).
+/// Describes the region of virtual memory that maps all of physical memory.
+/// This region is used by the virtual memory subsystem to access memory where
+/// only the physical address is known (e.g. zeroing frames of memory in the
+/// frame allocator).
 ///
 /// This region must be mapped so it is only accessible by the kernel.
 #[derive(Debug, Clone)]
@@ -23,8 +24,9 @@ pub struct PhysMap {
 }
 
 impl PhysMap {
-    /// Construct a new `PhysMap` from a chosen base address and the machines physical memory regions.
-    /// The iterator over the memory regions must not be empty.
+    /// Construct a new `PhysMap` from a chosen base address and the machines
+    /// physical memory regions. The iterator over the memory regions must
+    /// not be empty.
     ///
     /// # Panics
     ///
@@ -63,7 +65,8 @@ impl PhysMap {
         }
     }
 
-    /// Construct a new `PhysMap` that **identity maps** physical memory addresses to virtual addresses.
+    /// Construct a new `PhysMap` that **identity maps** physical memory
+    /// addresses to virtual addresses.
     ///
     /// The iterator over the memory regions must not be empty.
     ///
@@ -96,11 +99,13 @@ impl PhysMap {
         }
     }
 
-    /// Translates a `PhysicalAddress` to a `VirtualAddress` through this `PhysMap`.
+    /// Translates a `PhysicalAddress` to a `VirtualAddress` through this
+    /// `PhysMap`.
     ///
     /// # Panics
     ///
-    /// Panics if `phys` is _outside_ the physical memory regions this physmap was created with.
+    /// Panics if `phys` is _outside_ the physical memory regions this physmap
+    /// was created with.
     #[inline]
     pub fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
         debug_assert!(
@@ -123,7 +128,8 @@ impl PhysMap {
     ///
     /// # Panics
     ///
-    /// Panics if any address in `phys` range is _outside_ the physical memory regions this physmap was created with.
+    /// Panics if any address in `phys` range is _outside_ the physical memory
+    /// regions this physmap was created with.
     #[inline]
     pub fn phys_to_virt_range(&self, phys: Range<PhysicalAddress>) -> Range<VirtualAddress> {
         debug_assert!(
@@ -148,13 +154,15 @@ impl PhysMap {
         virt
     }
 
-    /// Translates a `PhysicalAddress` to a `VirtualAddress` through this `PhysMap` _without_
-    /// doing bounds checking of the address.
+    /// Translates a `PhysicalAddress` to a `VirtualAddress` through this
+    /// `PhysMap` _without_ doing bounds checking of the address.
     ///
     /// # Safety
     ///
-    /// 1. The physical address must be contained within one of the physical memory regions this physmap was created with.
-    ///    Violating this yields a `VirtualAddress` not backed by any mapping; dereferencing it is undefined behavior.
+    /// 1. The physical address must be contained within one of the physical
+    ///    memory regions this physmap was created with. Violating this yields a
+    ///    `VirtualAddress` not backed by any mapping; dereferencing it is
+    ///    undefined behavior.
     #[inline]
     unsafe fn phys_to_virt_internal(&self, phys: PhysicalAddress) -> VirtualAddress {
         VirtualAddress::new(phys.wrapping_offset(self.translation_offset).get())

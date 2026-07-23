@@ -33,14 +33,15 @@ pub fn init(boot_info: &'static BootInfo, backtrace_style: BacktraceStyle) {
 
 /// Information about the kernel required to build a backtrace
 struct BacktraceInfo {
-    /// The base virtual address of the kernel ELF. ELF debug info expects zero-based addresses,
-    /// but the kernel is located at some address in the higher half. This offset is used to convert
-    /// between the two.
+    /// The base virtual address of the kernel ELF. ELF debug info expects
+    /// zero-based addresses, but the kernel is located at some address in
+    /// the higher half. This offset is used to convert between the two.
     kernel_virt_base: u64,
     /// The kernel's debuginfo ELF.
     debuginfo: &'static [u8],
-    /// The actual state required for converting addresses into symbols. This is *very* heavy to
-    /// compute though, so we only construct it lazily in [`BacktraceInfo::symbolize_context`].
+    /// The actual state required for converting addresses into symbols. This is
+    /// *very* heavy to compute though, so we only construct it lazily in
+    /// [`BacktraceInfo::symbolize_context`].
     symbolize_context: OnceLock<SymbolizeContext<'static>>,
     backtrace_style: BacktraceStyle,
 }
@@ -101,12 +102,15 @@ impl BacktraceInfo {
 // === impl Backtrace ===
 
 impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
-    /// Captures a backtrace at the callsite of this function, returning an owned representation.
+    /// Captures a backtrace at the callsite of this function, returning an
+    /// owned representation.
     ///
-    /// The returned object is almost entirely self-contained. It can be cloned, or send to other threads.
+    /// The returned object is almost entirely self-contained. It can be cloned,
+    /// or send to other threads.
     ///
-    /// Note that this step is quite cheap, contrary to the `Backtrace` implementation in the standard
-    /// library this resolves the symbols (the expensive step) lazily, so this struct can be constructed
+    /// Note that this step is quite cheap, contrary to the `Backtrace`
+    /// implementation in the standard library this resolves the symbols
+    /// (the expensive step) lazily, so this struct can be constructed
     /// in performance sensitive codepaths and only later resolved.
     ///
     /// # Errors
@@ -117,12 +121,15 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
         Self::new_inner(FrameIter::new())
     }
 
-    /// Constructs a backtrace from the provided register context, returning an owned representation.
+    /// Constructs a backtrace from the provided register context, returning an
+    /// owned representation.
     ///
-    /// The returned object is almost entirely self-contained. It can be cloned, or send to other threads.
+    /// The returned object is almost entirely self-contained. It can be cloned,
+    /// or send to other threads.
     ///
-    /// Note that this step is quite cheap, contrary to the `Backtrace` implementation in the standard
-    /// library this resolves the symbols (the expensive step) lazily, so this struct can be constructed
+    /// Note that this step is quite cheap, contrary to the `Backtrace`
+    /// implementation in the standard library this resolves the symbols
+    /// (the expensive step) lazily, so this struct can be constructed
     /// in performance sensitive codepaths and only later resolved.
     ///
     /// # Errors
@@ -173,14 +180,15 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
 
         let mut omitted_count: usize = 0;
         let mut first_omit = true;
-        // If we're using a short backtrace, ignore all frames until we're told to start printing.
+        // If we're using a short backtrace, ignore all frames until we're told to start
+        // printing.
         let mut print = style != BacktraceStyle::Short;
 
         for ip in &self.frames {
             let mut any = false; // did we print any symbols?
 
-            // if the symbolication state isn't setup, yet we can't print symbols the addresses will have
-            // to suffice...
+            // if the symbolication state isn't setup, yet we can't print symbols the
+            // addresses will have to suffice...
             if let Some(symbolize_ctx) = self.symbolize_ctx {
                 let mut syms = symbolize_ctx.resolve_unsynchronized(*ip as u64).unwrap();
 

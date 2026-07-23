@@ -31,8 +31,9 @@ impl<T> CheckedMaybeUninit<T> {
     /// Creates a new `CheckedMaybeUninit<T>` initialized with the given value.
     /// It is safe to call [`assume_init`] on the return value of this function.
     ///
-    /// Note that dropping a `CheckedMaybeUninit<T>` will never call `T`'s drop code.
-    /// It is your responsibility to make sure `T` gets dropped if it got initialized.
+    /// Note that dropping a `CheckedMaybeUninit<T>` will never call `T`'s drop
+    /// code. It is your responsibility to make sure `T` gets dropped if it
+    /// got initialized.
     ///
     /// [`assume_init`]: Self::assume_init
     #[must_use = "use `forget` to avoid running Drop code"]
@@ -47,10 +48,12 @@ impl<T> CheckedMaybeUninit<T> {
 
     /// Creates a new `CheckedMaybeUninit<T>` in an uninitialized state.
     ///
-    /// Note that dropping a `CheckedMaybeUninit<T>` will never call `T`'s drop code.
-    /// It is your responsibility to make sure `T` gets dropped if it got initialized.
+    /// Note that dropping a `CheckedMaybeUninit<T>` will never call `T`'s drop
+    /// code. It is your responsibility to make sure `T` gets dropped if it
+    /// got initialized.
     ///
-    /// See the [type-level documentation][CheckedMaybeUninit] for some examples.
+    /// See the [type-level documentation][CheckedMaybeUninit] for some
+    /// examples.
     #[must_use]
     #[inline(always)]
     pub const fn uninit() -> Self {
@@ -68,14 +71,14 @@ impl<T> CheckedMaybeUninit<T> {
     /// For your convenience, this also returns a mutable reference to the
     /// (now safely initialized) contents of `self`.
     ///
-    /// As the content is stored inside a `CheckedMaybeUninit`, the destructor is not
-    /// run for the inner data if the MaybeUninit leaves scope without a call to
-    /// [`assume_init`], [`assume_init_drop`], or similar. Code that receives
-    /// the mutable reference returned by this function needs to keep this in
-    /// mind. The safety model of Rust regards leaks as safe, but they are
-    /// usually still undesirable. This being said, the mutable reference
-    /// behaves like any other mutable reference would, so assigning a new value
-    /// to it will drop the old content.
+    /// As the content is stored inside a `CheckedMaybeUninit`, the destructor
+    /// is not run for the inner data if the MaybeUninit leaves scope
+    /// without a call to [`assume_init`], [`assume_init_drop`], or similar.
+    /// Code that receives the mutable reference returned by this function
+    /// needs to keep this in mind. The safety model of Rust regards leaks
+    /// as safe, but they are usually still undesirable. This being said,
+    /// the mutable reference behaves like any other mutable reference
+    /// would, so assigning a new value to it will drop the old content.
     ///
     /// [`assume_init`]: Self::assume_init
     /// [`assume_init_drop`]: Self::assume_init_drop
@@ -84,9 +87,10 @@ impl<T> CheckedMaybeUninit<T> {
         self.init().write(val)
     }
 
-    /// Gets a pointer to the contained value. Reading from this pointer or turning it
-    /// into a reference is undefined behavior unless the `CheckedMaybeUninit<T>` is initialized.
-    /// Writing to memory that this pointer (non-transitively) points to is undefined behavior
+    /// Gets a pointer to the contained value. Reading from this pointer or
+    /// turning it into a reference is undefined behavior unless the
+    /// `CheckedMaybeUninit<T>` is initialized. Writing to memory that this
+    /// pointer (non-transitively) points to is undefined behavior
     /// (except inside an `UnsafeCell<T>`).
     #[inline(always)]
     #[track_caller]
@@ -94,34 +98,37 @@ impl<T> CheckedMaybeUninit<T> {
         self.assert_init("as_ptr").as_ptr()
     }
 
-    /// Gets a mutable pointer to the contained value. Reading from this pointer or turning it
-    /// into a reference is undefined behavior unless the `CheckedMaybeUninit<T>` is initialized.
+    /// Gets a mutable pointer to the contained value. Reading from this pointer
+    /// or turning it into a reference is undefined behavior unless the
+    /// `CheckedMaybeUninit<T>` is initialized.
     #[inline(always)]
     #[track_caller]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self.assert_init_mut("as_mut_ptr").as_mut_ptr()
     }
 
-    /// Extracts the value from the `CheckedMaybeUninit<T>` container. This is a great way
-    /// to ensure that the data will get dropped, because the resulting `T` is
-    /// subject to the usual drop handling.
+    /// Extracts the value from the `CheckedMaybeUninit<T>` container. This is a
+    /// great way to ensure that the data will get dropped, because the
+    /// resulting `T` is subject to the usual drop handling.
     ///
     /// # Safety
     ///
-    /// It is up to the caller to guarantee that the `CheckedMaybeUninit<T>` really is in an initialized
-    /// state. Calling this when the content is not yet fully initialized causes immediate undefined
-    /// behavior. The [type-level documentation][inv] contains more information about
-    /// this initialization invariant.
+    /// It is up to the caller to guarantee that the `CheckedMaybeUninit<T>`
+    /// really is in an initialized state. Calling this when the content is
+    /// not yet fully initialized causes immediate undefined behavior. The
+    /// [type-level documentation][inv] contains more information about this
+    /// initialization invariant.
     ///
     /// [inv]: #initialization-invariant
     ///
-    /// On top of that, remember that most types have additional invariants beyond merely
-    /// being considered initialized at the type level. For example, a `1`-initialized [`Vec<T>`]
-    /// is considered initialized (under the current implementation; this does not constitute
-    /// a stable guarantee) because the only requirement the compiler knows about it
-    /// is that the data pointer must be non-null. Creating such a `Vec<T>` does not cause
-    /// *immediate* undefined behavior, but will cause undefined behavior with most
-    /// safe operations (including dropping it).
+    /// On top of that, remember that most types have additional invariants
+    /// beyond merely being considered initialized at the type level. For
+    /// example, a `1`-initialized [`Vec<T>`] is considered initialized
+    /// (under the current implementation; this does not constitute a stable
+    /// guarantee) because the only requirement the compiler knows about it
+    /// is that the data pointer must be non-null. Creating such a `Vec<T>` does
+    /// not cause *immediate* undefined behavior, but will cause undefined
+    /// behavior with most safe operations (including dropping it).
     ///
     /// [`Vec<T>`]: ../../std/vec/struct.Vec.html
     ///
@@ -154,17 +161,19 @@ impl<T> CheckedMaybeUninit<T> {
         unsafe { self.assert_init_val("assume_init").assume_init() }
     }
 
-    /// Reads the value from the `CheckedMaybeUninit<T>` container. The resulting `T` is subject
-    /// to the usual drop handling.
+    /// Reads the value from the `CheckedMaybeUninit<T>` container. The
+    /// resulting `T` is subject to the usual drop handling.
     ///
-    /// Whenever possible, it is preferable to use [`assume_init`] instead, which
-    /// prevents duplicating the content of the `CheckedMaybeUninit<T>`.
+    /// Whenever possible, it is preferable to use [`assume_init`] instead,
+    /// which prevents duplicating the content of the
+    /// `CheckedMaybeUninit<T>`.
     ///
     /// # Safety
     ///
-    /// It is up to the caller to guarantee that the `CheckedMaybeUninit<T>` really is in an initialized
-    /// state. Calling this when the content is not yet fully initialized causes undefined
-    /// behavior. The [type-level documentation][inv] contains more information about
+    /// It is up to the caller to guarantee that the `CheckedMaybeUninit<T>`
+    /// really is in an initialized state. Calling this when the content is
+    /// not yet fully initialized causes undefined behavior. The [type-level
+    /// documentation][inv] contains more information about
     /// this initialization invariant.
     ///
     /// Moreover, similar to the [`ptr::read`] function, this function creates a
@@ -191,18 +200,18 @@ impl<T> CheckedMaybeUninit<T> {
     ///
     /// # Safety
     ///
-    /// It is up to the caller to guarantee that the `CheckedMaybeUninit<T>` really is
-    /// in an initialized state. Calling this when the content is not yet fully
-    /// initialized causes undefined behavior.
+    /// It is up to the caller to guarantee that the `CheckedMaybeUninit<T>`
+    /// really is in an initialized state. Calling this when the content is
+    /// not yet fully initialized causes undefined behavior.
     ///
     /// On top of that, all additional invariants of the type `T` must be
     /// satisfied, as the `Drop` implementation of `T` (or its members) may
-    /// rely on this. For example, setting a [`alloc::vec::Vec<T>`] to an invalid but
-    /// non-null address makes it initialized (under the current implementation;
-    /// this does not constitute a stable guarantee), because the only
-    /// requirement the compiler knows about it is that the data pointer must be
-    /// non-null. Dropping such a `Vec<T>` however will cause undefined
-    /// behaviour.
+    /// rely on this. For example, setting a [`alloc::vec::Vec<T>`] to an
+    /// invalid but non-null address makes it initialized (under the current
+    /// implementation; this does not constitute a stable guarantee),
+    /// because the only requirement the compiler knows about it is that the
+    /// data pointer must be non-null. Dropping such a `Vec<T>` however will
+    /// cause undefined behaviour.
     ///
     /// [`assume_init`]: MaybeUninit::assume_init
     #[inline(always)]
@@ -214,15 +223,15 @@ impl<T> CheckedMaybeUninit<T> {
 
     /// Gets a shared reference to the contained value.
     ///
-    /// This can be useful when we want to access a `CheckedMaybeUninit` that has been
-    /// initialized but don't have ownership of the `CheckedMaybeUninit` (preventing the use
-    /// of `.assume_init()`).
+    /// This can be useful when we want to access a `CheckedMaybeUninit` that
+    /// has been initialized but don't have ownership of the
+    /// `CheckedMaybeUninit` (preventing the use of `.assume_init()`).
     ///
     /// # Safety
     ///
-    /// Calling this when the content is not yet fully initialized causes undefined
-    /// behavior: it is up to the caller to guarantee that the `CheckedMaybeUninit<T>` really
-    /// is in an initialized state.
+    /// Calling this when the content is not yet fully initialized causes
+    /// undefined behavior: it is up to the caller to guarantee that the
+    /// `CheckedMaybeUninit<T>` really is in an initialized state.
     ///
     /// # Examples
     ///
@@ -273,16 +282,17 @@ impl<T> CheckedMaybeUninit<T> {
 
     /// Gets a mutable (unique) reference to the contained value.
     ///
-    /// This can be useful when we want to access a `CheckedMaybeUninit` that has been
-    /// initialized but don't have ownership of the `CheckedMaybeUninit` (preventing the use
-    /// of `.assume_init()`).
+    /// This can be useful when we want to access a `CheckedMaybeUninit` that
+    /// has been initialized but don't have ownership of the
+    /// `CheckedMaybeUninit` (preventing the use of `.assume_init()`).
     ///
     /// # Safety
     ///
-    /// Calling this when the content is not yet fully initialized causes undefined
-    /// behavior: it is up to the caller to guarantee that the `CheckedMaybeUninit<T>` really
-    /// is in an initialized state. For instance, `.assume_init_mut()` cannot be used to
-    /// initialize a `CheckedMaybeUninit`.
+    /// Calling this when the content is not yet fully initialized causes
+    /// undefined behavior: it is up to the caller to guarantee that the
+    /// `CheckedMaybeUninit<T>` really is in an initialized state. For
+    /// instance, `.assume_init_mut()` cannot be used to initialize a
+    /// `CheckedMaybeUninit`.
     ///
     /// # Examples
     ///
@@ -353,7 +363,8 @@ impl<T> CheckedMaybeUninit<T> {
     /// }
     /// ```
     ///
-    /// Nor can you use direct field access to do field-by-field gradual initialization:
+    /// Nor can you use direct field access to do field-by-field gradual
+    /// initialization:
     ///
     /// ```rust,no_run
     /// use std::{mem::MaybeUninit, ptr};

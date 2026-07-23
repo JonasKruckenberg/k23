@@ -69,7 +69,8 @@ pub fn read_raw(devtree: &DeviceTree) -> crate::Result<&str> {
 pub struct Bootargs {
     pub log: Filter,
     pub backtrace: BacktraceStyle,
-    /// Hard cap on the kernel heap, in bytes. `None` means use the built-in default.
+    /// Hard cap on the kernel heap, in bytes. `None` means use the built-in
+    /// default.
     pub heap_max: Option<NonZeroUsize>,
 }
 
@@ -88,14 +89,16 @@ pub enum FlagKind {
     Bool,
     /// `--name <bytes>[K|M|G|T]` — IEC binary units; parsed via [`parse_size`].
     Bytes,
-    /// `--name <value>` — opaque string, parsed by the consumer via [`FromStr`].
+    /// `--name <value>` — opaque string, parsed by the consumer via
+    /// [`FromStr`].
     ///
     /// [`FromStr`]: core::str::FromStr
     String,
 }
 
 impl FlagKind {
-    /// Help-text hint for the value, e.g. `"<bytes>[K|M|G|T]"`. Empty for `Bool`.
+    /// Help-text hint for the value, e.g. `"<bytes>[K|M|G|T]"`. Empty for
+    /// `Bool`.
     #[must_use]
     pub const fn hint(self) -> &'static str {
         match self {
@@ -136,9 +139,10 @@ impl Flag {
         Self { help, ..self }
     }
 
-    /// If `tok` matches this flag (`--name=value` or starting the `--name <value>` pair),
-    /// return the value, advancing `rest` to consume the value when it lives in the next
-    /// token. Returns `None` if the flag doesn't match.
+    /// If `tok` matches this flag (`--name=value` or starting the `--name
+    /// <value>` pair), return the value, advancing `rest` to consume the
+    /// value when it lives in the next token. Returns `None` if the flag
+    /// doesn't match.
     pub fn consume<'a, I: Iterator<Item = &'a str>>(
         &self,
         tok: &'a str,
@@ -162,9 +166,9 @@ impl Flag {
     }
 }
 
-/// Parse a byte count with an optional `K`/`M`/`G`/`T` (or lowercase) suffix in IEC binary
-/// units (1K = 1024, 1M = 1024², etc.). A bare integer is treated as bytes; whitespace around
-/// the suffix is not permitted.
+/// Parse a byte count with an optional `K`/`M`/`G`/`T` (or lowercase) suffix in
+/// IEC binary units (1K = 1024, 1M = 1024², etc.). A bare integer is treated as
+/// bytes; whitespace around the suffix is not permitted.
 fn parse_size(s: &str) -> Result<usize, anyhow::Error> {
     let s = s.trim();
     if s.is_empty() {

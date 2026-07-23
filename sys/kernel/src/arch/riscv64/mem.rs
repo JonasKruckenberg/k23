@@ -39,9 +39,9 @@ const_assert_eq!(
 
 /// Virtual address where the user address space starts.
 ///
-/// The first 2MiB are reserved for catching null pointer dereferences, but this might
-/// change in the future if we decide that the null-checking performed by the WASM runtime
-/// is sufficiently robust.
+/// The first 2MiB are reserved for catching null pointer dereferences, but this
+/// might change in the future if we decide that the null-checking performed by
+/// the WASM runtime is sufficiently robust.
 pub const USER_ASPACE_RANGE: RangeInclusive<VirtualAddress> = RangeInclusive {
     start: VirtualAddress::new(0x0000000000200000),
     last: VirtualAddress::new((1 << VIRT_ADDR_BITS) - 1),
@@ -51,8 +51,8 @@ pub const PAGE_SIZE: usize = 4096;
 pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
 
 pub const VIRT_ADDR_BITS: u32 = 38;
-/// Canonical addresses are addresses where the tops bits (`VIRT_ADDR_BITS` to 63)
-/// are all either 0 or 1.
+/// Canonical addresses are addresses where the tops bits (`VIRT_ADDR_BITS` to
+/// 63) are all either 0 or 1.
 pub const CANONICAL_ADDRESS_MASK: usize = !((1 << (VIRT_ADDR_BITS)) - 1);
 const_assert_eq!(CANONICAL_ADDRESS_MASK, 0xffffffc000000000);
 
@@ -60,7 +60,8 @@ const_assert_eq!(CANONICAL_ADDRESS_MASK, 0xffffffc000000000);
 pub const PAGE_TABLE_ENTRIES: usize = 512;
 pub const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2 Sv39
 pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usize;
-/// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
+/// On `RiscV` targets the page table entry's physical address bits are shifted
+/// 2 bits to the right.
 const PTE_PPN_SHIFT: usize = 2;
 
 pub const fn is_canonical(virt: VirtualAddress) -> bool {
@@ -76,17 +77,20 @@ pub const fn is_user_address(virt: VirtualAddress) -> bool {
     (virt.get() & CANONICAL_ADDRESS_MASK) == 0
 }
 
-/// Return whether the given virtual address is in the kernel address space half.
+/// Return whether the given virtual address is in the kernel address space
+/// half.
 #[inline]
 pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
     KERNEL_ASPACE_RANGE.start.get() <= virt.get() && virt.get() < KERNEL_ASPACE_RANGE.last.get()
 }
 
-/// Invalidate address translation caches for the given `address_range` in the given `address_space`.
+/// Invalidate address translation caches for the given `address_range` in the
+/// given `address_space`.
 ///
 /// # Errors
 ///
-/// Should return an error if the underlying operation failed and the caches could not be invalidated.
+/// Should return an error if the underlying operation failed and the caches
+/// could not be invalidated.
 pub fn invalidate_range(asid: u16, address_range: Range<VirtualAddress>) -> crate::Result<()> {
     mb();
 
@@ -128,10 +132,12 @@ fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
     index
 }
 
-/// Return whether the combination of `virt`,`phys`, and `remaining_bytes` can be mapped at the given `level`.
+/// Return whether the combination of `virt`,`phys`, and `remaining_bytes` can
+/// be mapped at the given `level`.
 ///
-/// This is the case when both the virtual and physical address are aligned to the page size at this level
-/// AND the remaining size is at least the page size.
+/// This is the case when both the virtual and physical address are aligned to
+/// the page size at this level AND the remaining size is at least the page
+/// size.
 fn can_map_at_level(
     virt: VirtualAddress,
     phys: PhysicalAddress,
@@ -167,7 +173,8 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
     where
         Self: Sized,
     {
-        // Safety: we just allocated the page and we're only accessing the upper half of it
+        // Safety: we just allocated the page and we're only accessing the upper half of
+        // it
         let src = unsafe {
             let satp = satp::read();
             let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
@@ -244,22 +251,27 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             "physical address must be aligned to at least 4KiB page size {phys:?}"
         );
 
-        // To map out contiguous chunk of physical memory into the virtual address space efficiently
-        // we'll attempt to map as much of the chunk using as large of a page size as possible.
+        // To map out contiguous chunk of physical memory into the virtual address space
+        // efficiently we'll attempt to map as much of the chunk using as large
+        // of a page size as possible.
         //
-        // We'll follow the page table down starting at the root page table entry (PTE) and check at
-        // every level if we can map there. This is dictated by the combination of virtual and
-        // physical address alignment as well as chunk size. If we can map at the current level
-        // well subtract the page size from `remaining_bytes`, advance the current virtual and physical
-        // addresses by the page size and repeat the process until there are no more bytes to map.
+        // We'll follow the page table down starting at the root page table entry (PTE)
+        // and check at every level if we can map there. This is dictated by the
+        // combination of virtual and physical address alignment as well as
+        // chunk size. If we can map at the current level well subtract the page
+        // size from `remaining_bytes`, advance the current virtual and physical
+        // addresses by the page size and repeat the process until there are no more
+        // bytes to map.
         //
-        // IF we can't map at a given level, we'll either allocate a new PTE or follow and existing PTE
-        // to the next level (and therefore smaller page size) until we reach a level that we can map at.
-        // Note that, because we require a minimum alignment and size of PAGE_SIZE, we will always be
+        // IF we can't map at a given level, we'll either allocate a new PTE or follow
+        // and existing PTE to the next level (and therefore smaller page size)
+        // until we reach a level that we can map at. Note that, because we
+        // require a minimum alignment and size of PAGE_SIZE, we will always be
         // able to map a chunk using level 0 pages.
         //
-        // In effect this algorithm will map the start and ends of chunks using smaller page sizes
-        // while mapping the vast majority of the middle of a chunk using larger page sizes.
+        // In effect this algorithm will map the start and ends of chunks using smaller
+        // page sizes while mapping the vast majority of the middle of a chunk
+        // using larger page sizes.
         'outer: while remaining_bytes > 0 {
             let mut pgtable: NonNull<PageTableEntry> =
                 self.pgtable_ptr_from_phys(physmap, self.root_pgtable);
@@ -271,7 +283,8 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                 let pte = unsafe { pgtable.add(index).as_mut() };
 
                 // Let's check if we can map at this level of the page table given our
-                // current virtual and physical address as well as the number of remaining bytes.
+                // current virtual and physical address as well as the number of remaining
+                // bytes.
                 if can_map_at_level(virt, phys, remaining_bytes, lvl) {
                     let page_size = page_size_for_level(lvl);
 
@@ -334,9 +347,9 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             "virtual address must be aligned to at least 4KiB page size"
         );
 
-        // The algorithm below is essentially the same as `remap_contiguous` but with the difference
-        // that we don't replace the PTEs address but instead the PTEs flags ensuring that the caller
-        // can't increase the permissions.
+        // The algorithm below is essentially the same as `remap_contiguous` but with
+        // the difference that we don't replace the PTEs address but instead the
+        // PTEs flags ensuring that the caller can't increase the permissions.
         'outer: while remaining_bytes > 0 {
             let mut pgtable = self.pgtable_ptr_from_phys(physmap, self.root_pgtable);
 
@@ -351,8 +364,8 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                 if pte.is_valid() && pte.is_leaf() {
                     // We reached the previously mapped leaf node that we want to edit
                     // firstly, ensure that this operation only removes permissions never adds any
-                    // and secondly mask out the old permissions replacing them with the new. This must
-                    // ensure we retain any other flags in the process.
+                    // and secondly mask out the old permissions replacing them with the new. This
+                    // must ensure we retain any other flags in the process.
                     let rwx_mask = PTEFlags::READ | PTEFlags::WRITE | PTEFlags::EXECUTE;
 
                     let new_flags = rwx_mask & new_flags;
@@ -398,10 +411,12 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             "virtual address must be aligned to at least 4KiB page size"
         );
 
-        // The algorithm of this function is different from the others, it processes the requested range
-        // in an iterative fashion, but will not traverse the page table levels iteratively instead
-        // doing so recursively. The reason for this is that after unmapping a page we need to check
-        // if by doing so the parent has become empty in which case we also need to unmap the parent.
+        // The algorithm of this function is different from the others, it processes the
+        // requested range in an iterative fashion, but will not traverse the
+        // page table levels iteratively instead doing so recursively. The
+        // reason for this is that after unmapping a page we need to check if by
+        // doing so the parent has become empty in which case we also need to unmap the
+        // parent.
         while remaining_bytes > 0 {
             self.unmap_inner(
                 self.pgtable_ptr_from_phys(physmap, self.root_pgtable),
@@ -494,8 +509,8 @@ impl AddressSpace {
             let pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
             self.unmap_inner(pgtable, virt, remaining_bytes, lvl - 1, physmap, flush)?;
 
-            // The recursive descend above might have unmapped the last child of this PTE in which
-            // case we need to unmap it as well
+            // The recursive descend above might have unmapped the last child of this PTE in
+            // which case we need to unmap it as well
 
             // TODO optimize this
             let is_still_populated = (0..PAGE_TABLE_ENTRIES)
@@ -617,7 +632,8 @@ impl From<crate::mem::Permissions> for PTEFlags {
     fn from(flags: crate::mem::Permissions) -> Self {
         use crate::mem::Permissions;
 
-        // we currently don't use the accessed & dirty bits and, it's recommended to set them if unused
+        // we currently don't use the accessed & dirty bits and, it's recommended to set
+        // them if unused
         let mut out = Self::VALID | Self::ACCESSED | Self::DIRTY;
 
         for flag in flags {

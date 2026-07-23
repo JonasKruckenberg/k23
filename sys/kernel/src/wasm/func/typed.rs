@@ -57,9 +57,10 @@ pub unsafe trait WasmTy: Send {
     unsafe fn load(store: &mut StoreOpaque, ptr: &VMVal) -> Self;
     /// Is the value compatible with the given store?
     ///
-    /// Numbers (`I32`, `I64`, `F32`, `F64`, and `V128`) are store agnostic and can be used
-    /// across stores, while all references are tied to their owning store (they are just pointers
-    /// into store-owned memory after all) and *cannot* be used outside their owning store.
+    /// Numbers (`I32`, `I64`, `F32`, `F64`, and `V128`) are store agnostic and
+    /// can be used across stores, while all references are tied to their
+    /// owning store (they are just pointers into store-owned memory after
+    /// all) and *cannot* be used outside their owning store.
     fn compatible_with_store(&self, store: &StoreOpaque) -> bool;
 
     fn dynamic_concrete_type_check(
@@ -95,7 +96,8 @@ pub unsafe trait WasmTy: Send {
 
 /// A type that can be used as an argument for WASM functions.
 ///
-/// This trait is implemented for bare types that may be passed to WASM and tuples of those types.
+/// This trait is implemented for bare types that may be passed to WASM and
+/// tuples of those types.
 ///
 /// # Safety
 ///
@@ -104,7 +106,8 @@ pub unsafe trait WasmParams: Send {
     /// The storage for holding the [`VMVal`] parameters and results
     ///
     /// The storage for holding the array-call parameters and results.
-    /// This should most likely be a `[VMVal; N]` array where `N` is the number of parameters.
+    /// This should most likely be a `[VMVal; N]` array where `N` is the number
+    /// of parameters.
     type VMValStorage: Copy;
 
     /// Assert that the provided types are compatible with this type.
@@ -112,7 +115,8 @@ pub unsafe trait WasmParams: Send {
     /// # Errors
     ///
     /// This should return an error IF
-    /// - The number of provided types does not *exactly* match the number of expected types.
+    /// - The number of provided types does not *exactly* match the number of
+    ///   expected types.
     /// - The type does not match its expected type.
     fn typecheck(
         engine: &Engine,
@@ -130,11 +134,12 @@ pub unsafe trait WasmParams: Send {
 
 /// A type that may be returned from WASM functions.
 ///
-/// This trait is implemented for bare types that may be passed to WASM and tuples of those types.
+/// This trait is implemented for bare types that may be passed to WASM and
+/// tuples of those types.
 ///
-/// Note: This type piggybacks off of the [`WasmParams`] trait as all types implement both
-/// [`WasmParams`] AND [`WasmResults`] we can just reuse [`WasmParams`] typecheck and storage
-/// implementations.
+/// Note: This type piggybacks off of the [`WasmParams`] trait as all types
+/// implement both [`WasmParams`] AND [`WasmResults`] we can just reuse
+/// [`WasmParams`] typecheck and storage implementations.
 ///
 /// # Safety
 ///
@@ -149,14 +154,15 @@ where
     Params: WasmParams,
     Results: WasmResults,
 {
-    // /// Invokes this functions with the `params`, returning the results asynchronously.
-    // ///
-    // /// Execution of WebAssembly will happen synchronously in the `poll` method of the
-    // /// future returned from this function. Note that, the faster `poll` methods return the more
-    // /// responsive the overall system is, so WebAssembly execution interruption should be configured
-    // /// such that this futures `poll` method resolves *reasonably* quickly.
-    // /// (Reasonably because at the end of the day a task will need to block if it wants to perform
-    // /// any meaningful work, there is no way around it).
+    // /// Invokes this functions with the `params`, returning the results
+    // asynchronously. ///
+    // /// Execution of WebAssembly will happen synchronously in the `poll` method
+    // of the /// future returned from this function. Note that, the faster
+    // `poll` methods return the more /// responsive the overall system is, so
+    // WebAssembly execution interruption should be configured /// such that
+    // this futures `poll` method resolves *reasonably* quickly. /// (Reasonably
+    // because at the end of the day a task will need to block if it wants to
+    // perform /// any meaningful work, there is no way around it).
     // ///
     // /// This function will return `Ok(())` if execution completed without a trap
     // /// or error of any kind. In this situation the results will be written to
@@ -168,8 +174,8 @@ where
     // /// returned as `Err(e)`.
     // /// Errors typically indicate that execution of WebAssembly was halted
     // /// mid-way and did not complete after the error condition happened.
-    // pub fn call(self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
-    //     todo!()
+    // pub fn call(self, store: &mut StoreOpaque, params: Params) ->
+    // crate::Result<Results> {     todo!()
     // }
 
     pub fn into_func(self) -> Func {
@@ -177,26 +183,32 @@ where
     }
 
     pub fn call(&self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
-        // Safety: The code below does the lowering and lifting of VM values. The correctness of which is enforced
-        // both through this type's generics AND the correct implementation of the array-call trampoline.
+        // Safety: The code below does the lowering and lifting of VM values. The
+        // correctness of which is enforced both through this type's generics
+        // AND the correct implementation of the array-call trampoline.
         unsafe {
             // Okay, so what is going on here?
             //
-            // Because the `TypedFunc` generics we know exactly how much space we need for the
-            // array-call parameters and results *at compile time* (declared by the `WasmParams::VMValStorage` or
-            // `WasmResults::VMValStorage` associated types). Which neatly allows us to allocate that array on the stack.
+            // Because the `TypedFunc` generics we know exactly how much space we need for
+            // the array-call parameters and results *at compile time* (declared
+            // by the `WasmParams::VMValStorage` or `WasmResults::VMValStorage`
+            // associated types). Which neatly allows us to allocate that array on the
+            // stack.
             //
-            // Remember that the array-call "calling convention" will store the parameters in a consecutive
-            // array and use *that same array* to store the results too. This means before jumping to
-            // WASM we essentially have a `Params::VMValStorage` on stack, while after returning we
-            // have a `Results::VMValStorage` on stack. Note also that (just like when calling through
-            // the untyped func) we need to make sure to reserve enough space to fit the larger of the two types.
+            // Remember that the array-call "calling convention" will store the parameters
+            // in a consecutive array and use *that same array* to store the
+            // results too. This means before jumping to WASM we essentially
+            // have a `Params::VMValStorage` on stack, while after returning we
+            // have a `Results::VMValStorage` on stack. Note also that (just like when
+            // calling through the untyped func) we need to make sure to reserve
+            // enough space to fit the larger of the two types.
             //
-            // If that sounded suspiciously like a union, congrats! You are correct, a union is exactly
-            // what we use.
+            // If that sounded suspiciously like a union, congrats! You are correct, a union
+            // is exactly what we use.
             //
-            // Notice how `Func::call_inner` uses a very different approach: Instead of allocating on
-            // stack, it has to use a heap-allocated vec that it needs to resize appropriately.
+            // Notice how `Func::call_inner` uses a very different approach: Instead of
+            // allocating on stack, it has to use a heap-allocated vec that it
+            // needs to resize appropriately.
             union Storage<T: Copy, U: Copy> {
                 params: MaybeUninit<T>,
                 results: U,
@@ -210,10 +222,11 @@ where
             // Aaand initialize it by lowering the params into it
             params.store(store, &self.ty, &mut storage.params)?;
 
-            // Now, heres a tricky part: We allocated a `Storage::<Params::VMValStorage, Results::VMValStorage>`
-            // type on stack above. But what we need for the array call is a `*mut [VMVal]`. We therefore
-            // need to essentially "transmute" the union into a slice of `VMVal` which is exactly what
-            // we do below.
+            // Now, heres a tricky part: We allocated a `Storage::<Params::VMValStorage,
+            // Results::VMValStorage>` type on stack above. But what we need for
+            // the array call is a `*mut [VMVal]`. We therefore
+            // need to essentially "transmute" the union into a slice of `VMVal` which is
+            // exactly what we do below.
             {
                 let storage_len = size_of_val::<Storage<_, _>>(&storage) / size_of::<VMVal>();
                 let storage: *mut Storage<_, _> = &mut storage;
@@ -226,9 +239,10 @@ where
                 do_call(store, func_ref, storage)?;
             }
 
-            // At this point we have successfully returned from WASM which means that now we have a
-            // `Results::VMValStorage` on stack instead of the `Params::VMValStorage` that we wrote into it.
-            // Go ahead and lift our Rust values from it and return.
+            // At this point we have successfully returned from WASM which means that now we
+            // have a `Results::VMValStorage` on stack instead of the
+            // `Params::VMValStorage` that we wrote into it. Go ahead and lift
+            // our Rust values from it and return.
             Ok(Results::load(store, &storage.results))
         }
     }
@@ -330,7 +344,8 @@ impl_wasm_ty_for_floats! {
     f64/get_f64 => F64
 }
 
-// Safety: functions are lowered as VMFuncRef pointers. TODO the correctness of this should be checked by tests
+// Safety: functions are lowered as VMFuncRef pointers. TODO the correctness of
+// this should be checked by tests
 unsafe impl WasmTy for Func {
     fn valtype() -> ValType {
         ValType::Ref(RefType::FUNCREF)
@@ -364,7 +379,8 @@ unsafe impl WasmTy for Func {
     }
 }
 
-// Safety: functions are lowered as VMFuncRef pointers. TODO the correctness of this should be checked by tests
+// Safety: functions are lowered as VMFuncRef pointers. TODO the correctness of
+// this should be checked by tests
 unsafe impl WasmTy for Option<Func> {
     fn valtype() -> ValType {
         ValType::Ref(RefType::FUNCREF)

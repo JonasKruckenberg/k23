@@ -23,8 +23,9 @@ pub struct Memory {
     len: usize,
     /// The optional maximum accessible size, in bytes, for this linear memory.
     ///
-    /// This **does not** include guard pages and might be smaller than `self.accessible`
-    /// since the underlying allocation is always a multiple of the host page size.
+    /// This **does not** include guard pages and might be smaller than
+    /// `self.accessible` since the underlying allocation is always a
+    /// multiple of the host page size.
     maximum: Option<usize>,
     /// The log2 of this Wasm memory's page size, in bytes.
     page_size_log2: u8,

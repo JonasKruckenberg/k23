@@ -43,7 +43,8 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
 
     /// # Errors
     ///
-    /// Returns the initialization closure as the error in case the lock is not yet initialized.
+    /// Returns the initialization closure as the error in case the lock is not
+    /// yet initialized.
     ///
     /// # Panics
     ///
@@ -60,7 +61,8 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
                     // Safety: complete means self.data contains the init function, the other code
                     // upholds this
                     ExclusiveState::Incomplete => Err(ManuallyDrop::into_inner(unsafe { data.f })),
-                    // Safety: complete means self.data contains the data, the other code upholds this
+                    // Safety: complete means self.data contains the data, the other code upholds
+                    // this
                     ExclusiveState::Complete => Ok(ManuallyDrop::into_inner(unsafe { data.value })),
                     ExclusiveState::Poisoned => unreachable!(),
                 }
@@ -94,8 +96,8 @@ impl<T, F> LazyLock<T, F> {
     fn get(&self) -> Option<&T> {
         if self.once.is_completed() {
             self.data.with(|data| {
-                // Safety: The closure has been run successfully, so `value` has been initialized
-                // and will not be modified again.
+                // Safety: The closure has been run successfully, so `value` has been
+                // initialized and will not be modified again.
                 Some(unsafe { &*(*data).value })
             })
         } else {
@@ -111,7 +113,6 @@ impl<T, F: FnOnce() -> T> Deref for LazyLock<T, F> {
     ///
     /// This method will block the calling thread if another initialization
     /// routine is currently running.
-    ///
     #[inline]
     fn deref(&self) -> &T {
         LazyLock::force(self)
@@ -123,15 +124,15 @@ impl<T, F> Drop for LazyLock<T, F> {
         match self.once.state() {
             ExclusiveState::Incomplete => {
                 self.data.with_mut(|data| {
-                    // Safety: complete means self.data still contains the init function, the other code
-                    // upholds this
+                    // Safety: complete means self.data still contains the init function, the other
+                    // code upholds this
                     unsafe { ManuallyDrop::drop(&mut (*data).f) }
                 });
             }
             ExclusiveState::Complete => {
                 self.data.with_mut(|data| {
-                    // Safety: complete means self.data still contains the init function, the other code
-                    // upholds this
+                    // Safety: complete means self.data still contains the init function, the other
+                    // code upholds this
                     unsafe { ManuallyDrop::drop(&mut (*data).value) }
                 });
             }

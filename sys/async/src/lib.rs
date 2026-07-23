@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! Async executor and supporting infrastructure for k23 cooperative multitasking.
+//! Async executor and supporting infrastructure for k23 cooperative
+//! multitasking.
 //!
-//! This crate was heavily inspired by tokio and the (much better) maitake crates, to a small extend smol also influenced the design.
+//! This crate was heavily inspired by tokio and the (much better) maitake
+//! crates, to a small extend smol also influenced the design.
 
 #![cfg_attr(not(any(test, feature = "__bench")), no_std)]
 #![feature(debug_closure_helpers)]

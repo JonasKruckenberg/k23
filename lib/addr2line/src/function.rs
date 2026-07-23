@@ -233,10 +233,10 @@ impl<R: gimli::Reader> Function<R> {
         // Note: Using DFS order, i.e. ordering by range.begin first and then by
         // call_depth, would not work! Consider the two examples
         // "[0..10 at depth 0], [0..2 at depth 1], [6..8 at depth 1]"  and
-        // "[0..5 at depth 0], [0..2 at depth 1], [5..10 at depth 0], [6..8 at depth 1]".
-        // In this example, if you want to look up address 7 at depth 0, and you
-        // encounter [0..2 at depth 1], are you before or after the target range?
-        // You don't know.
+        // "[0..5 at depth 0], [0..2 at depth 1], [5..10 at depth 0], [6..8 at depth
+        // 1]". In this example, if you want to look up address 7 at depth 0,
+        // and you encounter [0..2 at depth 1], are you before or after the
+        // target range? You don't know.
         state.addresses.sort_by(|r1, r2| {
             if r1.call_depth < r2.call_depth {
                 Ordering::Less

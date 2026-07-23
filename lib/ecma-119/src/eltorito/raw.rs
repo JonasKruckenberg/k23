@@ -37,10 +37,11 @@ pub struct InitialEntry {
     pub boot_media_ty: u8, // TODO bitflags
     pub load_segment: U16<LittleEndian>,
     pub system_ty: u8,
-    _reserved1: u8,                      // must be 0
-    pub sector_count: U16<LittleEndian>, // 512-byte "virtual" sectors (2048-byte ISO sector = 4 virtual sectors)
-    pub load_rba: U32<LittleEndian>,     // 2048-byte sectors (ISO LBAs)
-    _reserved2: [u8; 20],                // must be 0
+    _reserved1: u8, // must be 0
+    pub sector_count: U16<LittleEndian>, /* 512-byte "virtual" sectors (2048-byte ISO sector = 4
+                     * virtual sectors) */
+    pub load_rba: U32<LittleEndian>, // 2048-byte sectors (ISO LBAs)
+    _reserved2: [u8; 20],            // must be 0
 }
 const _: () = assert!(size_of::<InitialEntry>() == 32);
 
@@ -76,7 +77,8 @@ pub struct SectionEntry {
     _reserved: u8, // must be 0
     pub sector_count: U16<LittleEndian>,
     pub load_rba: U32<LittleEndian>,
-    pub selection_criteria: u8, // 0 = No selection criteria, 1 = Language and Version Information (IBM), 2-FF = Reserved
+    pub selection_criteria: u8, /* 0 = No selection criteria, 1 = Language and Version
+                                 * Information (IBM), 2-FF = Reserved */
     pub vendor_selection_criteria: [u8; 19],
 }
 const _: () = assert!(size_of::<SectionEntry>() == 32);

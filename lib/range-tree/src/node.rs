@@ -32,12 +32,14 @@
 //! Internal nodes use a pivot of `I` and a value of `NodeRef`.
 //!
 //! Invariants:
-//! - The pivot of a sub-tree indicates the right-most leaf pivot in that sub-tree.
-//!   - Safety relies on this being the case even if leaf pivots are out of order.
+//! - The pivot of a sub-tree indicates the right-most leaf pivot in that
+//!   sub-tree.
+//!   - Safety relies on this being the case even if leaf pivots are out of
+//!     order.
 //! - The last element has a pivot of `I::MAX`.
 //!   - All later elements are considered absent.
-//!   - Since nodes can only have `B - 1` elements, the last 2 pivots must have a
-//!     value of `I::MAX`.
+//!   - Since nodes can only have `B - 1` elements, the last 2 pivots must have
+//!     a value of `I::MAX`.
 
 use core::alloc::{AllocError, Allocator, Layout};
 use core::marker::PhantomData;
@@ -366,8 +368,8 @@ impl NodeRef {
         }
     }
 
-    /// Inserts `pivot` at `pos`, shifting other pivots up to `node_size` to make
-    /// room.
+    /// Inserts `pivot` at `pos`, shifting other pivots up to `node_size` to
+    /// make room.
     ///
     /// The pivot previously in the last slot are discarded.
     ///
@@ -689,7 +691,8 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             self.ptr = alloc.allocate(new_layout)?.cast();
 
             debug_assert!(u32::try_from(new_layout.size()).is_ok());
-            // Safety: layouts `> u32::MAX` are very unlikely AND we check this with debug-assertions enabled.
+            // Safety: layouts `> u32::MAX` are very unlikely AND we check this with
+            // debug-assertions enabled.
             self.capacity = unsafe { u32::try_from(new_layout.size()).unwrap_unchecked() };
         } else {
             let old_layout = unsafe {
@@ -709,7 +712,8 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             self.ptr = unsafe { alloc.grow(self.ptr, old_layout, new_layout)?.cast() };
 
             debug_assert!(u32::try_from(new_layout.size()).is_ok());
-            // Safety: layouts `> u32::MAX` are very unlikely AND we check this with debug-assertions enabled.
+            // Safety: layouts `> u32::MAX` are very unlikely AND we check this with
+            // debug-assertions enabled.
             self.capacity = unsafe { u32::try_from(new_layout.size()).unwrap_unchecked() };
         }
 
@@ -733,7 +737,8 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             // Freed nodes hold a single `NodeRef` with the next element in the
             // free list.
             let node = UninitNodeRef(NodeRef(self.free_list));
-            // Safety: `free_list` is a node-pointer that is within this allocation by construction
+            // Safety: `free_list` is a node-pointer that is within this allocation by
+            // construction
             self.free_list = unsafe { self.ptr.byte_add(self.free_list as usize).cast().read() };
             return Ok(node);
         }
@@ -748,7 +753,8 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
         let node = UninitNodeRef(NodeRef(self.len));
 
         debug_assert!(u32::try_from(node_layout.size()).is_ok());
-        // Safety: layouts `> u32::MAX` are very unlikely AND we check this with debug-assertions enabled.
+        // Safety: layouts `> u32::MAX` are very unlikely AND we check this with
+        // debug-assertions enabled.
         self.len += unsafe { u32::try_from(node_layout.size()).unwrap_unchecked() };
 
         debug_assert!(self.len <= self.capacity);

@@ -140,7 +140,8 @@ pub(crate) fn sys_exit_extended(reason: ExitReason, subcode: usize) {
     unsafe {
         #[cfg(target_pointer_width = "32")]
         syscall!(SYS_EXIT_EXTENDED, reason as usize, subcode);
-        // On 64-bit system, SYS_EXIT_EXTENDED call is identical to the behavior of the mandatory SYS_EXIT.
+        // On 64-bit system, SYS_EXIT_EXTENDED call is identical to the behavior of the
+        // mandatory SYS_EXIT.
         #[cfg(target_pointer_width = "64")]
         syscall!(SYS_EXIT, reason as usize, subcode);
     }

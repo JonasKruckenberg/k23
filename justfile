@@ -52,7 +52,8 @@ preflight targets="" *buck2_args:
     #!/usr/bin/env bash
     set -euxo pipefail
     j="{{ just_executable() }}"
-    t='{{ targets }}'; [ -n "$t" ] || t=$("$j" changed-targets)
+    f=$(mktemp); trap 'rm -f "$f"' EXIT
+    t='{{ targets }}'; [ -n "$t" ] || { "$j" changed-targets > "$f"; t=$(cat "$f"); }
     "$j" typos; "$j" check-fmt "$t"; "$j" check-license-headers
     for a in riscv64 aarch64 x86_64; do "$j" platform=//platforms:$a clippy "$t" {{ buck2_args }}; done
     for r in unittests miri loom selftests; do "$j" $r "$t" {{ buck2_args }}; done
@@ -171,11 +172,12 @@ benchmark targets="//..." *buck2_args:
 
 # ===== changed targets =====
 
-# Files that define the build graph itself. `owner()` maps a source file to the
-# targets that consume it, but nothing maps these back to a target, so a change
-# to one means the whole workspace is potentially affected.
+# Files that define the graph beyond any single package: a `PACKAGE` applies to
+# a whole subtree, a `.bzl` is loaded by packages it never names, `.buckconfig`
+# defines the cells. The two BUCK files are cell roots (`toolchains//` and
+# `constraints//`), so their packages aren't at the paths their paths suggest.
 [private]
-_graph_files := '(^|/)(BUCK|PACKAGE)$|\.bzl$|^\.buckconfig$'
+_graph_files := '(^|/)PACKAGE$|\.bzl$|^\.buckconfig$|^build/(toolchains|constraints)/BUCK$'
 
 # Only the file list needs a base revision; the impact of those files is read off
 # the current graph. git, not jj, so both work the same — `ls-files --others`
@@ -189,10 +191,16 @@ changed-targets base="main":
     # A deleted file has no owner, so no query can map it back to a target.
     deleted=$(git diff --name-only --diff-filter=D "$merge_base")
     files=$(git diff --name-only --diff-filter=d "$merge_base"; git ls-files --others --exclude-standard)
+    # A BUCK file has no owner either, but it does have a scope: its own package.
+    pkgs=$(grep -E '(^|/)BUCK$' <<<"$files" | sed 's|BUCK$||; s|/$||; s|^|//|; s|$|:|' | tr '\n' ' ' || true)
+    # Union the owners into one query rather than using buck2's `%s` substitution:
+    # `%s` re-runs the whole rdeps traversal once per file, which costs minutes on a
+    # large change and silently yields nothing at all past ~200 of them.
+    seeds=$(sed -n "s|..*|owner('&')|p" <<<"$files" | paste -sd+ -)
     if [ -n "$deleted" ] || grep -qE '{{ _graph_files }}' <<<"$files"; then
         echo '//...'
-    else
-        {{ _buck2 }} uquery "{{ _default_query }} intersect rdeps({{ _default_query }}, owner('%s'))" -- $files | tr '\n' ' '
+    elif [ -n "$seeds" ]; then
+        {{ _buck2 }} uquery "{{ _default_query }} intersect rdeps({{ _default_query }}, $seeds${pkgs:+ + set($pkgs)})" | tr '\n' ' '
     fi
 
 _rustc_target(arch) := if arch == "riscv64" { "riscv64gc-unknown-none-elf" } else if arch == "aarch64" { "aarch64-unknown-none" } else { "x86_64-unknown-none" }

@@ -94,8 +94,8 @@ impl<I: RangeTreeInteger> Height<I> {
 
 /// Stack which holds the path to a leaf node from the root of the tree.
 ///
-/// The is large enough to hold `max_height::<I>()`, which depends on the branching
-/// factor and the node size.
+/// The is large enough to hold `max_height::<I>()`, which depends on the
+/// branching factor and the node size.
 ///
 /// The stack is indexed with `Height` which allows unchecked indexing since
 /// all heights must be less than `max_height::<I>()`.

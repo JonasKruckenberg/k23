@@ -19,10 +19,11 @@ use crate::{KernelAspaceLayout, arch};
 
 /// Map every `PT_LOAD` segment of the relocated kernel image into `aspace`.
 ///
-/// Each segment is mapped `staging_base + image_offset` -> `virt_base + image_offset`,
-/// with permissions derived from its ELF flags. Gap pages between segments are
-/// deliberately left unmapped. Modifications are recorded in `flush` but not
-/// synchronized — the caller is responsible for flushing once all mapping is done.
+/// Each segment is mapped `staging_base + image_offset` -> `virt_base +
+/// image_offset`, with permissions derived from its ELF flags. Gap pages
+/// between segments are deliberately left unmapped. Modifications are recorded
+/// in `flush` but not synchronized — the caller is responsible for flushing
+/// once all mapping is done.
 pub fn map_kernel_image(
     aspace: &mut arch::KernelAspace,
     aspace_layout: &KernelAspaceLayout,

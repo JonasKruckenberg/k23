@@ -111,10 +111,10 @@ impl Val {
             Val::FuncRef(None) => ValType::NULLFUNCREF,
             Val::FuncRef(Some(f)) => {
                 ValType::Ref(RefType::new(false, HeapType::concrete_func(f.ty(store))))
-            } // Val::ExternRef(Some(_)) => ValType::EXTERNREF,
-              // Val::ExternRef(None) => ValType::NULLFUNCREF,
-              // Val::AnyRef(None) => ValType::NULLREF,
-              // Val::AnyRef(Some(a)) => ValType::Ref(RefType::new(false, a._ty(store)?)),
+            } /* Val::ExternRef(Some(_)) => ValType::EXTERNREF,
+               * Val::ExternRef(None) => ValType::NULLFUNCREF,
+               * Val::AnyRef(None) => ValType::NULLREF,
+               * Val::AnyRef(Some(a)) => ValType::Ref(RefType::new(false, a._ty(store)?)), */
         })
     }
 
@@ -363,7 +363,6 @@ pub enum Ref {
     // information to reconstruct the value's type. That's a problem for us
     // because we need to get a value's type at various times all over the code
     // base.
-    //
     /// A first-class reference to a WebAssembly function.
     ///
     /// The host, or the Wasm guest, can invoke this function.

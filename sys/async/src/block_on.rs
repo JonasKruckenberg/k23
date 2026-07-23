@@ -168,8 +168,9 @@ impl<P: Park + Sync + 'static> Notify<P> {
 ///
 /// Returns `P::Error` when blocking the current thread fails.
 /// The returned error contains more information about the reason.
-// NB: we require the static lifetime here so we can safely turn this into a ptr in `waker_ref`.
-// instead of forcing callers into an `Arc` allocation they can now simply use `cpu_local!`
+// NB: we require the static lifetime here so we can safely turn this into a ptr
+// in `waker_ref`. instead of forcing callers into an `Arc` allocation they can
+// now simply use `cpu_local!`
 pub fn block_on<P: Park + Sync + 'static, F: Future>(
     notify: &'static Notify<P>,
     f: F,

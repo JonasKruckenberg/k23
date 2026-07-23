@@ -7,19 +7,21 @@
 
 #![cfg_attr(target_os = "none", no_std)]
 
-/// Terminates the current execution in an abnormal fashion. This function will never return.
+/// Terminates the current execution in an abnormal fashion. This function will
+/// never return.
 ///
-/// The function will terminate the execution, either by some platform specific means. When `std`
-/// is available, this will take the form of `std::process::abort`. On `no_std` targets this will
-/// attempt to use [semihosting] to terminate the execution, and as a fallback put the CPU into an
-/// idle loop forever.
+/// The function will terminate the execution, either by some platform specific
+/// means. When `std` is available, this will take the form of
+/// `std::process::abort`. On `no_std` targets this will attempt to use
+/// [semihosting] to terminate the execution, and as a fallback put the CPU into
+/// an idle loop forever.
 ///
 /// [semihosting]: <https://developer.arm.com/documentation/dui0203/j/semihosting/about-semihosting/what-is-semihosting->
 ///
 /// # Breakpoint support
 ///
-/// The symbol `abort` will never be mangled so you can safely put a breakpoint on it
-/// as a means to catch the kernel just before it exits abnormally.
+/// The symbol `abort` will never be mangled so you can safely put a breakpoint
+/// on it as a means to catch the kernel just before it exits abnormally.
 #[unsafe(no_mangle)]
 #[inline(never)]
 pub fn abort() -> ! {

@@ -1,7 +1,7 @@
 //! A lock-free concurrent object pool.
 //!
-//! See the [`Pool` type's documentation][pool] for details on the object pool API and how
-//! it differs from the [`Slab`] API.
+//! See the [`Pool` type's documentation][pool] for details on the object pool
+//! API and how it differs from the [`Slab`] API.
 //!
 //! [pool]: ../struct.Pool.html
 //! [`Slab`]: ../struct.Slab.html
@@ -16,19 +16,22 @@ use crate::{Pack, Shard, page, shard};
 
 /// A lock-free concurrent object pool.
 ///
-/// Slabs provide pre-allocated storage for many instances of a single type. But, when working with
-/// heap allocated objects, the advantages of a slab are lost, as the memory allocated for the
-/// object is freed when the object is removed from the slab. With a pool, we can instead reuse
-/// this memory for objects being added to the pool in the future, therefore reducing memory
+/// Slabs provide pre-allocated storage for many instances of a single type.
+/// But, when working with heap allocated objects, the advantages of a slab are
+/// lost, as the memory allocated for the object is freed when the object is
+/// removed from the slab. With a pool, we can instead reuse this memory for
+/// objects being added to the pool in the future, therefore reducing memory
 /// fragmentation and avoiding additional allocations.
 ///
-/// This type implements a lock-free concurrent pool, indexed by `usize`s. The items stored in this
-/// type need to implement [`Clear`] and `Default`.
+/// This type implements a lock-free concurrent pool, indexed by `usize`s. The
+/// items stored in this type need to implement [`Clear`] and `Default`.
 ///
-/// The `Pool` type shares similar semantics to [`Slab`] when it comes to sharing across threads
-/// and storing mutable shared data. The biggest difference is there are no [`Slab::insert`] and
-/// [`Slab::take`] analogues for the `Pool` type. Instead new items are added to the pool by using
-/// the [`Pool::create`] method, and marked for clearing by the [`Pool::clear`] method.
+/// The `Pool` type shares similar semantics to [`Slab`] when it comes to
+/// sharing across threads and storing mutable shared data. The biggest
+/// difference is there are no [`Slab::insert`] and [`Slab::take`] analogues for
+/// the `Pool` type. Instead new items are added to the pool by using
+/// the [`Pool::create`] method, and marked for clearing by the [`Pool::clear`]
+/// method.
 ///
 /// # Examples
 ///
@@ -54,8 +57,8 @@ use crate::{Pack, Shard, page, shard};
 /// assert_eq!(pool.get(key).unwrap(), String::from("hello world"));
 /// ```
 ///
-/// Pool entries can be cleared by calling [`Pool::clear`]. This marks the entry to
-/// be cleared when the guards referencing to it are dropped.
+/// Pool entries can be cleared by calling [`Pool::clear`]. This marks the entry
+/// to be cleared when the guards referencing to it are dropped.
 /// ```
 /// # use sharded_slab::Pool;
 /// let pool: Pool<String> = Pool::new();
@@ -70,8 +73,8 @@ use crate::{Pack, Shard, page, shard};
 /// ```
 /// # Configuration
 ///
-/// Both `Pool` and [`Slab`] share the same configuration mechanism. See [crate level documentation][config-doc]
-/// for more details.
+/// Both `Pool` and [`Slab`] share the same configuration mechanism. See [crate
+/// level documentation][config-doc] for more details.
 ///
 /// [`Slab::take`]: crate::Slab::take
 /// [`Slab::insert`]: crate::Slab::insert
@@ -91,9 +94,10 @@ where
 
 /// A guard that allows access to an object in a pool.
 ///
-/// While the guard exists, it indicates to the pool that the item the guard references is
-/// currently being accessed. If the item is removed from the pool while the guard exists, the
-/// removal will be deferred until all guards are dropped.
+/// While the guard exists, it indicates to the pool that the item the guard
+/// references is currently being accessed. If the item is removed from the pool
+/// while the guard exists, the removal will be deferred until all guards are
+/// dropped.
 pub struct Ref<'a, T, C = DefaultConfig>
 where
     T: Clear + Default,
@@ -123,9 +127,10 @@ where
 
 /// An owned guard that allows shared immutable access to an object in a pool.
 ///
-/// While the guard exists, it indicates to the pool that the item the guard references is
-/// currently being accessed. If the item is removed from the pool while the guard exists, the
-/// removal will be deferred until all guards are dropped.
+/// While the guard exists, it indicates to the pool that the item the guard
+/// references is currently being accessed. If the item is removed from the pool
+/// while the guard exists, the removal will be deferred until all guards are
+/// dropped.
 ///
 /// Unlike [`Ref`], which borrows the pool, an `OwnedRef` clones the `Arc`
 /// around the pool. Therefore, it keeps the pool from being dropped until all
@@ -218,8 +223,8 @@ where
 ///
 /// Unlike [`RefMut`], which borrows the pool, an `OwnedRefMut` clones the `Arc`
 /// around the pool. Therefore, it keeps the pool from being dropped until all
-/// such guards have been dropped. This means that an `OwnedRefMut` may be held for
-/// an arbitrary lifetime.
+/// such guards have been dropped. This means that an `OwnedRefMut` may be held
+/// for an arbitrary lifetime.
 ///
 /// # Examples
 ///
@@ -261,8 +266,8 @@ where
 /// assert_eq!(value, String::from("hello world"));
 /// ```
 ///
-/// Unlike [`RefMut`], an `OwnedRefMut` may be stored in a struct which must live
-/// for the `'static` lifetime:
+/// Unlike [`RefMut`], an `OwnedRefMut` may be stored in a struct which must
+/// live for the `'static` lifetime:
 ///
 /// ```
 /// # use sharded_slab::Pool;
@@ -352,8 +357,9 @@ where
     /// Creates a new object in the pool, returning an [`RefMut`] guard that
     /// may be used to mutate the new object.
     ///
-    /// If this function returns `None`, then the shard for the current thread is full and no items
-    /// can be added until some are removed, or the maximum number of shards has been reached.
+    /// If this function returns `None`, then the shard for the current thread
+    /// is full and no items can be added until some are removed, or the
+    /// maximum number of shards has been reached.
     ///
     /// # Examples
     /// ```rust
@@ -389,17 +395,18 @@ where
         })
     }
 
-    /// Creates a new object in the pool, returning an [`OwnedRefMut`] guard that
-    /// may be used to mutate the new object.
+    /// Creates a new object in the pool, returning an [`OwnedRefMut`] guard
+    /// that may be used to mutate the new object.
     ///
     /// If this function returns `None`, then the shard for the current thread
     /// is full and no items can be added until some are removed, or the maximum
     /// number of shards has been reached.
     ///
-    /// Unlike [`create`], which borrows the pool, this method _clones_ the `Arc`
-    /// around the pool if a value exists for the given key. This means that the
-    /// returned [`OwnedRefMut`] can be held for an arbitrary lifetime. However,
-    /// this method requires that the pool itself be wrapped in an `Arc`.
+    /// Unlike [`create`], which borrows the pool, this method _clones_ the
+    /// `Arc` around the pool if a value exists for the given key. This
+    /// means that the returned [`OwnedRefMut`] can be held for an arbitrary
+    /// lifetime. However, this method requires that the pool itself be
+    /// wrapped in an `Arc`.
     ///
     /// An `OwnedRefMut<T>` functions more or less identically to an owned
     /// `Box<T>`: it can be passed to functions, stored in structure fields, and
@@ -451,8 +458,8 @@ where
     /// assert_eq!(value, String::from("hello world"));
     /// ```
     ///
-    /// Unlike [`RefMut`], an `OwnedRefMut` may be stored in a struct which must live
-    /// for the `'static` lifetime:
+    /// Unlike [`RefMut`], an `OwnedRefMut` may be stored in a struct which must
+    /// live for the `'static` lifetime:
     ///
     /// ```
     /// # use sharded_slab::Pool;
@@ -509,8 +516,9 @@ where
     /// Creates a new object in the pool with the provided initializer,
     /// returning a key that may be used to access the new object.
     ///
-    /// If this function returns `None`, then the shard for the current thread is full and no items
-    /// can be added until some are removed, or the maximum number of shards has been reached.
+    /// If this function returns `None`, then the shard for the current thread
+    /// is full and no items can be added until some are removed, or the
+    /// maximum number of shards has been reached.
     ///
     /// # Examples
     /// ```rust
@@ -531,7 +539,8 @@ where
 
     /// Return a borrowed reference to the value associated with the given key.
     ///
-    /// If the pool does not contain a value for the given key, `None` is returned instead.
+    /// If the pool does not contain a value for the given key, `None` is
+    /// returned instead.
     ///
     /// # Examples
     ///
@@ -631,12 +640,13 @@ where
         })
     }
 
-    /// Remove the value using the storage associated with the given key from the pool, returning
-    /// `true` if the value was removed.
+    /// Remove the value using the storage associated with the given key from
+    /// the pool, returning `true` if the value was removed.
     ///
     /// This method does _not_ block the current thread until the value can be
-    /// cleared. Instead, if another thread is currently accessing that value, this marks it to be
-    /// cleared by that thread when it is done accessing that value.
+    /// cleared. Instead, if another thread is currently accessing that value,
+    /// this marks it to be cleared by that thread when it is done accessing
+    /// that value.
     ///
     /// # Examples
     ///
@@ -949,7 +959,9 @@ where
                 shard.clear_after_release(self.key);
             } else {
                 log::trace!("-> shard={:?} does not exist! THIS IS A BUG", shard_idx);
-                // debug_assert!(panic_unwind::panicking(), "[internal error] tried to drop an `OwnedRef` to a slot on a shard that never existed!");
+                // debug_assert!(panic_unwind::panicking(), "[internal error]
+                // tried to drop an `OwnedRef` to a slot on a shard that never
+                // existed!");
             }
         }
     }
@@ -1077,7 +1089,9 @@ where
                 shard.clear_after_release(self.key);
             } else {
                 log::trace!("-> shard does not exist! THIS IS A BUG");
-                // debug_assert!(panic_unwind::panicking(), "[internal error] tried to drop an `OwnedRefMut` to a slot on a shard that never existed!");
+                // debug_assert!(panic_unwind::panicking(), "[internal error]
+                // tried to drop an `OwnedRefMut` to a slot on a shard that
+                // never existed!");
             }
         }
     }

@@ -109,7 +109,8 @@ where
             .take(addr, C::unpack_gen(idx), self.local(page_index))
     }
 
-    /// Remove an item, while on a different thread from the shard's local thread.
+    /// Remove an item, while on a different thread from the shard's local
+    /// thread.
     pub(crate) fn take_remote(&self, idx: usize) -> Option<T> {
         debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         debug_assert!(Tid::<C>::current().as_usize() != self.tid);
@@ -330,10 +331,12 @@ where
 
 impl<T, C: cfg::Config> Drop for Array<T, C> {
     fn drop(&mut self) {
-        // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper for std atomics to change `get_mut` to `with_mut`...
+        // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper for std
+        // atomics to change `get_mut` to `with_mut`...
         let max = self.max.load(Ordering::Acquire);
         for shard in &self.shards[0..=max] {
-            // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper for std atomics to change `get_mut` to `with_mut`...
+            // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper for std
+            // atomics to change `get_mut` to `with_mut`...
             let ptr = shard.0.load(Ordering::Acquire);
             if ptr.is_null() {
                 continue;

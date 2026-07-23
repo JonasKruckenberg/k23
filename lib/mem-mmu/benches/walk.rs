@@ -37,8 +37,8 @@ const VBASE: usize = GIB;
 /// Base of the mapped *physical* range.
 const PBASE: usize = GIB;
 
-/// Warm single-page commits timed per iteration of the `commit` workload. 511 fills the
-/// rest of the one 4 KiB-level table the pre-mapped page 0 created.
+/// Warm single-page commits timed per iteration of the `commit` workload. 511
+/// fills the rest of the one 4 KiB-level table the pre-mapped page 0 created.
 const COMMIT_PAGES: usize = 511;
 
 // ---------------------------------------------------------------------------
@@ -46,8 +46,8 @@ const COMMIT_PAGES: usize = 511;
 // ---------------------------------------------------------------------------
 
 /// Wraps a real RISC-V `Arch` `A` for its geometry (`LEVELS`, PTE type, derived
-/// consts) but overrides only the handful of methods that would otherwise touch real
-/// hardware, so the walk runs on the host with raw-pointer PTE accesses.
+/// consts) but overrides only the handful of methods that would otherwise touch
+/// real hardware, so the walk runs on the host with raw-pointer PTE accesses.
 struct FlatArch<A>(PhantomData<A>);
 
 impl<A> FlatArch<A> {
@@ -73,8 +73,9 @@ impl<A: Arch> Arch for FlatArch<A> {
     fn fence_all(&self) {}
 }
 
-// Delegating bridge: `FlatArch<A>` maps a leaf size at exactly the depth `A` does, so
-// `map_contiguous::<S>` is available for every `(mode, size)` the wrapped arch supports.
+// Delegating bridge: `FlatArch<A>` maps a leaf size at exactly the depth `A`
+// does, so `map_contiguous::<S>` is available for every `(mode, size)` the
+// wrapped arch supports.
 impl<A, S> MapsAt<S> for FlatArch<A>
 where
     A: MapsAt<S>,
@@ -111,9 +112,10 @@ impl BumpAlloc {
     }
 }
 
-// Safety: every frame is carved from the single live `region` (backed by a `Memory`
-// the caller keeps alive); the cursor advances monotonically so no frame is handed out
-// twice; `deallocate` is a no-op, which is sound because the benches never free.
+// Safety: every frame is carved from the single live `region` (backed by a
+// `Memory` the caller keeps alive); the cursor advances monotonically so no
+// frame is handed out twice; `deallocate` is a no-op, which is sound because
+// the benches never free.
 unsafe impl FrameAllocator for BumpAlloc {
     fn allocate(
         &self,

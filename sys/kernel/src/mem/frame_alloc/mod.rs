@@ -47,8 +47,8 @@ pub struct FrameAllocator {
     global: Mutex<GlobalFrameAllocator>,
     max_alignment: usize,
     /// Number of frames - across all cpus - that are in cpu-local caches.
-    /// This value must only ever be treated as a hint and should only be used to
-    /// produce more accurate frame usage statistics.
+    /// This value must only ever be treated as a hint and should only be used
+    /// to produce more accurate frame usage statistics.
     frames_in_caches_hint: AtomicUsize,
     pub physmap: &'static PhysMap,
 }
@@ -63,9 +63,10 @@ struct CpuLocalFrameCache {
     free_list: List<FrameInfo>,
 }
 
-/// Allocation failure that may be due to resource exhaustion or invalid combination of arguments
-/// such as a too-large alignment. Importantly this error is *not-permanent*, a caller choosing to
-/// retry allocation at a later point in time or with different arguments and might receive a successful
+/// Allocation failure that may be due to resource exhaustion or invalid
+/// combination of arguments such as a too-large alignment. Importantly this
+/// error is *not-permanent*, a caller choosing to retry allocation at a later
+/// point in time or with different arguments and might receive a successful
 /// result.
 #[derive(Debug)]
 pub struct AllocError;
@@ -121,7 +122,8 @@ impl FrameAllocator {
         Ok(frame)
     }
 
-    /// Allocate a single [`Frame`] and ensure the backing physical memory is zero initialized.
+    /// Allocate a single [`Frame`] and ensure the backing physical memory is
+    /// zero initialized.
     pub fn alloc_one_zeroed(&self, physmap: &PhysMap) -> Result<Frame, AllocError> {
         let frame = self.alloc_one()?;
 
@@ -137,7 +139,8 @@ impl FrameAllocator {
         Ok(frame)
     }
 
-    /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`.
+    /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment
+    /// requirements of `layout`.
     pub fn alloc_contiguous(&self, layout: Layout) -> Result<List<FrameInfo>, AllocError> {
         // Fast path: try to satisfy from the per-cpu cache. The borrow must be
         // released before the slow path runs, otherwise the slow path's re-borrow
@@ -166,8 +169,9 @@ impl FrameAllocator {
             .ok_or(AllocError)
     }
 
-    /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`
-    /// and ensuring the backing physical memory is zero initialized.
+    /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment
+    /// requirements of `layout` and ensuring the backing physical memory is
+    /// zero initialized.
     pub fn alloc_contiguous_zeroed(
         &self,
         layout: Layout,
@@ -239,11 +243,12 @@ impl CpuLocalFrameCache {
     /// Locate the index of a window of `frames_needed` cache entries that is
     /// contiguous in physical memory and starts on an `align`-aligned address.
     ///
-    /// The cache is in insertion order, not address order, so we walk it once and
-    /// grow a candidate run whenever the next entry sits exactly one page above the
-    /// previous one. `wrapping_sub` is required for the contiguity test:
-    /// `offset_from_unsigned` panics on out-of-order pairs, and historically that
-    /// panic fired under the talc lock and deadlocked the kernel.
+    /// The cache is in insertion order, not address order, so we walk it once
+    /// and grow a candidate run whenever the next entry sits exactly one
+    /// page above the previous one. `wrapping_sub` is required for the
+    /// contiguity test: `offset_from_unsigned` panics on out-of-order
+    /// pairs, and historically that panic fired under the talc lock and
+    /// deadlocked the kernel.
     fn find_contiguous_run(&self, frames_needed: usize, align: usize) -> Option<usize> {
         let mut start = 0;
         let mut run = 0;

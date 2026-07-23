@@ -62,17 +62,17 @@ fn single_threaded_spawn10(c: &mut Criterion) {
 //     static EXEC: Executor<StdPark> = new_executor!(1);
 //
 //     let h = std::thread::spawn(|| {
-//         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
-//         worker.run();
+//         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(),
+// FastRand::from_seed(0));         worker.run();
 //     });
 //
-//     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
-//     c.bench_function("multi_threaded_spawn", |b| {
+//     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(),
+// FastRand::from_seed(0));     c.bench_function("multi_threaded_spawn", |b| {
 //         b.iter(|| {
 //             worker.block_on(async {
-//                 let (task, h) = EXEC.task_builder().try_build(work()).unwrap();
-//                 EXEC.spawn_allocated(task);
-//                 assert_eq!(h.await.unwrap(), 2);
+//                 let (task, h) =
+// EXEC.task_builder().try_build(work()).unwrap();
+// EXEC.spawn_allocated(task);                 assert_eq!(h.await.unwrap(), 2);
 //             });
 //         })
 //     });
@@ -83,11 +83,12 @@ fn single_threaded_spawn10(c: &mut Criterion) {
 //
 // fn multi_threaded_spawn10(c: &mut Criterion) {
 //     static EXEC: Executor<StdPark> = new_executor!(1);
-//     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+//     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(),
+// FastRand::from_seed(0));
 //
 //     let h = std::thread::spawn(|| {
-//         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
-//         worker.run();
+//         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(),
+// FastRand::from_seed(0));         worker.run();
 //     });
 //
 //     c.bench_function("multi_threaded_spawn10", |b| {
@@ -95,9 +96,9 @@ fn single_threaded_spawn10(c: &mut Criterion) {
 //             worker.block_on(async {
 //                 let mut handles = Vec::with_capacity(10);
 //                 for _ in 0..10 {
-//                     let (task, h) = EXEC.task_builder().try_build(work()).unwrap();
-//                     handles.push(h);
-//                     EXEC.spawn_allocated(task);
+//                     let (task, h) =
+// EXEC.task_builder().try_build(work()).unwrap();
+// handles.push(h);                     EXEC.spawn_allocated(task);
 //                 }
 //
 //                 for handle in handles {

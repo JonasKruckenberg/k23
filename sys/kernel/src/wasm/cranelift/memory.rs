@@ -163,9 +163,8 @@ impl CraneliftMemory {
         );
 
         if offset_and_size > self.bound {
-            // 1. First special case: trap immediately if `offset + access_size >
-            //    bound`, since we will end up being out-of-bounds regardless of the
-            //    given `index`.
+            // 1. First special case: trap immediately if `offset + access_size > bound`,
+            //    since we will end up being out-of-bounds regardless of the given `index`.
             builder.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
             Reachability::Unreachable
         } else if index_type_to_ir_type(self.index_type) == ir::types::I32
@@ -175,8 +174,8 @@ impl CraneliftMemory {
                     .saturating_add(self.offset_guard_size)
                     .saturating_add(offset_and_size)
         {
-            // 2. Second special case for when we can completely omit explicit
-            //    bounds checks for 32-bit static memories.
+            // 2. Second special case for when we can completely omit explicit bounds checks
+            //    for 32-bit static memories.
             //
             //    First, let's rewrite our comparison to move all the constants
             //    to one side:

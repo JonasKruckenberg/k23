@@ -47,7 +47,8 @@ impl Flush {
     ///
     /// # Errors
     ///
-    /// Returns an error if the range could not be flushed due to an underlying hardware error.
+    /// Returns an error if the range could not be flushed due to an underlying
+    /// hardware error.
     pub fn flush(mut self) -> crate::Result<()> {
         if let Some(range) = self.range.take() {
             tracing::trace!(?range, asid = self.asid, "flushing range");
@@ -61,8 +62,9 @@ impl Flush {
 
     /// # Safety
     ///
-    /// Not flushing after mutating the page translation tables will likely lead to unintended
-    /// consequences such as inconsistent views of the address space between different cpus.
+    /// Not flushing after mutating the page translation tables will likely lead
+    /// to unintended consequences such as inconsistent views of the address
+    /// space between different cpus.
     ///
     /// You should only call this if you know what you're doing.
     pub unsafe fn ignore(self) {
@@ -73,7 +75,8 @@ impl Flush {
     ///
     /// # Errors
     ///
-    /// Returns an error if the given ASID does not match the ASID of this `Flush`.
+    /// Returns an error if the given ASID does not match the ASID of this
+    /// `Flush`.
     pub fn extend_range(&mut self, asid: u16, other: Range<VirtualAddress>) -> crate::Result<()> {
         if self.asid == asid {
             if let Some(this) = self.range.take() {

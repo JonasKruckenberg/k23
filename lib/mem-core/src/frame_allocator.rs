@@ -27,39 +27,44 @@ impl fmt::Display for AllocError {
 
 impl core::error::Error for AllocError {}
 
-/// An implementation of Allocator can allocate and deallocate physical memory blocks described via [`Layout`].
+/// An implementation of Allocator can allocate and deallocate physical memory
+/// blocks described via [`Layout`].
 ///
-/// `Allocator` is designed to be implemented on ZSTs, references, or smart pointers. An allocator for
-/// `MyAlloc([u8; N])` cannot be moved, without updating the pointers to the allocated memory.
+/// `Allocator` is designed to be implemented on ZSTs, references, or smart
+/// pointers. An allocator for `MyAlloc([u8; N])` cannot be moved, without
+/// updating the pointers to the allocated memory.
 ///
 /// # Safety
 ///
-/// Memory blocks that are currently allocated by an allocator, must point to valid memory, and
-/// retain their validity until either:
+/// Memory blocks that are currently allocated by an allocator, must point to
+/// valid memory, and retain their validity until either:
 ///
 /// - the memory block is deallocated, or
 /// - the allocator is dropped.
 ///
-/// Copying, cloning, or moving the allocator must not invalidate memory blocks returned from it.
-/// A copied or cloned allocator must behave like the original allocator.
+/// Copying, cloning, or moving the allocator must not invalidate memory blocks
+/// returned from it. A copied or cloned allocator must behave like the original
+/// allocator.
 ///
-/// A memory block which is currently allocated may be passed to any method of the allocator that
-/// accepts such an argument.
+/// A memory block which is currently allocated may be passed to any method of
+/// the allocator that accepts such an argument.
 pub unsafe trait FrameAllocator {
     /// Attempts to allocate physical memory.
     ///
-    /// On success, returns an iterator over the allocated blocks of physical memory. The combined
-    /// size of all blocks will meet the size required by `Layout` and each block will individually
-    /// meet the alignment required by `Layout`.
+    /// On success, returns an iterator over the allocated blocks of physical
+    /// memory. The combined size of all blocks will meet the size required
+    /// by `Layout` and each block will individually meet the alignment
+    /// required by `Layout`.
     ///
-    /// The returned blocks may have a larger size than specified by `layout.size()`, and may or may
-    /// not have its contents initialized.
+    /// The returned blocks may have a larger size than specified by
+    /// `layout.size()`, and may or may not have its contents initialized.
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
-    /// the largest alignment possibly supported by this allocator.
+    /// Returning `Err` indicates that either memory is exhausted or `layout`
+    /// does not meet allocator's size or alignment constraints. You can
+    /// check [`Self::max_alignment_hint`] for the largest alignment
+    /// possibly supported by this allocator.
     ///
     /// Note that passing a zero-sized `Layout` MUST return an error always.
     fn allocate(
@@ -69,18 +74,21 @@ pub unsafe trait FrameAllocator {
 
     /// Attempts to allocate physical memory.
     ///
-    /// On success, returns an iterator over the allocated blocks of physical memory. The combined
-    /// size of all blocks will meet the size required by `Layout` and each block will individually
-    /// meet the alignment required by `Layout`.
+    /// On success, returns an iterator over the allocated blocks of physical
+    /// memory. The combined size of all blocks will meet the size required
+    /// by `Layout` and each block will individually meet the alignment
+    /// required by `Layout`.
     ///
-    /// The returned blocks may have a larger size than specified by `layout.size()`.
-    /// The contents of each block will be initialized to zero.
+    /// The returned blocks may have a larger size than specified by
+    /// `layout.size()`. The contents of each block will be initialized to
+    /// zero.
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
-    /// the largest alignment possibly supported by this allocator.
+    /// Returning `Err` indicates that either memory is exhausted or `layout`
+    /// does not meet allocator's size or alignment constraints. You can
+    /// check [`Self::max_alignment_hint`] for the largest alignment
+    /// possibly supported by this allocator.
     ///
     /// Note that passing a zero-sized `Layout` MUST return an error always.
     fn allocate_zeroed(
@@ -106,34 +114,37 @@ pub unsafe trait FrameAllocator {
 
     /// Attempts to allocate a contiguous block of physical memory.
     ///
-    /// On success, returns a [`PhysicalAddress`] meeting the size and alignment guarantees
-    /// of `layout`.
+    /// On success, returns a [`PhysicalAddress`] meeting the size and alignment
+    /// guarantees of `layout`.
     ///
-    /// The returned block may have a larger size than specified by `layout.size()`, and may or may
-    /// not have its contents initialized.
+    /// The returned block may have a larger size than specified by
+    /// `layout.size()`, and may or may not have its contents initialized.
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
-    /// the largest alignment possibly supported by this allocator.
+    /// Returning `Err` indicates that either memory is exhausted or `layout`
+    /// does not meet allocator's size or alignment constraints. You can
+    /// check [`Self::max_alignment_hint`] for the largest alignment
+    /// possibly supported by this allocator.
     ///
     /// Note that passing a zero-sized `Layout` MUST return an error always.
     fn allocate_contiguous(&self, layout: Layout) -> Result<PhysicalAddress, AllocError>;
 
     /// Attempts to allocate a contiguous block of physical memory.
     ///
-    /// On success, returns a [`PhysicalAddress`] meeting the size and alignment guarantees
-    /// of `layout`.
+    /// On success, returns a [`PhysicalAddress`] meeting the size and alignment
+    /// guarantees of `layout`.
     ///
-    /// The returned block may have a larger size than specified by `layout.size()`.
-    /// The contents of the returned block will be initialized to zero.
+    /// The returned block may have a larger size than specified by
+    /// `layout.size()`. The contents of the returned block will be
+    /// initialized to zero.
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
-    /// the largest alignment possibly supported by this allocator.
+    /// Returning `Err` indicates that either memory is exhausted or `layout`
+    /// does not meet allocator's size or alignment constraints. You can
+    /// check [`Self::max_alignment_hint`] for the largest alignment
+    /// possibly supported by this allocator.
     ///
     /// Note that passing a zero-sized `Layout` MUST return an error always.
     fn allocate_contiguous_zeroed(
@@ -146,8 +157,9 @@ pub unsafe trait FrameAllocator {
 
         let virt = physmap.phys_to_virt(phys);
 
-        // Safety: the address is properly aligned (at least page aligned) and is either valid to
-        // access through the physical memory map or because we're in bootstrapping still and phys==virt
+        // Safety: the address is properly aligned (at least page aligned) and is either
+        // valid to access through the physical memory map or because we're in
+        // bootstrapping still and phys==virt
         unsafe {
             arch.write_bytes(virt, 0, layout.size());
         }
@@ -159,13 +171,15 @@ pub unsafe trait FrameAllocator {
     ///
     /// # Safety
     ///
-    /// 1. `block` must denote a block of frames *currently allocated* via this allocator, and
+    /// 1. `block` must denote a block of frames *currently allocated* via this
+    ///    allocator, and
     /// 2. `layout` must *fit* that block of frames.
     unsafe fn deallocate(&self, block: PhysicalAddress, layout: Layout);
 
     /// Creates a "by reference" adapter for this instance of `FrameAllocator`.
     ///
-    /// The returned adapter also implements `FrameAllocator` and will simply borrow this.
+    /// The returned adapter also implements `FrameAllocator` and will simply
+    /// borrow this.
     #[inline(always)]
     fn by_ref(&self) -> &Self
     where

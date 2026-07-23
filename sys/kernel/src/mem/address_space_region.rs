@@ -37,7 +37,8 @@ pub struct AddressSpaceRegion {
     /// The Virtual Memory Object backing this region
     pub vmo: Arc<Vmo>,
     pub vmo_offset: usize,
-    /// The address range covered by this region and its WAVL tree subtree, used when allocating new regions
+    /// The address range covered by this region and its WAVL tree subtree, used
+    /// when allocating new regions
     pub(super) max_range: Range<VirtualAddress>,
     /// The largest gap in this subtree, used when allocating new regions
     pub(super) max_gap: usize,
@@ -186,15 +187,17 @@ impl AddressSpaceRegion {
         Ok(())
     }
 
-    // TODO this method should be changed to accept an `arch::AddressSpace` and flusher and perform
-    //  the unmapping by itself instead of the `AddressSpace` doing it
+    // TODO this method should be changed to accept an `arch::AddressSpace` and
+    // flusher and perform  the unmapping by itself instead of the
+    // `AddressSpace` doing it
     #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn unmap(&self, range: Range<VirtualAddress>) -> crate::Result<()> {
         match self.vmo.as_ref() {
             Vmo::Wired => panic!("cannot unmap wired frames"),
             Vmo::Phys(_) => {
-                // physical frames aren't managed by anyone, so there is nothing to free here
-                // the unmap handling in `AddressSpace` will take care of the unmapping
+                // physical frames aren't managed by anyone, so there is nothing
+                // to free here the unmap handling in
+                // `AddressSpace` will take care of the unmapping
             }
             Vmo::Paged(vmo) => {
                 let vmo_relative_range = Range {
@@ -219,13 +222,15 @@ impl AddressSpaceRegion {
         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
         debug_assert!(self.range.contains(&addr));
 
-        // Check that the access (read,write or execute) is permitted given this region's permissions
+        // Check that the access (read,write or execute) is permitted given this
+        // region's permissions
         let access_permission = Permissions::from(flags);
         let diff = access_permission.difference(self.permissions);
         if !diff.is_empty() {
-            // diff being empty here means there is no permission mismatch e.g. a read fault against
-            // a read-accessible mapping. Hardware *should* never generate such faults, and for soft
-            // faults it is a programmer error. either way, a bug is afoot.
+            // diff being empty here means there is no permission mismatch e.g. a read fault
+            // against a read-accessible mapping. Hardware *should* never
+            // generate such faults, and for soft faults it is a programmer
+            // error. either way, a bug is afoot.
             debug_assert!(
                 !diff.is_empty(),
                 "triggered page fault against accessible page"
@@ -244,16 +249,17 @@ impl AddressSpaceRegion {
             bail!("requested permissions must be R^X");
         }
 
-        // At this point we know that the access was legal, so either we faulted because the Frame
-        // was missing because we paged it out (THIS IS NOT POSSIBLE YET) or the actual MMU flags
-        // didn't match the logical permissions.
-        // This either means MMU flags were set incorrectly (DOES THIS EVEN HAPPEN?) or - and this
-        // is the most common case - we attempted to write to a non-writable region which means we
-        // need to do copy-on-write.
+        // At this point we know that the access was legal, so either we faulted because
+        // the Frame was missing because we paged it out (THIS IS NOT POSSIBLE
+        // YET) or the actual MMU flags didn't match the logical permissions.
+        // This either means MMU flags were set incorrectly (DOES THIS EVEN HAPPEN?) or
+        // - and this is the most common case - we attempted to write to a
+        // non-writable region which means we need to do copy-on-write.
         //
-        // There is another small optimization here: The physical memory can also be *Wired* which means
-        // it is always mapped, cannot be paged-out, and also doesn't support COW. This is used to
-        // simplify handling of regions like kernel memory which must always be present anyway.
+        // There is another small optimization here: The physical memory can also be
+        // *Wired* which means it is always mapped, cannot be paged-out, and
+        // also doesn't support COW. This is used to simplify handling of
+        // regions like kernel memory which must always be present anyway.
 
         let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
 

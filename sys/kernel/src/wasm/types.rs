@@ -79,15 +79,14 @@ impl Finality {
 /// `ValType` does not implement `Eq`, because reference types have a subtyping
 /// relationship, and so 99.99% of the time you actually want to check whether
 /// one type matches (i.e. is a subtype of) another type. You can use the
-/// [`ValType::matches`] and [`Val::matches_ty`][crate::wasm::Val::matches_ty] methods
-/// to perform these types of checks. If, however, you are in that 0.01%
+/// [`ValType::matches`] and [`Val::matches_ty`][crate::wasm::Val::matches_ty]
+/// methods to perform these types of checks. If, however, you are in that 0.01%
 /// scenario where you need to check precise equality between types, you can use
 /// the [`ValType::eq`] method.
 #[derive(Clone, Hash)]
 pub enum ValType {
     // NB: the ordering of variants here is intended to match the ordering in
     // `wasmtime_environ::WasmType` to help improve codegen when converting.
-    //
     /// Signed 32 bit integer.
     I32,
     /// Signed 64 bit integer.
@@ -598,13 +597,14 @@ pub enum HeapTypeInner {
 
     /// The abstract `cont` heap type represents continuation references.
     ///
-    /// This is the top type for the continuation type hierarchy, and therefore is
-    /// the common supertype of all continuation reference types.
+    /// This is the top type for the continuation type hierarchy, and therefore
+    /// is the common supertype of all continuation reference types.
     Cont,
-    /// The abstract `nocont` heap type represents the null continuation reference.
+    /// The abstract `nocont` heap type represents the null continuation
+    /// reference.
     ///
-    /// This is the bottom type for the continuation type hierarchy, and therefore
-    /// is the common subtype of all continuation reference types.
+    /// This is the bottom type for the continuation type hierarchy, and
+    /// therefore is the common subtype of all continuation reference types.
     NoCont,
 }
 
@@ -1284,8 +1284,8 @@ impl FieldType {
 ///
 /// WebAssembly structs are a static, fixed-length, ordered sequence of
 /// fields. Fields are named by index, not an identifier. Each field is mutable
-/// or constant and stores unpacked [`Val`][crate::wasm::Val]s or packed 8-/16-bit
-/// integers.
+/// or constant and stores unpacked [`Val`][crate::wasm::Val]s or packed
+/// 8-/16-bit integers.
 ///
 /// # Subtyping and Equality
 ///
@@ -1781,8 +1781,8 @@ impl MemoryType {
 /// A WebAssembly global descriptor.
 ///
 /// This type describes an instance of a global in a WebAssembly module. Globals
-/// are local to an [`Instance`](crate::wasm::Instance) and are either immutable or
-/// mutable.
+/// are local to an [`Instance`](crate::wasm::Instance) and are either immutable
+/// or mutable.
 #[derive(Debug, Clone, Hash)]
 pub struct GlobalType {
     content: ValType,
@@ -1869,8 +1869,8 @@ impl fmt::Debug for ImportType<'_> {
 /// A descriptor for an exported WebAssembly value.
 ///
 /// This type is primarily accessed from the
-/// [`Module::exports`](crate::wasm::Module::exports) accessor and describes what
-/// names are exported from a wasm module and the type of the item that is
+/// [`Module::exports`](crate::wasm::Module::exports) accessor and describes
+/// what names are exported from a wasm module and the type of the item that is
 /// exported.
 #[derive(Clone)]
 pub struct ExportType<'module> {

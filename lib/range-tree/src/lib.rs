@@ -1,4 +1,5 @@
-//! This crate provides [`RangeTree`], a fast B+ Tree implementation storing integer ranges.
+//! This crate provides [`RangeTree`], a fast B+ Tree implementation storing
+//! integer ranges.
 
 #![cfg_attr(not(test), no_std)]
 #![feature(allocator_api)]
@@ -43,14 +44,16 @@ impl fmt::Display for OverlapError {
     }
 }
 
-/// Trait which must be implemented for all range indices inserted into a [`RangeTree`].
+/// Trait which must be implemented for all range indices inserted into a
+/// [`RangeTree`].
 ///
-/// [`RangeTree`] requires that range indices be integers and reserves the ZERO `0` value
-/// for internal use. This trait is already implemented for all unsigned nonzero integers,
-/// but this crate allows for custom pivot types that are convertible to/from those integers.
+/// [`RangeTree`] requires that range indices be integers and reserves the ZERO
+/// `0` value for internal use. This trait is already implemented for all
+/// unsigned nonzero integers, but this crate allows for custom pivot types that
+/// are convertible to/from those integers.
 ///
-/// Note that pivots in the [`RangeTree`] are ordered by their integer value and not
-/// the [`Ord`] implementation of the pivot type.
+/// Note that pivots in the [`RangeTree`] are ordered by their integer value and
+/// not the [`Ord`] implementation of the pivot type.
 pub trait RangeTreeIndex: Copy {
     /// Non-zero integer type that this index maps to.
     ///
@@ -81,8 +84,7 @@ pub trait RangeTreeIndex: Copy {
 /// - `BTree` can optionally be used as a multi-map and hold duplicate pivots.
 /// - pivots must be `Copy` and convertible to and from integers via the
 ///   [`RangeTreeIndex`] trait.
-/// - ZERO is reserved for internal use and cannot be used
-///   by pivots.
+/// - ZERO is reserved for internal use and cannot be used by pivots.
 /// - Elements in the tree are ordered by the integer value of the pivot instead
 ///   of the [`Ord`] implementation of the pivots.
 /// - [`Cursor`] and [`CursorMut`] can be used to seek back-and-forth in the
@@ -117,7 +119,8 @@ impl<I: RangeTreeIndex, V> RangeTree<I, V, Global> {
     ///
     /// # Errors
     ///
-    /// Returns `Err(AllocError)` if allocating the initial node of the tree failed.
+    /// Returns `Err(AllocError)` if allocating the initial node of the tree
+    /// failed.
     #[inline]
     pub fn try_new() -> Result<Self, AllocError> {
         Self::try_new_in(Global)
@@ -131,7 +134,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     ///
     /// # Errors
     ///
-    /// Returns `Err(AllocError)` if allocating the initial node of the tree failed.
+    /// Returns `Err(AllocError)` if allocating the initial node of the tree
+    /// failed.
     #[inline]
     pub fn try_new_in(alloc: A) -> Result<Self, AllocError> {
         let mut out = Self {
@@ -176,8 +180,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         if mem::needs_drop::<V>() {
             let mut iter = self.raw_iter();
             while let Some((_pivot, value_ptr)) = unsafe { iter.next(&self.leaf) } {
-                // Safety: `RawIter` yields only entries where `pivot` is non-max, meaning the value
-                // is present and initialized.
+                // Safety: `RawIter` yields only entries where `pivot` is non-max, meaning the
+                // value is present and initialized.
                 unsafe {
                     value_ptr.drop_in_place();
                 }
@@ -201,13 +205,13 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     #[inline]
     pub fn is_empty(&self) -> bool {
         if self.height == Height::LEAF {
-            // Safety: if the tree height is `LEAF` (which we tested for above) the root MUST be
-            // a leaf node
+            // Safety: if the tree height is `LEAF` (which we tested for above) the root
+            // MUST be a leaf node
             let first_pivot = unsafe { self.root.pivot(pos!(0), &self.leaf) };
             first_pivot == I::Int::MAX
         } else {
-            // if we do have internal nodes that means we have split, meaning the tree cannot be
-            // empty
+            // if we do have internal nodes that means we have split, meaning the tree
+            // cannot be empty
             false
         }
     }
@@ -242,9 +246,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     /// identical pivots.
     ///
     /// This allows the `BTree` to be used as a multi-map where each pivot can
-    /// have multiple values. In this case [`RangeTree::get`], [`RangeTree::get_mut`]
-    /// and [`RangeTree::remove`] will only operate on one of the associated values
-    /// (arbitrarily chosen).
+    /// have multiple values. In this case [`RangeTree::get`],
+    /// [`RangeTree::get_mut`] and [`RangeTree::remove`] will only operate
+    /// on one of the associated values (arbitrarily chosen).
     ///
     /// Inserts a range and associated value into the map.
     ///
@@ -252,8 +256,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     ///
     /// If the entry could not be inserted, either because allocation failed
     ///
-    /// Returns `Err` when insertion fails either because allocating the required memory failed
-    /// or because the
+    /// Returns `Err` when insertion fails either because allocating the
+    /// required memory failed or because the
     #[inline]
     pub fn insert(
         &mut self,
@@ -293,8 +297,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         Ok(())
     }
 
-    /// Removes a pivot from the map, returning the value at the pivot if the pivot
-    /// was previously in the map.
+    /// Removes a pivot from the map, returning the value at the pivot if the
+    /// pivot was previously in the map.
     #[inline]
     pub fn remove(&mut self, search: I) -> Option<V> {
         // Safety: we immediately initialize the cursor below
@@ -344,7 +348,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         prev_leaf: &mut Option<NodeRef>,
     ) {
         let Some(down) = height.down() else {
-            // Safety: we have checked this node to be at leaf-level. It MUST be a leaf node.
+            // Safety: we have checked this node to be at leaf-level. It MUST be a leaf
+            // node.
             unsafe {
                 self.check_leaf_node(node, assert_sorted, min, max, prev_leaf);
             }
@@ -356,7 +361,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
                 // Safety: `0..I::B` only produces indices `< I::B`
                 let pos = unsafe { NodePos::new_unchecked(i) };
 
-                // Safety: all leaf nodes are handled above, therefore it MUST be an internal node
+                // Safety: all leaf nodes are handled above, therefore it MUST be an internal
+                // node
                 unsafe { node.pivot(pos, &self.internal) }
             })
         };
@@ -491,8 +497,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for RangeTree<I, V, A> {
             let mut iter = self.raw_iter();
 
             while let Some((_pivot, value_ptr)) = unsafe { iter.next(&self.leaf) } {
-                // Safety: `RawIter` yields only entries where `pivot` is non-max, meaning the value
-                // is present and initialized.
+                // Safety: `RawIter` yields only entries where `pivot` is non-max, meaning the
+                // value is present and initialized.
                 unsafe {
                     value_ptr.drop_in_place();
                 }

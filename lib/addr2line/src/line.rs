@@ -280,7 +280,8 @@ fn render_file<R: gimli::Reader>(
         String::new()
     };
 
-    // The directory index 0 is defined to correspond to the compilation unit directory.
+    // The directory index 0 is defined to correspond to the compilation unit
+    // directory.
     if file.directory_index() != 0
         && let Some(directory) = file.directory(header)
     {

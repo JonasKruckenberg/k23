@@ -70,7 +70,8 @@ impl<'a> Layout<'a> {
                         // and push it to the flattened list
                         dirs.push(child);
 
-                        // also push it to the queue so we continue to process this directories children
+                        // also push it to the queue so we continue to process this directories
+                        // children
                         queue.push_back((child_idx, subdir));
                     }
                     Entry::File(File { source }) => {
@@ -83,7 +84,8 @@ impl<'a> Layout<'a> {
         }
 
         // `sorted_entry_ids` must be sorted according to ECMA-119 §6.8.1.1.
-        // We rely on the BTreeMap to automatically do this, but its easy to mess this up
+        // We rely on the BTreeMap to automatically do this, but its easy to mess this
+        // up
         #[cfg(debug_assertions)]
         for d in &dirs {
             debug_assert!(
@@ -400,8 +402,9 @@ pub(super) struct DirNode<'a> {
     pub(super) extent_lba: u32, // 0 until LBA assignment pass
     pub(super) extent_len: u32,
 
-    pub(super) identifier: Cow<'a, str>, // used to construct the PathTableRecord and DirectoryRecord
-    pub(super) parent_directory: u16,    // used to construct the PathTableRecord
+    pub(super) identifier: Cow<'a, str>, /* used to construct the PathTableRecord and
+                                          * DirectoryRecord */
+    pub(super) parent_directory: u16, // used to construct the PathTableRecord
 
     /// Identifiers of `children` and `files` merged and sorted by name.
     /// Built once during flatten so `required_extent_size` doesn't have
@@ -693,10 +696,12 @@ fn write_dir_record(
 /// The extent contains:
 ///  - `.`  record (this directory)
 ///  - `..` record (parent, or self for root)
-///  - one record per entry in `sorted_entry_ids` (subdirs and files interleaved)
+///  - one record per entry in `sorted_entry_ids` (subdirs and files
+///    interleaved)
 ///
 /// Records that would straddle a sector boundary are preceded by zero padding
-/// to push them to the start of the next sector, mirroring `required_extent_size`.
+/// to push them to the start of the next sector, mirroring
+/// `required_extent_size`.
 fn serialize_dir_extent(
     w: &mut (impl io::Write + io::Seek),
     dir: &DirNode<'_>,
@@ -766,11 +771,13 @@ fn serialize_dir_extent(
 /// Writes the El Torito boot catalog at the current writer position.
 ///
 /// Layout:
-///   1. `ValidationEntry`  — header_id=1, platform_id from `boot_config.validation_platform`, 16-bit word-sum checksum
+///   1. `ValidationEntry`  — header_id=1, platform_id from
+///      `boot_config.validation_platform`, 16-bit word-sum checksum
 ///   2. `InitialEntry`     — the default boot entry
 ///   3. For each section: `SectionHeaderEntry` + one `SectionEntry` per entry
 fn write_boot_catalog(w: &mut impl io::Write, boot_config: &BootConfig) -> io::Result<()> {
-    // ValidationEntry — checksum ensures the 16-bit word sum of the 32-byte record is zero.
+    // ValidationEntry — checksum ensures the 16-bit word sum of the 32-byte record
+    // is zero.
     let validation = {
         let mut e = ValidationEntry::new_zeroed();
         e.header_id = 1;

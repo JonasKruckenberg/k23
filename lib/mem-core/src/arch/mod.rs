@@ -17,28 +17,32 @@ use crate::{MemoryAttributes, PhysicalAddress, VirtualAddress};
 /// The deepest page-table hierarchy across every architecture k23 supports
 /// (RISC-V Sv57, x86_64 5-level, and aarch64 all bottom out at or below this).
 ///
-/// A page-table walk descends at most this many levels, so it can use a stack of
-/// this fixed capacity rather than one sized per-arch; every `Arch` must satisfy
-/// `LEVELS.len() <= MAX_PAGE_TABLE_LEVELS`.
+/// A page-table walk descends at most this many levels, so it can use a stack
+/// of this fixed capacity rather than one sized per-arch; every `Arch` must
+/// satisfy `LEVELS.len() <= MAX_PAGE_TABLE_LEVELS`.
 pub const MAX_PAGE_TABLE_LEVELS: usize = 5;
 
 pub trait Arch {
-    /// The type representing a single page table entry on this architecture. Usually `usize` sized.
+    /// The type representing a single page table entry on this architecture.
+    /// Usually `usize` sized.
     ///
     /// # Safety
     ///
-    /// The value `0` **must** be a valid pattern for this type and **must** correspond to a _vacant_ entry.
+    /// The value `0` **must** be a valid pattern for this type and **must**
+    /// correspond to a _vacant_ entry.
     type PageTableEntry: PageTableEntry + fmt::Debug;
 
     /// The page table levels that this architecture supports.
     const LEVELS: &'static [PageTableLevel];
 
-    /// The default base address of the [`PhysMap`][crate::PhysMap]. The loader may randomize this
-    /// during ASLR but this should be the fallback address. On most architectures it is the first
-    /// address of the upper-half of the address space.
+    /// The default base address of the [`PhysMap`][crate::PhysMap]. The loader
+    /// may randomize this during ASLR but this should be the fallback
+    /// address. On most architectures it is the first address of the
+    /// upper-half of the address space.
     const DEFAULT_PHYSMAP_BASE: VirtualAddress;
 
-    /// The size of the "translation granule" i.e. the smallest page size supported by this architecture.
+    /// The size of the "translation granule" i.e. the smallest page size
+    /// supported by this architecture.
     const GRANULE_SIZE: usize = {
         if let Some(level) = Self::LEVELS.last() {
             level.page_size()
@@ -56,7 +60,8 @@ pub trait Arch {
         }
     };
 
-    /// The number of usable bits in a `VirtualAddress`. This may be used for address canonicalization.
+    /// The number of usable bits in a `VirtualAddress`. This may be used for
+    /// address canonicalization.
     #[expect(
         clippy::cast_possible_truncation,
         reason = "we check the coercion does not truncate"
@@ -68,58 +73,72 @@ pub trait Arch {
         max_bits as u8 + Self::LEVELS[0].index_shift
     };
 
-    /// Returns the physical address of the currently active page table of the calling CPU.
+    /// Returns the physical address of the currently active page table of the
+    /// calling CPU.
     fn active_table(&self) -> Option<PhysicalAddress>;
 
-    /// Sets the currently active page table of the calling CPU to the given `address`.
+    /// Sets the currently active page table of the calling CPU to the given
+    /// `address`.
     ///
-    /// Note that this method **does not** establish any ordering between the page table update and
-    /// implicit references to the page table, nor does it imply a page table cache flush.
+    /// Note that this method **does not** establish any ordering between the
+    /// page table update and implicit references to the page table, nor
+    /// does it imply a page table cache flush.
     ///
-    /// In the common case where page table mappings weren't modified it is not necessary to establish a
-    /// barrier or flush the TLB but if you _modified mappings_ or the _address space identifier was reused_
-    /// you must make sure to call [`Self::fence_all`].
+    /// In the common case where page table mappings weren't modified it is not
+    /// necessary to establish a barrier or flush the TLB but if you
+    /// _modified mappings_ or the _address space identifier was reused_ you
+    /// must make sure to call [`Self::fence_all`].
     ///
     /// # Safety
     ///
-    /// After this method returns, **all pointers become dangling** and as such any access through
-    /// pre-existing pointers is Undefined Behaviour. This includes implicit references by the CPU
-    /// such as the instruction pointer.
+    /// After this method returns, **all pointers become dangling** and as such
+    /// any access through pre-existing pointers is Undefined Behaviour.
+    /// This includes implicit references by the CPU such as the instruction
+    /// pointer.
     ///
-    /// This onerous invariant might seem impossible to uphold, if it weren't for one major exception:
-    /// If a mapping is _identical_ between the two address spaces we consider it sound and allowed.
+    /// This onerous invariant might seem impossible to uphold, if it weren't
+    /// for one major exception: If a mapping is _identical_ between the two
+    /// address spaces we consider it sound and allowed.
     ///
-    /// This means pointers originating from _global_ mappings are safe to access after an address space
-    /// switch and the same holds for identity mappings. This includes the initial bootstrapping of the
+    /// This means pointers originating from _global_ mappings are safe to
+    /// access after an address space switch and the same holds for identity
+    /// mappings. This includes the initial bootstrapping of the
     /// kernel address space where we have to identity map the loader.
     unsafe fn set_active_table(&self, address: PhysicalAddress);
 
-    /// Behaves like [`fence_all`][Self::fence_all] but only effect page table modifications
-    /// within the given `range`.
+    /// Behaves like [`fence_all`][Self::fence_all] but only effect page table
+    /// modifications within the given `range`.
     fn fence(&self, range: Range<VirtualAddress>);
 
     /// Ensures modifications to the page table are visible to the calling CPU.
     ///
-    /// Instruction execution causes implicit _reads_ (and _writes_) to the page table (i.e. when
-    /// the CPU translates a virtual address into a physical one for loads and stores). These implicit
-    /// references are usually not ordered with respect to these loads and stores. In practice this
-    /// means a CPU may pre-compute an address translation long before its associated load/store
-    /// instruction or - as happens in practice - cache the translations potentially forever.
+    /// Instruction execution causes implicit _reads_ (and _writes_) to the page
+    /// table (i.e. when the CPU translates a virtual address into a
+    /// physical one for loads and stores). These implicit references are
+    /// usually not ordered with respect to these loads and stores. In practice
+    /// this means a CPU may pre-compute an address translation long before
+    /// its associated load/store instruction or - as happens in practice -
+    /// cache the translations potentially forever.
     ///
-    /// This method solves this order problem by enforcing that writes to the page table are ordered _before_
-    /// implicit references to the table by subsequent instructions.
+    /// This method solves this order problem by enforcing that writes to the
+    /// page table are ordered _before_ implicit references to the table by
+    /// subsequent instructions.
     ///
-    /// This will flush any local hardware caches related to address translation, a so called **"TLB flush"**.
-    /// Representing it as a fence rather than a cache flush better reflects how this method interacts
-    /// with instruction execution and mirrors the instructions used by out primary ISAs RISC-V and AArch64.
+    /// This will flush any local hardware caches related to address
+    /// translation, a so called **"TLB flush"**. Representing it as a fence
+    /// rather than a cache flush better reflects how this method interacts
+    /// with instruction execution and mirrors the instructions used by out
+    /// primary ISAs RISC-V and AArch64.
     fn fence_all(&self);
 
-    /// Reads the value from `address` without moving it. This leaves the memory in `address` unchanged.
+    /// Reads the value from `address` without moving it. This leaves the memory
+    /// in `address` unchanged.
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::read`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of [`ptr::read`],
+    /// namely behavior is undefined if any of the following conditions are
+    /// violated:
     ///
     /// - `address` must be [valid] for reads.
     /// - `address` must be properly aligned.
@@ -134,13 +153,14 @@ pub trait Arch {
         unsafe { address.as_ptr().cast::<T>().read() }
     }
 
-    /// Overwrites the memory location pointed to by `address` with the given value without reading
-    /// or dropping the old value.
+    /// Overwrites the memory location pointed to by `address` with the given
+    /// value without reading or dropping the old value.
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::write`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of [`ptr::write`],
+    /// namely behavior is undefined if any of the following conditions are
+    /// violated:
     ///
     /// - `address` must be [valid] for writes.
     /// - `address` must be properly aligned.
@@ -154,16 +174,19 @@ pub trait Arch {
         unsafe { address.as_mut_ptr().cast::<T>().write(value) }
     }
 
-    /// Reads `count` bytes of memory starting at `address`. This leaves the memory in `address` unchanged.
+    /// Reads `count` bytes of memory starting at `address`. This leaves the
+    /// memory in `address` unchanged.
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`slice::from_raw_parts`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of
+    /// [`slice::from_raw_parts`], namely behavior is undefined if any of
+    /// the following conditions are violated:
     ///
     /// - `address` must be non-null and [valid] for reads of `count` bytes.
     /// - `address` must be properly aligned.
-    /// - The memory referenced by the returned slice must not be mutated for the duration its lifetime.
+    /// - The memory referenced by the returned slice must not be mutated for
+    ///   the duration its lifetime.
     unsafe fn read_bytes(&self, address: VirtualAddress, count: usize) -> &[u8] {
         // Safety: ensured by the caller.
         unsafe { slice::from_raw_parts(address.as_ptr(), count) }
@@ -177,20 +200,23 @@ pub trait Arch {
     ///
     /// # Safety
     ///
-    /// This method largely inherits the safety requirements of [`ptr::write_bytes`], namely
-    /// behavior is undefined if any of the following conditions are violated:
+    /// This method largely inherits the safety requirements of
+    /// [`ptr::write_bytes`], namely behavior is undefined if any of the
+    /// following conditions are violated:
     ///
     /// - `address` must be non-null and [valid] for writes of `count` bytes.
     /// - `address` must be properly aligned.
     ///
-    /// Note that even if the effectively copied size is 0, the pointer must be properly aligned.
+    /// Note that even if the effectively copied size is 0, the pointer must be
+    /// properly aligned.
     ///
     /// [valid]:
     /// [`ptr::write_bytes`]: core::ptr::write_bytes()
     ///
-    /// Additionally, note using this method one can easily introduce to undefined behavior (UB)
-    /// later if the written bytes are not a valid representation of some T. **Use this to write
-    /// bytes only** If you need a way to write a type to some address, use [`Self::write`].
+    /// Additionally, note using this method one can easily introduce to
+    /// undefined behavior (UB) later if the written bytes are not a valid
+    /// representation of some T. **Use this to write bytes only** If you
+    /// need a way to write a type to some address, use [`Self::write`].
     unsafe fn write_bytes(&self, address: VirtualAddress, value: u8, count: usize) {
         // Safety: ensured by the caller.
         unsafe { ptr::write_bytes(address.as_mut_ptr().cast::<u8>(), value, count) }
@@ -211,8 +237,8 @@ pub trait PageTableEntry: Copy + Send {
 
     /// Returns the physical address stored in this entry.
     ///
-    /// This address will either be the base address of another table or the page address of a
-    /// physical memory block.
+    /// This address will either be the base address of another table or the
+    /// page address of a physical memory block.
     fn address(&self) -> PhysicalAddress;
     /// Returns the `MemoryAttributes` stored in this entry.
     fn attributes(&self) -> MemoryAttributes;
@@ -231,13 +257,14 @@ pub struct PageTableLevel {
 }
 
 impl PageTableLevel {
-    /// Constructs the level whose leaf entries span one `P` page, with `entries`
-    /// slots, that may hold a leaf iff `supports_leaf`.
+    /// Constructs the level whose leaf entries span one `P` page, with
+    /// `entries` slots, that may hold a leaf iff `supports_leaf`.
     ///
-    /// Taking the size as the [`PageSize`] type parameter rather than a raw byte
-    /// count keeps a level's geometry tied to its named size: the `index_shift`
-    /// is exactly `P::SHIFT`, so [`page_size`][Self::page_size] can never drift
-    /// from the marker the arch's `LEVELS` and [`MapsAt`] impls refer to.
+    /// Taking the size as the [`PageSize`] type parameter rather than a raw
+    /// byte count keeps a level's geometry tied to its named size: the
+    /// `index_shift` is exactly `P::SHIFT`, so
+    /// [`page_size`][Self::page_size] can never drift from the marker the
+    /// arch's `LEVELS` and [`MapsAt`] impls refer to.
     pub(crate) const fn new<P: PageSize>(entries: u16, supports_leaf: bool) -> PageTableLevel {
         Self {
             entries,
@@ -248,9 +275,9 @@ impl PageTableLevel {
 
     /// Returns the number of page table entries of a table at this level.
     ///
-    /// On most architectures all tables - regardless of their level - have the same
-    /// number of entries. One notable exception is AArch64 where 16KiB and 64KiB
-    /// page size modes have varying numbers of entries per table.
+    /// On most architectures all tables - regardless of their level - have the
+    /// same number of entries. One notable exception is AArch64 where 16KiB
+    /// and 64KiB page size modes have varying numbers of entries per table.
     #[inline]
     pub const fn entries(&self) -> u16 {
         self.entries
@@ -265,26 +292,30 @@ impl PageTableLevel {
         self.supports_leaf
     }
 
-    /// The size in bytes of the memory region covered by a page table entry at this level.
+    /// The size in bytes of the memory region covered by a page table entry at
+    /// this level.
     ///
     /// For example, in a 4KiB page system with 512 entries per level:
     /// - Level 0 (leaf): 4KiB (2^12)
     /// - Level 1: 2MiB (2^21)
     /// - Level 2: 1GiB (2^30)
     ///
-    /// For an in-depth discussion of page sizes, block sizes, and how the naming conventions used
-    /// by different architectures relate to k23's naming, see the [crate-level documentation](crate#page-size-vs-block-size).
+    /// For an in-depth discussion of page sizes, block sizes, and how the
+    /// naming conventions used by different architectures relate to k23's
+    /// naming, see the [crate-level
+    /// documentation](crate#page-size-vs-block-size).
     #[inline]
     pub const fn page_size(&self) -> usize {
         1 << self.index_shift
     }
 
-    /// Extracts the page table entry (PTE) for a table at this level from the given address.
+    /// Extracts the page table entry (PTE) for a table at this level from the
+    /// given address.
     ///
     /// # Panics
     ///
-    /// Panics if this level has more than `u16::MAX + 1` entries (unreachable for the
-    /// architectures k23 supports).
+    /// Panics if this level has more than `u16::MAX + 1` entries (unreachable
+    /// for the architectures k23 supports).
     // TODO: tests
     //  - ensure this only returns in-bound indices
     #[inline]
@@ -295,8 +326,9 @@ impl PageTableLevel {
         idx
     }
 
-    /// Whether we can create a leaf entry at this level given the combination of base `VirtualAddress`,
-    /// base `PhysicalAddress`, and remaining chunk length.
+    /// Whether we can create a leaf entry at this level given the combination
+    /// of base `VirtualAddress`, base `PhysicalAddress`, and remaining
+    /// chunk length.
     #[inline]
     pub fn can_map(&self, virt: VirtualAddress, phys: PhysicalAddress, len: usize) -> bool {
         let page_size = self.page_size();
@@ -314,16 +346,18 @@ impl PageTableLevel {
 /// An `A: MapsAt<S>` bound is the statement "architecture `A` can map a leaf of
 /// size `S`". It is the typed counterpart of [`Arch::LEVELS`]: `LEVELS` is the
 /// runtime list every level walk consults, while a `MapsAt<S>` impl names *one*
-/// leaf-capable level by its [`PageSize`] and exposes its [`DEPTH`][Self::DEPTH]
-/// as a constant. Because the same byte size sits at a different depth in
-/// different paging modes (2 MiB is depth 1 under Sv39, 2 under Sv48, 3 under
-/// Sv57) the depth cannot live on the size marker; it is resolved per-arch here.
+/// leaf-capable level by its [`PageSize`] and exposes its
+/// [`DEPTH`][Self::DEPTH] as a constant. Because the same byte size sits at a
+/// different depth in different paging modes (2 MiB is depth 1 under Sv39, 2
+/// under Sv48, 3 under Sv57) the depth cannot live on the size marker; it is
+/// resolved per-arch here.
 ///
 /// The set of impls is exactly the set of `(arch, size)` pairs the hardware
 /// supports, so requiring `A: MapsAt<S>` turns an unsupported request into a
 /// compile error rather than a runtime check.
 pub trait MapsAt<S: PageSize>: Arch {
-    /// Depth (root = `0`) of the level whose leaf entries span `S::BYTES` bytes.
+    /// Depth (root = `0`) of the level whose leaf entries span `S::BYTES`
+    /// bytes.
     ///
     /// Known at compile time, this lets the mapping routine descend a fixed,
     /// unrolled number of levels instead of deciding the leaf level per entry.

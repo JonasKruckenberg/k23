@@ -75,12 +75,12 @@ impl<'a> Component<'a> {
     /// * Inline shorthands such as imports/exports/types are all expanded to be
     ///   dedicated fields of the component.
     ///
-    /// * Component fields may be shuffled around to preserve index ordering from
-    ///   expansions.
+    /// * Component fields may be shuffled around to preserve index ordering
+    ///   from expansions.
     ///
-    /// After all of this expansion has happened the component will be converted to
-    /// its binary form and returned as a `Vec<u8>`. This is then suitable to
-    /// hand off to other wasm runtimes and such.
+    /// After all of this expansion has happened the component will be converted
+    /// to its binary form and returned as a `Vec<u8>`. This is then
+    /// suitable to hand off to other wasm runtimes and such.
     ///
     /// # Errors
     ///
