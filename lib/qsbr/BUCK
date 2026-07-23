@@ -1,0 +1,32 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load("//build:loom.bzl", "rust_loom_test")
+
+_DEPS = [
+    "//lib/util:util",
+
+    "//third-party:cordyceps",
+    "//third-party:cfg-if",
+]
+
+rust_library(
+    name = "qsbr",
+    srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS,
+    visibility = ["PUBLIC"],
+    tests = [":qsbr_unittests", ":qsbr_loom_tests"],
+)
+
+rust_test(
+    name = "qsbr_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS,
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+rust_loom_test(
+    name = "qsbr_loom_tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "qsbr",
+    deps = _DEPS + ["//third-party:loom"],
+)
