@@ -359,10 +359,11 @@ impl WastContext {
         let ty = func.ty(&inner.store);
         let this = self.0.clone();
 
-        // FIXME the virtual memory subsystem trap handling code will look for a current task
-        //  in order to find the current address space to resole page faults against. This is why
-        //  we need to wrap this call in a `spawn` that we immediately await (so the scheduling
-        //  subsystem tracks it as a task). Ideally we would get rid of this and have some other
+        // FIXME the virtual memory subsystem trap handling code will look for a current
+        // task  in order to find the current address space to resole page
+        // faults against. This is why  we need to wrap this call in a `spawn`
+        // that we immediately await (so the scheduling  subsystem tracks it as
+        // a task). Ideally we would get rid of this and have some other
         //  mechanism of tracking the current address space...
         // scheduler()
         //     .spawn(async move {
@@ -582,8 +583,8 @@ where
 
 pub fn match_f32(actual: u32, expected: NanPattern<F32>) -> anyhow::Result<()> {
     match expected {
-        // Check if an f32 (as u32 bits to avoid possible quieting when moving values in registers, e.g.
-        // https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
+        // Check if an f32 (as u32 bits to avoid possible quieting when moving values in registers,
+        // e.g. https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
         // is a canonical NaN:
         //  - the sign bit is unspecified,
         //  - the 8-bit exponent is set to all 1s
@@ -647,8 +648,8 @@ pub fn match_f32(actual: u32, expected: NanPattern<F32>) -> anyhow::Result<()> {
 
 pub fn match_f64(actual: u64, expected: &NanPattern<F64>) -> anyhow::Result<()> {
     match expected {
-        // Check if an f64 (as u64 bits to avoid possible quieting when moving values in registers, e.g.
-        // https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
+        // Check if an f64 (as u64 bits to avoid possible quieting when moving values in registers,
+        // e.g. https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
         // is a canonical NaN:
         //  - the sign bit is unspecified,
         //  - the 11-bit exponent is set to all 1s
@@ -671,8 +672,8 @@ pub fn match_f64(actual: u64, expected: &NanPattern<F64>) -> anyhow::Result<()> 
         }
 
         // Check if an f64 (as u64, see comments above) is an arithmetic NaN. This is the same as a
-        // canonical NaN including that the payload MSB is set to 1, but one or more of the remaining
-        // payload bits MAY BE set to 1 (a canonical NaN specifies all 0s). See
+        // canonical NaN including that the payload MSB is set to 1, but one or more of the
+        // remaining payload bits MAY BE set to 1 (a canonical NaN specifies all 0s). See
         // https://webassembly.github.io/spec/core/syntax/values.html#floating-point.
         NanPattern::ArithmeticNan => {
             const AF64_NAN: u64 = 0x7ff0_0000_0000_0000;

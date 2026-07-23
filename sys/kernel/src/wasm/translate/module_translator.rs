@@ -35,7 +35,8 @@ use crate::wasm::translate::{
     TableSegmentElements, Tag,
 };
 
-/// A translator for converting the output of `wasmparser` into types used by this crate.
+/// A translator for converting the output of `wasmparser` into types used by
+/// this crate.
 pub struct ModuleTranslator<'a, 'data> {
     result: ModuleTranslation<'data>,
     validator: &'a mut Validator,

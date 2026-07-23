@@ -185,8 +185,8 @@ where
 
             while let Some(_parent) = parent {
                 let parent_links = unsafe { T::links(_parent).as_ref() };
-                // if we have a parent, and we're not their right/greater child, that parent is our
-                // next node
+                // if we have a parent, and we're not their right/greater child, that parent is
+                // our next node
                 if side == Side::Left {
                     return Some(_parent);
                 }
@@ -212,8 +212,8 @@ where
 
             while let Some(_parent) = parent {
                 let parent_links = unsafe { T::links(_parent).as_ref() };
-                // if we have a parent, and we're not their left/smaller child, that parent is our
-                // previous node
+                // if we have a parent, and we're not their left/smaller child, that parent is
+                // our previous node
                 if side == Side::Right {
                     return Some(_parent);
                 }

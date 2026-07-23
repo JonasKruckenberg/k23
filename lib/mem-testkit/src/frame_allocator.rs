@@ -15,22 +15,24 @@ use mem_core::{AddressRangeExt, AllocError, FrameAllocator, PhysicalAddress};
 
 /// A deliberately simple frame allocator for exercising `mem-core` in tests.
 ///
-/// Unlike the bump allocators used during real boot, this one tracks every free frame
-/// individually and *supports deallocation*, so tests can drive map/unmap cycles and assert
-/// that frames are actually reclaimed (and that `mem-core` never double-frees). It is not
-/// optimized for anything — it linearly scans a [`BTreeSet`] of free frame bases — which is
-/// fine for the small machines tests construct.
+/// Unlike the bump allocators used during real boot, this one tracks every free
+/// frame individually and *supports deallocation*, so tests can drive map/unmap
+/// cycles and assert that frames are actually reclaimed (and that `mem-core`
+/// never double-frees). It is not optimized for anything — it linearly scans a
+/// [`BTreeSet`] of free frame bases — which is fine for the small machines
+/// tests construct.
 #[derive(Debug)]
 pub struct TestFrameAllocator {
     granule: usize,
-    /// Base addresses of all currently-free frames, kept sorted so allocation is deterministic
-    /// (lowest free frame / run first).
+    /// Base addresses of all currently-free frames, kept sorted so allocation
+    /// is deterministic (lowest free frame / run first).
     free: Mutex<BTreeSet<PhysicalAddress>>,
 }
 
 impl TestFrameAllocator {
-    /// Carves the given physical memory `regions` into frames of `A::GRANULE_SIZE` and marks
-    /// them all free. Regions are rounded inward to whole frames; partial frames are discarded.
+    /// Carves the given physical memory `regions` into frames of
+    /// `A::GRANULE_SIZE` and marks them all free. Regions are rounded
+    /// inward to whole frames; partial frames are discarded.
     pub fn new<A: Arch>(regions: impl IntoIterator<Item = Range<PhysicalAddress>>) -> Self {
         let granule = A::GRANULE_SIZE;
 
@@ -55,14 +57,16 @@ impl TestFrameAllocator {
     ///
     /// # Panics
     ///
-    /// Panics if the internal lock has been poisoned by a panic in another allocator call.
+    /// Panics if the internal lock has been poisoned by a panic in another
+    /// allocator call.
     pub fn free_frames(&self) -> usize {
         self.free.lock().unwrap().len()
     }
 }
 
-// Safety: every handed-out frame comes from the machine's backing memory and is removed from the
-// free set, so distinct allocations never overlap and stay valid until deallocated.
+// Safety: every handed-out frame comes from the machine's backing memory and is
+// removed from the free set, so distinct allocations never overlap and stay
+// valid until deallocated.
 unsafe impl FrameAllocator for TestFrameAllocator {
     fn allocate(
         &self,
@@ -71,8 +75,9 @@ unsafe impl FrameAllocator for TestFrameAllocator {
         if layout.size() == 0 {
             return Err(AllocError);
         }
-        // Each block we hand back is a single frame, so it can only honor alignments up to one
-        // frame. Larger alignments must go through `allocate_contiguous`.
+        // Each block we hand back is a single frame, so it can only honor alignments up
+        // to one frame. Larger alignments must go through
+        // `allocate_contiguous`.
         assert!(
             layout.align() <= self.granule,
             "discontiguous allocation supports at most frame alignment ({:#x}), got {:#x}",
@@ -107,7 +112,8 @@ unsafe impl FrameAllocator for TestFrameAllocator {
         let nframes = layout.size().div_ceil(self.granule);
         let mut free = self.free.lock().unwrap();
 
-        // Find the lowest `align`-aligned frame that begins a run of `nframes` free frames.
+        // Find the lowest `align`-aligned frame that begins a run of `nframes` free
+        // frames.
         let base = free
             .iter()
             .copied()

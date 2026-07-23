@@ -89,8 +89,8 @@ entity_impl!(TagIndex);
 /// Source:
 /// <https://github.com/WebAssembly/extended-name-section/blob/main/proposals/extended-name-section/Overview.md#label-names>
 ///
-/// ALSO NOTE: No existing tooling appears to emit label names, so this just doesn't
-/// appear in the wild probably.
+/// ALSO NOTE: No existing tooling appears to emit label names, so this just
+/// doesn't appear in the wild probably.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LabelIndex(u32);
 entity_impl!(LabelIndex);
@@ -139,9 +139,10 @@ impl Default for VMSharedTypeIndex {
 pub struct RecGroupRelativeTypeIndex(u32);
 entity_impl!(RecGroupRelativeTypeIndex);
 
-/// An index pointing to a type that is canonicalized either within just a `Module` (types start out this way),
-/// an entire `Engine` (required for runtime type checks) or a `RecGroup`
-/// (only used during hash-consing to get a stable representation).
+/// An index pointing to a type that is canonicalized either within just a
+/// `Module` (types start out this way), an entire `Engine` (required for
+/// runtime type checks) or a `RecGroup` (only used during hash-consing to get a
+/// stable representation).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum CanonicalizedTypeIndex {
     /// An index within an engine, therefore canonicalized among all modules

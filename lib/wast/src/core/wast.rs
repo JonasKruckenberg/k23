@@ -79,7 +79,8 @@ pub enum WastRetCore<'a> {
     /// A non-null externref is expected which should contain the specified
     /// value.
     RefExtern(Option<u32>),
-    /// A non-null anyref is expected which should contain the specified host value.
+    /// A non-null anyref is expected which should contain the specified host
+    /// value.
     RefHost(u32),
     /// A non-null funcref is expected.
     RefFunc(Option<Index<'a>>),
@@ -157,7 +158,8 @@ impl Peek for WastRetCore<'_> {
     }
 }
 
-/// Either a NaN pattern (`nan:canonical`, `nan:arithmetic`) or a value of type `T`.
+/// Either a NaN pattern (`nan:canonical`, `nan:arithmetic`) or a value of type
+/// `T`.
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(missing_docs)]
 pub enum NanPattern<T> {
@@ -186,8 +188,9 @@ where
 
 /// A version of `V128Const` that allows `NanPattern`s.
 ///
-/// This implementation is necessary because only float types can include NaN patterns; otherwise
-/// it is largely similar to the implementation of `V128Const`.
+/// This implementation is necessary because only float types can include NaN
+/// patterns; otherwise it is largely similar to the implementation of
+/// `V128Const`.
 #[derive(Clone, Debug)]
 #[allow(missing_docs)]
 pub enum V128Pattern {

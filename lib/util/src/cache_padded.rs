@@ -9,21 +9,24 @@ use core::ops::{Deref, DerefMut};
 
 pub const CACHE_LINE_SIZE: usize = align_of::<CachePadded<()>>();
 
-/// `CachePadded` wraps an inner type `T` applying architecture-specific padding to ensure the type
-/// takes up exactly one cache line on the target architecture. This avoids [false sharing].
+/// `CachePadded` wraps an inner type `T` applying architecture-specific padding
+/// to ensure the type takes up exactly one cache line on the target
+/// architecture. This avoids [false sharing].
 ///
 /// The cache padding rules are copied from crossbeam-utils/src/cache_padded.rs
 ///
 /// [false sharing]: <https://en.wikipedia.org/wiki/False_sharing>
 ///
-///  Starting from Intel's Sandy Bridge, spatial prefetcher is now pulling pairs of 64-byte cache
-/// lines at a time, so we have to align to 128 bytes rather than 64.
+///  Starting from Intel's Sandy Bridge, spatial prefetcher is now pulling pairs
+/// of 64-byte cache lines at a time, so we have to align to 128 bytes rather
+/// than 64.
 ///
 /// Sources:
 /// - <https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-optimization-manual.pdf>
 /// - <https://github.com/facebook/folly/blob/1b5288e6eea6df074758f877c849b6e73bbb9fbb/folly/lang/Align.h#L107>
 ///
-/// ARM's big.LITTLE architecture has asymmetric cores and "big" cores have 128-byte cache line size.
+/// ARM's big.LITTLE architecture has asymmetric cores and "big" cores have
+/// 128-byte cache line size.
 ///
 /// Sources:
 /// - <https://www.mono-project.com/news/2016/09/12/arm64-icache/>
@@ -32,7 +35,6 @@ pub const CACHE_LINE_SIZE: usize = align_of::<CachePadded<()>>();
 ///
 /// Sources:
 /// - <https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_ppc64x.go#L9>
-///
 #[cfg_attr(
     any(
         target_arch = "x86_64",

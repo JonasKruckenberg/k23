@@ -63,9 +63,10 @@ pub struct Instance {
 
     /// A pointer to the `vmctx` field at the end of the `Instance`.
     ///
-    /// This pointer is created upon allocation with provenance that covers the *entire* instance
-    /// and VMContext memory. Pointers to VMContext are derived from it inheriting this broader
-    /// provenance. This is important for correctness.
+    /// This pointer is created upon allocation with provenance that covers the
+    /// *entire* instance and VMContext memory. Pointers to VMContext are
+    /// derived from it inheriting this broader provenance. This is
+    /// important for correctness.
     vmctx_self_reference: NonNull<VMContext>,
     /// Self-pointer back to `Store<T>` and its functions. Not present for
     /// the brief time that `Store<T>` is itself being created. Also not
@@ -80,8 +81,8 @@ pub struct Instance {
 
 impl InstanceHandle {
     /// Creates an "empty" instance handle which internally has a null pointer
-    /// to an instance. Actually calling any methods on this `InstanceHandle` will always
-    /// panic.
+    /// to an instance. Actually calling any methods on this `InstanceHandle`
+    /// will always panic.
     pub fn null() -> InstanceHandle {
         InstanceHandle { instance: None }
     }
@@ -382,8 +383,9 @@ impl InstanceHandle {
 impl Instance {
     /// # Safety
     ///
-    /// The caller must ensure that `instance: NonNull<Instance>` got allocated using the
-    /// `Instance::alloc_layout` to ensure it is the right size for the VMContext
+    /// The caller must ensure that `instance: NonNull<Instance>` got allocated
+    /// using the `Instance::alloc_layout` to ensure it is the right size
+    /// for the VMContext
     pub unsafe fn from_parts(
         module: Module,
         instance: NonNull<Instance>,
@@ -393,8 +395,9 @@ impl Instance {
         let dropped_elements = module.translated().active_table_initializers.clone();
         let dropped_data = module.translated().active_memory_initializers.clone();
 
-        // Safety: we have to trust the caller that `NonNull<Instance>` got allocated using the correct
-        // `Instance::alloc_layout` and therefore has the right-sized vmctx memory
+        // Safety: we have to trust the caller that `NonNull<Instance>` got allocated
+        // using the correct `Instance::alloc_layout` and therefore has the
+        // right-sized vmctx memory
         unsafe {
             instance.write(Instance {
                 module,
@@ -740,9 +743,9 @@ impl Instance {
 
                 // if self.env_module().needs_gc_heap {
                 //     self.set_gc_heap(Some(store.gc_store_mut().expect(
-                //         "if we need a GC heap, then `Instance::new_raw` should have already \
-                //          allocated it for us",
-                //     )));
+                //         "if we need a GC heap, then `Instance::new_raw`
+                // should have already \          allocated it
+                // for us",     )));
                 // } else {
                 //     self.set_gc_heap(None);
                 // }
@@ -1020,8 +1023,8 @@ impl Instance {
     ) {
         let vmshape = module.vmshape();
 
-        // Safety: there is no safety, we just have to trust that the entire vmctx memory range
-        // we need was correctly allocated
+        // Safety: there is no safety, we just have to trust that the entire vmctx
+        // memory range we need was correctly allocated
         unsafe {
             // initialize vmctx magic
             tracing::trace!("initializing vmctx magic");
@@ -1186,8 +1189,8 @@ impl Instance {
 
     /// # Safety
     ///
-    /// among other things the caller has to ensure that this is only ever called **after**
-    /// calling `Instance::initialize_vmctx`
+    /// among other things the caller has to ensure that this is only ever
+    /// called **after** calling `Instance::initialize_vmctx`
     #[tracing::instrument(level = "debug", skip(self, module))]
     unsafe fn initialize_vmfunc_refs(&mut self, imports: &Imports, module: &Module) {
         // Safety: the caller pinky-promised that the vmctx is correctly initialized
@@ -1237,8 +1240,8 @@ impl Instance {
 
     /// # Safety
     ///
-    /// among other things the caller has to ensure that this is only ever called **after**
-    /// calling `Instance::initialize_vmctx`
+    /// among other things the caller has to ensure that this is only ever
+    /// called **after** calling `Instance::initialize_vmctx`
     #[tracing::instrument(level = "debug", skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_globals(
         &mut self,
@@ -1266,8 +1269,8 @@ impl Instance {
 
     /// # Safety
     ///
-    /// among other things the caller has to ensure that this is only ever called **after**
-    /// calling `Instance::initialize_vmctx`
+    /// among other things the caller has to ensure that this is only ever
+    /// called **after** calling `Instance::initialize_vmctx`
     #[tracing::instrument(level = "debug", skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_tables(
         &mut self,
@@ -1331,8 +1334,8 @@ impl Instance {
 
     /// # Safety
     ///
-    /// among other things the caller has to ensure that this is only ever called **after**
-    /// calling `Instance::initialize_vmctx`
+    /// among other things the caller has to ensure that this is only ever
+    /// called **after** calling `Instance::initialize_vmctx`
     #[tracing::instrument(level = "debug", skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_memories(
         &mut self,
@@ -1420,7 +1423,8 @@ impl InstanceAndStore {
 
 /// # Safety
 ///
-/// The caller must ensure this function is only ever called **after** `Instance::initialize_vmctx`
+/// The caller must ensure this function is only ever called **after**
+/// `Instance::initialize_vmctx`
 unsafe fn check_init_bounds(
     store: &mut StoreOpaque,
     instance: &mut Instance,
@@ -1436,14 +1440,16 @@ unsafe fn check_init_bounds(
 
 /// # Safety
 ///
-/// The caller must ensure this function is only ever called **after** `Instance::initialize_vmctx`
+/// The caller must ensure this function is only ever called **after**
+/// `Instance::initialize_vmctx`
 unsafe fn check_table_init_bounds(
     store: &mut StoreOpaque,
     instance: &mut Instance,
     module: &Module,
 ) -> crate::Result<()> {
-    // Safety: the caller pinky-promised to have called initialize_vmctx before calling this function
-    // so the VMTableDefinitions are all properly initialized
+    // Safety: the caller pinky-promised to have called initialize_vmctx before
+    // calling this function so the VMTableDefinitions are all properly
+    // initialized
     unsafe {
         let mut const_evaluator = ConstExprEvaluator::default();
 
@@ -1473,14 +1479,16 @@ unsafe fn check_table_init_bounds(
 
 /// # Safety
 ///
-/// The caller must ensure this function is only ever called **after** `Instance::initialize_vmctx`
+/// The caller must ensure this function is only ever called **after**
+/// `Instance::initialize_vmctx`
 unsafe fn check_memory_init_bounds(
     store: &mut StoreOpaque,
     instance: &mut Instance,
     initializers: &[MemoryInitializer],
 ) -> crate::Result<()> {
-    // Safety: the caller pinky-promised to have called initialize_vmctx before calling this function
-    // so the VMMemoryDefinitions are all properly initialized
+    // Safety: the caller pinky-promised to have called initialize_vmctx before
+    // calling this function so the VMMemoryDefinitions are all properly
+    // initialized
     unsafe {
         for init in initializers {
             let memory = instance
@@ -1507,7 +1515,8 @@ unsafe fn check_memory_init_bounds(
 
 /// # Safety
 ///
-/// The caller must ensure this function is only ever called **after** `Instance::initialize_vmctx`
+/// The caller must ensure this function is only ever called **after**
+/// `Instance::initialize_vmctx`
 unsafe fn get_memory_init_start(
     store: &mut StoreOpaque,
     init: &MemoryInitializer,

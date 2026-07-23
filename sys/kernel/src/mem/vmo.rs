@@ -92,7 +92,8 @@ impl PagedVmo {
 
     pub fn require_owned_frame(&mut self, at_offset: usize) -> crate::Result<&mut Frame> {
         if let Some(old_frame) = self.frames.get(at_offset) {
-            // we already have a unique frame reference, a write page fault against it shouldn't happen
+            // we already have a unique frame reference, a write page fault against it
+            // shouldn't happen
             assert!(!old_frame.is_unique());
 
             tracing::trace!("require_owned_frame for resident frame, allocating new...");

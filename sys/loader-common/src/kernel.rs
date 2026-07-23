@@ -32,19 +32,22 @@ pub trait ImageSource {
     ///
     /// # Errors
     ///
-    /// Should return `Err` if the number of bytes read DID NOT equal `dst.len()`.
+    /// Should return `Err` if the number of bytes read DID NOT equal
+    /// `dst.len()`.
     fn read_at(&mut self, offset: u64, dst: &mut [u8]) -> crate::Result<()>;
 }
 
 pub struct KernelImage {
     /// The size of the kernel in memory
     size: usize,
-    /// The entrypoint as reported by the ELF, offset relative to the in-memory image
+    /// The entrypoint as reported by the ELF, offset relative to the in-memory
+    /// image
     pub entry: usize,
     pub load: ArrayVec<LoadSegment, MAX_LOAD_SEGMENTS>,
     tls: TlsTemplate,
     dynamic: ProgramHeader64<LittleEndian>,
-    /// The range (offsets into in-memory image) that must be marked as read-only after applying relocations.
+    /// The range (offsets into in-memory image) that must be marked as
+    /// read-only after applying relocations.
     relro: Range<usize>,
 }
 
@@ -159,7 +162,8 @@ impl<S: ImageSource> Kernel<S> {
 
             assert!(!base.is_null());
 
-            // Safety: we just allocated the memory, `allocate_contiguous` ensures the memory range is valid and initialized
+            // Safety: we just allocated the memory, `allocate_contiguous` ensures the
+            // memory range is valid and initialized
             Ok(unsafe { slice::from_raw_parts_mut(base.as_mut_ptr(), size) })
         };
 
@@ -167,9 +171,9 @@ impl<S: ImageSource> Kernel<S> {
 
         for seg in &self.image.load {
             // NB: explain the filesz<->memsz difference, BSS and how if the BSS ends before
-            // the page boundary we potentially end up with uninitialized memory being mapped
-            // which is of course not a great idea from a security POV. We therefore just zero
-            // everything up to the next page boundary.
+            // the page boundary we potentially end up with uninitialized memory being
+            // mapped which is of course not a great idea from a security POV.
+            // We therefore just zero everything up to the next page boundary.
             let span = seg.unaligned_mem_range();
             let seg_end = span
                 .end
@@ -229,8 +233,8 @@ impl StagedKernel {
     }
 
     /// Apply relocations to the staged kernel.
-    /// When this completes successfully the kernel images is ready for execution
-    /// _within_ its address space.
+    /// When this completes successfully the kernel images is ready for
+    /// execution _within_ its address space.
     pub fn relocate(self, kernel_virt: Range<VirtualAddress>) -> crate::Result<RelocatedKernel> {
         let rela_info = self.parse_rela()?.ok_or(Error::MalformedImage)?;
 
@@ -271,8 +275,9 @@ impl StagedKernel {
     }
 
     fn parse_rela(&self) -> crate::Result<Option<RelaInfo>> {
-        // NB: not using `object`s `.dynamic` method here because we access the segment through the staging buffer
-        // which requires memory-offsets, not file-offsets like `.dynamic` uses.
+        // NB: not using `object`s `.dynamic` method here because we access the segment
+        // through the staging buffer which requires memory-offsets, not
+        // file-offsets like `.dynamic` uses.
         let fields = {
             let vaddr = usize::try_from(self.image.dynamic.p_vaddr(LittleEndian))?;
             let filesz = usize::try_from(self.image.dynamic.p_filesz(LittleEndian))?;
@@ -345,9 +350,9 @@ pub struct RelocatedKernel {
 impl RelocatedKernel {
     /// Physical base address of the staged kernel image.
     ///
-    /// Valid only while UEFI boot services are active: before `ExitBootServices`
-    /// the staging buffer is identity-mapped, so the pointer's address *is* its
-    /// physical address.
+    /// Valid only while UEFI boot services are active: before
+    /// `ExitBootServices` the staging buffer is identity-mapped, so the
+    /// pointer's address *is* its physical address.
     pub fn phys_base(&self) -> PhysicalAddress {
         PhysicalAddress::new(self.kernel.as_ptr().addr())
     }
@@ -377,7 +382,8 @@ impl RelocatedKernel {
         self.image.relro
     }
 
-    /// Allocate the boot hart's TLS block and copy the `.tdata` template into it.
+    /// Allocate the boot hart's TLS block and copy the `.tdata` template into
+    /// it.
     ///
     /// This copies out of the staging buffer rather than the file, and must run
     /// *after* relocation: `.tdata` can itself carry `R_RISCV_RELATIVE`
@@ -432,8 +438,8 @@ pub struct LoadSegment {
 }
 
 impl LoadSegment {
-    /// Byte range this segment occupies in the in-memory image — the file-backed
-    /// bytes followed by the zero-initialized BSS tail.
+    /// Byte range this segment occupies in the in-memory image — the
+    /// file-backed bytes followed by the zero-initialized BSS tail.
     pub fn unaligned_mem_range(&self) -> Range<usize> {
         Range::from(self.image_offset..self.image_offset + self.mem_size)
     }

@@ -244,8 +244,9 @@ impl Activation {
         let mut state = Some(self);
         core::iter::from_fn(move || {
             let this = state?;
-            // Safety: `prev` is always either a null ptr (indicating the end of the list) or a valid pointer to a `CallThreadState`.
-            // This is ensured by the `push` method.
+            // Safety: `prev` is always either a null ptr (indicating the end of the list)
+            // or a valid pointer to a `CallThreadState`. This is ensured by the
+            // `push` method.
             state = unsafe { this.prev.get().as_ref() };
             Some(this)
         })

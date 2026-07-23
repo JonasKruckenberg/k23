@@ -22,15 +22,18 @@ pub fn get_stack_pointer() -> usize {
     stack_pointer
 }
 
-/// Retrieves the next older program counter and stack pointer from the current frame pointer.
-/// The aarch64 calling conventions save the return PC one i64 above the FP and
-/// the previous FP is pointed to by the current FP:
+/// Retrieves the next older program counter and stack pointer from the current
+/// frame pointer. The aarch64 calling conventions save the return PC one i64
+/// above the FP and the previous FP is pointed to by the current FP:
 ///
-/// > Each frame shall link to the frame of its caller by means of a frame record
+/// > Each frame shall link to the frame of its caller by means of a frame
+/// > record
 /// > of two 64-bit values on the stack [...] The frame record for the innermost
 /// > frame [...] shall be pointed to by the frame pointer register (FP). The
-/// > lowest addressed double-word shall point to the previous frame record and the
-/// > highest addressed double-word shall contain the value passed in LR on entry
+/// > lowest addressed double-word shall point to the previous frame record and
+/// > the
+/// > highest addressed double-word shall contain the value passed in LR on
+/// > entry
 /// > to the current function.
 ///
 /// - AAPCS64 section 6.2.3 The Frame Pointer[0]

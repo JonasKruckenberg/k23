@@ -217,7 +217,8 @@ const _: () = assert!(
 
 // ── Validate impls for volume descriptors ────────────────────────────────────
 
-// const EL_TORITO_ID_STRICT: &[u8; 32] = b"EL TORITO SPECIFICATION\0\0\0\0\0\0\0\0\0";
+// const EL_TORITO_ID_STRICT: &[u8; 32] = b"EL TORITO
+// SPECIFICATION\0\0\0\0\0\0\0\0\0";
 const EL_TORITO_ID: &[u8] = b"EL TORITO SPECIFICATION";
 
 impl Validate for BootRecord {

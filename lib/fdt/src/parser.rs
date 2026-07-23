@@ -172,9 +172,9 @@ impl<'dt> Parser<'dt> {
         })
     }
 
-    /// Consume the current node's property tokens, returning the cell counts for
-    /// its children: `inherited`, with any `#address-cells` / `#size-cells` it
-    /// declares overriding the matching field.
+    /// Consume the current node's property tokens, returning the cell counts
+    /// for its children: `inherited`, with any `#address-cells` /
+    /// `#size-cells` it declares overriding the matching field.
     pub(crate) fn child_cell_sizes(&mut self, inherited: CellSizes) -> Result<CellSizes, Error> {
         let mut cells = inherited;
         while self.peek_token()? == BigEndianToken::PROP {

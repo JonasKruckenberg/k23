@@ -21,7 +21,8 @@ pub struct Satp {
 read_csr_as!(Satp, 0x180);
 write_csr!(0x180);
 
-/// Sets the register to corresponding page table mode, physical page number and address space id.
+/// Sets the register to corresponding page table mode, physical page number and
+/// address space id.
 ///
 /// **WARNING**: panics on:
 ///
@@ -33,7 +34,8 @@ pub unsafe fn set(mode: Mode, asid: u16, ppn: usize) {
     try_set(mode, asid, ppn).unwrap();
 }
 
-/// Attempts to set the register to corresponding page table mode, physical page number and address space id.
+/// Attempts to set the register to corresponding page table mode, physical page
+/// number and address space id.
 #[inline]
 #[cfg(target_pointer_width = "32")]
 pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> Result<()> {
@@ -55,7 +57,8 @@ pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> Result<()> {
     }
 }
 
-/// Sets the register to corresponding page table mode, physical page number and address space id.
+/// Sets the register to corresponding page table mode, physical page number and
+/// address space id.
 ///
 /// # Panics
 ///
@@ -67,7 +70,8 @@ pub unsafe fn set(mode: Mode, asid: u16, ppn: usize) {
     unsafe { try_set(mode, asid, ppn).unwrap() }
 }
 
-/// Attempts to set the register to corresponding page table mode, physical page number and address space id.
+/// Attempts to set the register to corresponding page table mode, physical page
+/// number and address space id.
 ///
 /// # Errors
 ///

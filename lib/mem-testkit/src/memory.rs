@@ -96,8 +96,8 @@ impl Memory {
             )
         };
 
-        // Safety: `region` is a live allocation from `host_alloc`, valid for the lifetime of this
-        // `Memory`.
+        // Safety: `region` is a live allocation from `host_alloc`, valid for the
+        // lifetime of this `Memory`.
         let region = unsafe { region.as_mut() };
         &mut region[offset..offset + range.len()]
     }
@@ -145,10 +145,11 @@ impl fmt::Debug for Memory {
     }
 }
 
-// Use mmap with MAP_NORESERVE on Unix so the kernel doesn't count test memory against
-// overcommit limits. Without this, proptests that allocate hundreds of GiB of virtual
-// address space fail on Linux systems with limited RAM and no swap.
-// Miri can't call `mmap`, so under `cfg(miri)` it uses the `System` branch below.
+// Use mmap with MAP_NORESERVE on Unix so the kernel doesn't count test memory
+// against overcommit limits. Without this, proptests that allocate hundreds of
+// GiB of virtual address space fail on Linux systems with limited RAM and no
+// swap. Miri can't call `mmap`, so under `cfg(miri)` it uses the `System`
+// branch below.
 #[cfg(all(unix, not(miri)))]
 fn host_alloc(layout: Layout) -> NonNull<[u8]> {
     // Safety: `mmap` with NUL will ask the kernel to choose a memory range => safe.

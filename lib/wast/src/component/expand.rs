@@ -11,8 +11,8 @@ use crate::{core, gensym, kw};
 ///
 /// This expansion is intended to desugar the AST from various parsed constructs
 /// to bits and bobs amenable for name resolution as well as binary encoding.
-/// For example `(import "i" (func))` is split into a type definition followed by
-/// the import referencing that type definition.
+/// For example `(import "i" (func))` is split into a type definition followed
+/// by the import referencing that type definition.
 ///
 /// Most forms of AST expansion happen in this file and afterwards the AST will
 /// be handed to the name resolution pass which will convert `Index::Id` to

@@ -19,7 +19,8 @@ pub fn get_stack_pointer() -> usize {
     stack_pointer
 }
 
-/// Retrieves the next older program counter and stack pointer from the current frame pointer.
+/// Retrieves the next older program counter and stack pointer from the current
+/// frame pointer.
 pub unsafe fn get_next_older_pc_from_fp(fp: usize) -> usize {
     // The calling convention always pushes the return pointer (aka the PC of
     // the next older frame) just before this frame.

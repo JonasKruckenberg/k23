@@ -42,9 +42,10 @@ pub fn init() -> state::Global {
 
 /// Early per-cpu and RISC-V specific initialization.
 ///
-/// This function will be called before global initialization is done, notably this function
-/// cannot call logging functions, cannot allocate memory, cannot access cpu-local state and should
-/// not panic as the panic handler is not initialized yet.
+/// This function will be called before global initialization is done, notably
+/// this function cannot call logging functions, cannot allocate memory, cannot
+/// access cpu-local state and should not panic as the panic handler is not
+/// initialized yet.
 #[cold]
 pub fn per_cpu_init_early() {
     // Safety: register access
@@ -110,7 +111,8 @@ pub fn get_stack_pointer() -> usize {
     stack_pointer
 }
 
-/// Retrieves the next older program counter and stack pointer from the current frame pointer.
+/// Retrieves the next older program counter and stack pointer from the current
+/// frame pointer.
 pub unsafe fn get_next_older_pc_from_fp(fp: VirtualAddress) -> VirtualAddress {
     // Safety: caller has to ensure fp is valid
     #[expect(clippy::cast_ptr_alignment, reason = "")]

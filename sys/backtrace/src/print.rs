@@ -42,9 +42,9 @@ impl<'a, 'b> BacktraceFmt<'a, 'b> {
 
     /// Adds a frame to the backtrace output.
     ///
-    /// This commit returns an RAII instance of a `BacktraceFrameFmt` which can be used
-    /// to actually print a frame, and on destruction it will increment the
-    /// frame counter.
+    /// This commit returns an RAII instance of a `BacktraceFrameFmt` which can
+    /// be used to actually print a frame, and on destruction it will
+    /// increment the frame counter.
     pub fn frame(&mut self) -> BacktraceFrameFmt<'_, 'a, 'b> {
         BacktraceFrameFmt {
             fmt: self,
@@ -54,8 +54,9 @@ impl<'a, 'b> BacktraceFmt<'a, 'b> {
 
     /// Return the inner formatter.
     ///
-    /// This is used for writing custom information between frames with `write!` and `writeln!`,
-    /// and won't increment the `frame_index` unlike the `frame` method.
+    /// This is used for writing custom information between frames with `write!`
+    /// and `writeln!`, and won't increment the `frame_index` unlike the
+    /// `frame` method.
     pub fn formatter(&mut self) -> &mut fmt::Formatter<'b> {
         self.fmt
     }
@@ -81,9 +82,10 @@ impl BacktraceFrameFmt<'_, '_, '_> {
         )
     }
 
-    /// Print a raw (read un-symbolized) address with this frame formatter. A raw address
-    /// will just show up as the address and `<unknown>` and should be used in places where we
-    /// couldn't find any symbol information for an address.
+    /// Print a raw (read un-symbolized) address with this frame formatter. A
+    /// raw address will just show up as the address and `<unknown>` and
+    /// should be used in places where we couldn't find any symbol
+    /// information for an address.
     pub fn print_raw(&mut self, frame_ip: usize) -> fmt::Result {
         self.print_raw_with_column(frame_ip, None, None, None, None)
     }
@@ -125,9 +127,9 @@ impl BacktraceFrameFmt<'_, '_, '_> {
             write!(self.fmt.fmt, "{:4}: ", self.fmt.frame_index)?;
 
             // Print the instruction pointer. If the symbol name is None we always print
-            // the address. Those weird frames don't happen that often and are always the most
-            // interesting in a backtrace, so we need to make sure to print at least the address so
-            // we have somewhere to start investigating!
+            // the address. Those weird frames don't happen that often and are always the
+            // most interesting in a backtrace, so we need to make sure to print
+            // at least the address so we have somewhere to start investigating!
             if self.fmt.format == BacktraceStyle::Full || symbol_name.is_some() {
                 write!(self.fmt.fmt, "{frame_ip:HEX_WIDTH$x?} - ")?;
             }

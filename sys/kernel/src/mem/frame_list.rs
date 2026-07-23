@@ -349,8 +349,8 @@ impl<'a> Cursor<'a> {
         self.index_in_node = 0;
     }
 
-    /// Returns the offset of the [`Frame`] in this list, will always be a multiple
-    /// of [`arch::PAGE_SIZE`].
+    /// Returns the offset of the [`Frame`] in this list, will always be a
+    /// multiple of [`arch::PAGE_SIZE`].
     pub fn offset(&self) -> usize {
         self.offset
     }
@@ -383,8 +383,8 @@ impl<'a> CursorMut<'a> {
         self.index_in_node = 0;
     }
 
-    /// Returns the offset of the [`Frame`] in this list, will always be a multiple
-    /// of [`arch::PAGE_SIZE`].
+    /// Returns the offset of the [`Frame`] in this list, will always be a
+    /// multiple of [`arch::PAGE_SIZE`].
     pub fn offset(&self) -> usize {
         self.offset
     }

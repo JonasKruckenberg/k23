@@ -327,9 +327,9 @@ impl TypeRegistry {
             .with_write_lock(|inner| inner.register_type(engine, ty))
     }
 
-    // pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
-    //     let id = shared_type_index_to_slab_id(index);
-    //     let inner = self.0.read();
+    // pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) ->
+    // Option<RegisteredType> {     let id =
+    // shared_type_index_to_slab_id(index);     let inner = self.0.read();
     //
     //     let ty = inner.types.get(id)?.clone().unwrap();
     //     let entry = inner.type_to_rec_group[index].clone().unwrap();
@@ -390,8 +390,8 @@ impl TypeRegistry {
             // NB: make sure to incref while the lock is held to prevent:
             //
             // * This thread: read locks registry, gets entry E, unlocks registry
-            // * Other thread: drops `RegisteredType` for entry E, decref
-            //   reaches zero, write locks registry, unregisters entry
+            // * Other thread: drops `RegisteredType` for entry E, decref reaches zero,
+            //   write locks registry, unregisters entry
             // * This thread: increfs entry, but it isn't in the registry anymore
             entry.incr_ref_count("TypeRegistry::root");
 
@@ -453,13 +453,11 @@ impl TypeRegistry {
         //
         // Note the following properties:
         //
-        // 1. If `sub` is a subtype of `sup` (either directly or transitively)
-        //    then `sup` *must* be on the path from `sub` up to the root of
-        //    `sub`'s tree.
+        // 1. If `sub` is a subtype of `sup` (either directly or transitively) then
+        //    `sup` *must* be on the path from `sub` up to the root of `sub`'s tree.
         //
-        // 2. Additionally, `sup` *must* be the `i`th node down from the root in
-        //    that path, where `i` is the length of the path from `sup` to its
-        //    tree's root.
+        // 2. Additionally, `sup` *must* be the `i`th node down from the root in that
+        //    path, where `i` is the length of the path from `sup` to its tree's root.
         //
         // Therefore, if we have the path to the root for each type (we do) then
         // we can simply check if `sup` is at index `supertypes(sup).len()`
@@ -918,14 +916,13 @@ impl TypeRegistryInner {
         // There are two races to guard against before we can unregister the
         // entry, even though it was on the drop stack:
         //
-        // 1. Although an entry has to reach zero registrations before it is
-        //    enqueued in the drop stack, we need to double check whether the
-        //    entry is *still* at zero registrations. This is because someone
-        //    else can resurrect the entry in between when the
-        //    zero-registrations count was first observed and when we actually
-        //    acquire the lock to unregister it. In this example, we have
-        //    threads A and B, an existing rec group entry E, and a rec group
-        //    entry E' that is a duplicate of E:
+        // 1. Although an entry has to reach zero registrations before it is enqueued in
+        //    the drop stack, we need to double check whether the entry is *still* at
+        //    zero registrations. This is because someone else can resurrect the entry
+        //    in between when the zero-registrations count was first observed and when
+        //    we actually acquire the lock to unregister it. In this example, we have
+        //    threads A and B, an existing rec group entry E, and a rec group entry E'
+        //    that is a duplicate of E:
         //
         //    Thread A                        | Thread B
         //    --------------------------------+-----------------------------
@@ -951,8 +948,8 @@ impl TypeRegistryInner {
         //    concurrently resurrected and is now in use again.
         //
         // 2. In a slightly more convoluted version of (1), where an entry is
-        //    resurrected but then dropped *again*, someone might attempt to
-        //    unregister an entry a second time:
+        //    resurrected but then dropped *again*, someone might attempt to unregister
+        //    an entry a second time:
         //
         //    Thread A                        | Thread B
         //    --------------------------------|-----------------------------

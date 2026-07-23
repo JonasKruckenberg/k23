@@ -5,14 +5,15 @@ use crate::Pack;
 use crate::page::Addr;
 use crate::page::slot::{Generation, RefCount};
 
-/// Configuration parameters which can be overridden to tune the behavior of a slab.
+/// Configuration parameters which can be overridden to tune the behavior of a
+/// slab.
 pub trait Config: Sized {
     /// The maximum number of threads which can access the slab.
     ///
     /// This value (rounded to a power of two) determines the number of shards
-    /// in the slab. If a thread is created, accesses the slab, and then terminates,
-    /// its shard may be reused and thus does not count against the maximum
-    /// number of threads once the thread has terminated.
+    /// in the slab. If a thread is created, accesses the slab, and then
+    /// terminates, its shard may be reused and thus does not count against
+    /// the maximum number of threads once the thread has terminated.
     const MAX_THREADS: usize = DefaultConfig::MAX_THREADS;
     /// The maximum number of pages in each shard in the slab.
     ///

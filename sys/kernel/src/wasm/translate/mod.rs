@@ -47,9 +47,10 @@ pub struct ModuleTranslation<'data> {
     pub function_bodies: PrimaryMap<DefinedFuncIndex, FunctionBodyData<'data>>,
     /// DWARF and other debug information parsed from the module.
     pub debug_info: DebugInfo<'data>,
-    /// Required WASM features (proposals etc.) as self-reported by the module through the `wasm-features` custom section.
-    /// Later on this could be used to determine which compiler/runtime features to enable, but
-    /// for now we just use it to assert compatibility.
+    /// Required WASM features (proposals etc.) as self-reported by the module
+    /// through the `wasm-features` custom section. Later on this could be
+    /// used to determine which compiler/runtime features to enable, but for
+    /// now we just use it to assert compatibility.
     pub required_features: WasmFeatures,
 }
 
@@ -73,7 +74,8 @@ pub struct TranslatedModule {
     pub types: PrimaryMap<TypeIndex, ModuleInternedTypeIndex>,
 
     /// The functions declared in this module. Note that this only contains the
-    /// function's signature index, not the actual function body. For that, see `Translation.function_bodies`.
+    /// function's signature index, not the actual function body. For that, see
+    /// `Translation.function_bodies`.
     pub functions: PrimaryMap<FuncIndex, Function>,
     /// The tables declared in this module.
     pub tables: PrimaryMap<TableIndex, Table>,
@@ -99,26 +101,35 @@ pub struct TranslatedModule {
     /// Initializers for memories defined or imported in this module.
     pub memory_initializers: Vec<MemoryInitializer>,
 
-    /// Passive table initializers that can be access by `table.init` instructions.
+    /// Passive table initializers that can be access by `table.init`
+    /// instructions.
     pub passive_table_initializers: HashMap<ElemIndex, TableSegmentElements>,
-    /// Passive memory initializers that can be access by `memory.init` instructions.
+    /// Passive memory initializers that can be access by `memory.init`
+    /// instructions.
     pub passive_memory_initializers: HashMap<DataIndex, Vec<u8>>,
-    /// `ElemIndex`es of active table initializers that should be treated as "dropped" at runtime.
+    /// `ElemIndex`es of active table initializers that should be treated as
+    /// "dropped" at runtime.
     pub active_table_initializers: EntitySet<ElemIndex>,
-    /// `DataIndex`es of active memory initializers that should be treated as "dropped" at runtime.
+    /// `DataIndex`es of active memory initializers that should be treated as
+    /// "dropped" at runtime.
     pub active_memory_initializers: EntitySet<DataIndex>,
-    /// The number of imported functions. The first `num_imported_functions` functions in the `functions`
-    /// table are imported functions.
+    /// The number of imported functions. The first `num_imported_functions`
+    /// functions in the `functions` table are imported functions.
     pub num_imported_functions: u32,
-    /// The number of imported tables. The first `num_imported_tables` tables in the `tables` table are imported tables.
+    /// The number of imported tables. The first `num_imported_tables` tables in
+    /// the `tables` table are imported tables.
     pub num_imported_tables: u32,
-    /// The number of imported memories. The first `num_imported_memories` memories in the `memories` table are imported memories.
+    /// The number of imported memories. The first `num_imported_memories`
+    /// memories in the `memories` table are imported memories.
     pub num_imported_memories: u32,
-    /// The number of imported globals. The first `num_imported_globals` globals in the `globals` table are imported globals.
+    /// The number of imported globals. The first `num_imported_globals` globals
+    /// in the `globals` table are imported globals.
     pub num_imported_globals: u32,
-    /// The number of imported tags. The first `num_imported_tags` globals in the `tags` table are imported tags.
+    /// The number of imported tags. The first `num_imported_tags` globals in
+    /// the `tags` table are imported tags.
     pub num_imported_tags: u32,
-    /// The number of imported functions. This is used to compile host->wasm trampolines later.
+    /// The number of imported functions. This is used to compile host->wasm
+    /// trampolines later.
     pub num_escaped_functions: u32,
 }
 
@@ -317,7 +328,8 @@ pub enum IndexType {
     I64,
 }
 
-/// The size range of resizeable storage associated with [Memory] types and [Table] types.
+/// The size range of resizeable storage associated with [Memory] types and
+/// [Table] types.
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[allow(missing_docs, reason = "self-describing fields")]
 pub struct Limits {
@@ -331,7 +343,8 @@ pub struct Table {
     pub element_type: WasmRefType,
     pub index_type: IndexType,
     pub limits: Limits,
-    /// Whether this table is shared indicating that it should be send-able across threads and the maximum field is always present for valid types.
+    /// Whether this table is shared indicating that it should be send-able
+    /// across threads and the maximum field is always present for valid types.
     ///
     /// This is included the shared-everything-threads proposal.
     pub shared: bool,
@@ -367,10 +380,13 @@ pub struct Memory {
     pub offset_guard_size: u64,
     /// The log2 of this memory's page size, in bytes.
     ///
-    /// By default, the page size is 64KiB (0x10000; 2**16; 1<<16; 65536) but the
-    /// custom-page-sizes proposal allows opting into a page size of `1`.
+    /// By default, the page size is 64KiB (0x10000; 2**16; 1<<16; 65536) but
+    /// the custom-page-sizes proposal allows opting into a page size of
+    /// `1`.
     pub page_size_log2: u8,
-    /// Whether or not this is a “shared” memory, indicating that it should be send-able across threads and the maximum field is always present for valid types.
+    /// Whether or not this is a “shared” memory, indicating that it should be
+    /// send-able across threads and the maximum field is always present for
+    /// valid types.
     ///
     /// This is part of the threads proposal in WebAssembly.
     pub shared: bool,
@@ -483,7 +499,8 @@ pub struct Global {
     pub content_type: WasmValType,
     /// Whether this global is mutable.
     pub mutable: bool,
-    /// Whether this global is shared, indicating that it should be send-able across threads.
+    /// Whether this global is shared, indicating that it should be send-able
+    /// across threads.
     pub shared: bool,
 }
 
@@ -568,7 +585,8 @@ pub struct Import {
     pub module: String,
     /// The name of the item being imported.
     pub name: String,
-    /// Where the imported entity will be placed, this also holds the type of the import.
+    /// Where the imported entity will be placed, this also holds the type of
+    /// the import.
     pub ty: EntityType,
 }
 
@@ -578,7 +596,8 @@ pub struct DebugInfo<'wasm> {
     pub names: Names<'wasm>,
     /// Information about tools involved in the creation of the WASM module.
     pub producers: Producers<'wasm>,
-    /// The offset of the code section in the original wasm file, used to calculate lookup values into the DWARF.
+    /// The offset of the code section in the original wasm file, used to
+    /// calculate lookup values into the DWARF.
     pub code_section_offset: u64,
     pub dwarf: gimli::Dwarf<gimli::EndianSlice<'wasm, gimli::LittleEndian>>,
     pub debug_loc: gimli::DebugLoc<gimli::EndianSlice<'wasm, gimli::LittleEndian>>,

@@ -122,7 +122,8 @@ impl<T: ?Sized> IrqRwLock<T> {
     }
 
     /// Masks interrupts and attempts to lock this rwlock with exclusive write
-    /// access; on success calls `f` with exclusive access to the protected data.
+    /// access; on success calls `f` with exclusive access to the protected
+    /// data.
     ///
     /// Returns `None` without running `f` if [`IrqRwLock::with_write`] would
     /// otherwise block, restoring the previous interrupt state immediately.
@@ -137,7 +138,8 @@ impl<T: ?Sized> IrqRwLock<T> {
     }
 
     /// Masks interrupts and attempts to lock this rwlock with exclusive write
-    /// access; on success calls `f` with exclusive access to the protected data.
+    /// access; on success calls `f` with exclusive access to the protected
+    /// data.
     ///
     /// Unlike [`IrqRwLock::try_with_write`], this function is allowed to
     /// spuriously fail even when acquiring exclusive write access would
@@ -211,24 +213,30 @@ impl<T: ?Sized> IrqRwLock<T> {
         self.inner.is_locked_exclusive()
     }
 
-    /// Return the number of readers that currently hold the lock (including upgradable readers).
+    /// Return the number of readers that currently hold the lock (including
+    /// upgradable readers).
     ///
     /// # Safety
     ///
-    /// This function provides no synchronization guarantees and so its result should be considered 'out of date'
-    /// the instant it is called. Do not use it for synchronization purposes. However, it may be useful as a heuristic.
+    /// This function provides no synchronization guarantees and so its result
+    /// should be considered 'out of date' the instant it is called. Do not
+    /// use it for synchronization purposes. However, it may be useful as a
+    /// heuristic.
     pub fn reader_count(&self) -> usize {
         self.inner.reader_count()
     }
 
     /// Return the number of writers that currently hold the lock.
     ///
-    /// Because [`IrqRwLock`] guarantees exclusive mutable access, this function may only return either `0` or `1`.
+    /// Because [`IrqRwLock`] guarantees exclusive mutable access, this function
+    /// may only return either `0` or `1`.
     ///
     /// # Safety
     ///
-    /// This function provides no synchronization guarantees and so its result should be considered 'out of date'
-    /// the instant it is called. Do not use it for synchronization purposes. However, it may be useful as a heuristic.
+    /// This function provides no synchronization guarantees and so its result
+    /// should be considered 'out of date' the instant it is called. Do not
+    /// use it for synchronization purposes. However, it may be useful as a
+    /// heuristic.
     pub fn writer_count(&self) -> usize {
         self.inner.writer_count()
     }

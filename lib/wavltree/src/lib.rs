@@ -7,22 +7,27 @@
 
 //! # An intrusive Weak AVL Tree.
 //!
-//! A Rust implementation of Weak AVL Trees, primarily for use in the [k23 operating system][k23].
+//! A Rust implementation of Weak AVL Trees, primarily for use in the [k23
+//! operating system][k23].
 //!
-//! Weak AVL trees are *self-balancing binary search trees* introduced by [Haeupler, Sen & Tarjan (2015)][paper] that are
-//! similar to red-black trees but better in several ways.
-//! In particular, their worst-case height is that of AVL trees (~1.44log2(n) as opposed to 2log2(n) for red-black trees),
-//! while tree restructuring operations after deletions are even more efficient than red-black trees.
-//! Additionally, this implementation is *intrusive* meaning node data (pointers to other nodes etc.) are stored _within_
-//! participating values, rather than being allocated and owned by the tree itself.
+//! Weak AVL trees are *self-balancing binary search trees* introduced by
+//! [Haeupler, Sen & Tarjan (2015)][paper] that are similar to red-black trees
+//! but better in several ways. In particular, their worst-case height is that
+//! of AVL trees (~1.44log2(n) as opposed to 2log2(n) for red-black trees),
+//! while tree restructuring operations after deletions are even more efficient
+//! than red-black trees. Additionally, this implementation is *intrusive*
+//! meaning node data (pointers to other nodes etc.) are stored _within_
+//! participating values, rather than being allocated and owned by the tree
+//! itself.
 //!
 //! **This crate is self-contained, (somewhat) fuzzed, and fully `no_std`.**
 //!
 //! ## Example
 //!
-//! The following example shows an implementation of a simple intrusive WAVL tree node (`MyNode`) and
-//! how it can be used with `WAVLTree`, notice how - due to the intrusive nature of the data structure -
-//! there is quite a lot more setup required, compared to e.g. a `BTreeMap` or `HashMap`.
+//! The following example shows an implementation of a simple intrusive WAVL
+//! tree node (`MyNode`) and how it can be used with `WAVLTree`, notice how -
+//! due to the intrusive nature of the data structure - there is quite a lot
+//! more setup required, compared to e.g. a `BTreeMap` or `HashMap`.
 //!
 //! ```rust
 //! # extern crate alloc;
@@ -92,27 +97,36 @@
 //!
 //! ## When To Use This
 //!
-//! - **want binary search** - WAVL trees are *sorted* collections that are efficient to search.
-//! - **search more than you edit** - WAVL trees offer better search complexity than red-black trees at the cost of being
-//!   slightly more complex.
-//! - **want to avoid hidden allocations** - Because node data is stored _inside_ participating values, an element can be
-//!   added without requiring additional heap allocations.
-//! - **have to allocator at all** - When elements have fixed memory locations (such as pages in a page allocator, `static`s),
-//!   they can be added without *any allocations at all*.
-//! - **want flexibility** - Intrusive data structures allow elements to participate in many different collections at the
-//!   same time, e.g. a node might both be linked to a `WAVLTree` and an intrusive doubly-linked list at the same time.
+//! - **want binary search** - WAVL trees are *sorted* collections that are
+//!   efficient to search.
+//! - **search more than you edit** - WAVL trees offer better search complexity
+//!   than red-black trees at the cost of being slightly more complex.
+//! - **want to avoid hidden allocations** - Because node data is stored
+//!   _inside_ participating values, an element can be added without requiring
+//!   additional heap allocations.
+//! - **have to allocator at all** - When elements have fixed memory locations
+//!   (such as pages in a page allocator, `static`s), they can be added without
+//!   *any allocations at all*.
+//! - **want flexibility** - Intrusive data structures allow elements to
+//!   participate in many different collections at the same time, e.g. a node
+//!   might both be linked to a `WAVLTree` and an intrusive doubly-linked list
+//!   at the same time.
 //!
-//! In short, `WAVLTree`s are a good choice for `no_std` binary search trees such as inside page allocators.
+//! In short, `WAVLTree`s are a good choice for `no_std` binary search trees
+//! such as inside page allocators.
 //!
 //! ## When Not To Use This
 //!
-//! - **need to store primitives** - Intrusive collections require elements to store the node data, which excludes
-//!   primitives such as strings or numbers, since they can't hold this metadata.
-//! - **can't use unsafe** - Both this implementation and code consuming it require `unsafe`, the `Linked` trait is unsafe
-//!   to implement since it requires implementors uphold special invariants.
-//! - **you are unsure if you need this** - Search trees and especially intrusive ones like this are niche data structures,
-//!   only use them if you are sure you need them. Very likely doing binary search on a sorted `Vec` or using a `HashMap`
-//!   works better for your use case.
+//! - **need to store primitives** - Intrusive collections require elements to
+//!   store the node data, which excludes primitives such as strings or numbers,
+//!   since they can't hold this metadata.
+//! - **can't use unsafe** - Both this implementation and code consuming it
+//!   require `unsafe`, the `Linked` trait is unsafe to implement since it
+//!   requires implementors uphold special invariants.
+//! - **you are unsure if you need this** - Search trees and especially
+//!   intrusive ones like this are niche data structures, only use them if you
+//!   are sure you need them. Very likely doing binary search on a sorted `Vec`
+//!   or using a `HashMap` works better for your use case.
 //!
 //! ## Cargo Features
 //!
@@ -157,7 +171,8 @@ pub use crate::cursor::{Cursor, CursorMut};
 pub use crate::entry::{Entry, OccupiedEntry, VacantEntry};
 use crate::utils::get_sibling;
 
-/// Trait implemented by types which can be members of an [intrusive WAVL tree][WAVLTree].
+/// Trait implemented by types which can be members of an [intrusive WAVL
+/// tree][WAVLTree].
 ///
 /// In order to be part of an intrusive WAVL tree, a type must contain a
 /// `Links` type that stores the pointers to other nodes in the tree.
@@ -168,10 +183,10 @@ use crate::utils::get_sibling;
 /// to ensure that types implementing this trait are valid intrusive collection
 /// nodes. In particular:
 ///
-/// - Implementations **must** ensure that implementors are pinned in memory while they
-///   are in an intrusive collection. While a given `Linked` type is in an intrusive
-///   data structure, it may not be deallocated or moved to a different memory
-///   location.
+/// - Implementations **must** ensure that implementors are pinned in memory
+///   while they are in an intrusive collection. While a given `Linked` type is
+///   in an intrusive data structure, it may not be deallocated or moved to a
+///   different memory location.
 /// - The type implementing this trait **must not** implement [`Unpin`].
 /// - Additional safety requirements for individual methods on this trait are
 ///   documented on those methods.
@@ -285,16 +300,20 @@ pub unsafe trait Linked {
 
     /// The type by which entries are identified.
     ///
-    /// This type must be a unique identifier of an element, as it is used as the key for all public facing methods (e.g. `[WAVLTree::find`]).
+    /// This type must be a unique identifier of an element, as it is used as
+    /// the key for all public facing methods (e.g. `[WAVLTree::find`]).
     ///
-    /// WAVL trees are sorted meaning that elements must form a total order (entries must be comparable
-    /// using `<` and `>`). However, placing the `Ord` requirement directly on entries makes for an
-    /// awkward API thanks to the intrusive nature of the data structure, so consumers may define a
-    /// custom key type (and key extraction method [`Linked::get_key`]) by which entries are compared.
+    /// WAVL trees are sorted meaning that elements must form a total order
+    /// (entries must be comparable using `<` and `>`). However, placing the
+    /// `Ord` requirement directly on entries makes for an awkward API
+    /// thanks to the intrusive nature of the data structure, so consumers may
+    /// define a custom key type (and key extraction method
+    /// [`Linked::get_key`]) by which entries are compared.
     ///
     /// # Example
     ///
-    /// Suppose this is our element data structure where we want to identify entries *only* by their age.
+    /// Suppose this is our element data structure where we want to identify
+    /// entries *only* by their age.
     ///
     /// ```rust
     /// struct Entry {
@@ -302,7 +321,6 @@ pub unsafe trait Linked {
     ///     age: u16,
     ///     name: String
     /// }
-    ///
     /// ```
     ///
     /// The corresponding `Linked` implementation would look like this:
@@ -346,7 +364,8 @@ pub unsafe trait Linked {
     /// This function is safe to call when:
     ///
     /// It is valid to construct a Self::Handle from a`raw pointer
-    /// The pointer points to a valid instance of Self (e.g. it does not dangle).
+    /// The pointer points to a valid instance of Self (e.g. it does not
+    /// dangle).
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle;
     /// Return the links of the node pointed to by ptr.
     ///
@@ -354,19 +373,22 @@ pub unsafe trait Linked {
     /// This function is safe to call when:
     ///
     /// It is valid to construct a Self::Handle from a`raw pointer
-    /// The pointer points to a valid instance of Self (e.g. it does not dangle).
-    /// See the [the trait-level documentation](#implementing-linkedlinks) documentation for details on how to correctly implement this method.
+    /// The pointer points to a valid instance of Self (e.g. it does not
+    /// dangle). See the [the trait-level
+    /// documentation](#implementing-linkedlinks) documentation for details on
+    /// how to correctly implement this method.
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<Links<Self>>;
 
-    /// Retrieve the key identifying this node within the collection. See [`Linked::Key`] for details.
+    /// Retrieve the key identifying this node within the collection. See
+    /// [`Linked::Key`] for details.
     fn get_key(&self) -> &Self::Key;
 
     /// Invoked on the pivot node, its parent, children, and sibling before a
     /// rotation, just before updating the pointers in the relevant nodes.
     /// The direction of rotation is given by `side`.
     ///
-    /// The following diagrams the relationship of the nodes in a left rotation (right rotations are
-    /// mirrored):
+    /// The following diagrams the relationship of the nodes in a left rotation
+    /// (right rotations are mirrored):
     ///
     /// ```text
     ///         parent                               self
@@ -376,8 +398,8 @@ pub unsafe trait Linked {
     ///        lr_child  rl_child           sibling  lr_child
     /// ```
     ///
-    /// Note that this hook will be called during double rotations too, once for the opposite side subtree
-    /// rotation and once for the final rotation.
+    /// Note that this hook will be called during double rotations too, once for
+    /// the opposite side subtree rotation and once for the final rotation.
     #[allow(unused, reason = "trait declaration")]
     fn after_rotate(
         self: Pin<&mut Self>,
@@ -390,7 +412,8 @@ pub unsafe trait Linked {
 
     /// Invoked on the node to be erased and the node in the tree where the
     /// augmented invariants become invalid, leading up to the root. Called just
-    /// after updating the pointers in the relevant nodes, but before rebalancing.
+    /// after updating the pointers in the relevant nodes, but before
+    /// rebalancing.
     #[allow(unused, reason = "trait declaration")]
     fn after_remove(self: Pin<&mut Self>, parent: Link<Self>) {}
 
@@ -402,14 +425,15 @@ type Link<T> = Option<NonNull<T>>;
 
 /// An intrusive Weak AVL Tree.
 ///
-/// This data structure supports efficient O(log n) lookup of elements and may be used for binary search.
-/// All operations complete in logarithmic time.
+/// This data structure supports efficient O(log n) lookup of elements and may
+/// be used for binary search. All operations complete in logarithmic time.
 ///
-/// A weak AVL Tree (also called WAVL tree) is binary search tree closely related
-/// to AVL trees and red-black trees, combining the best properties of both.
-/// When built using insertions only it has the same upper height bound of AVL trees (~1.44 log2(n)
-/// where n is the number of elements in the tree) while at the same time requiring only a constant
-/// number of rotations for insertions and deletions (worst case deletion requires 2 rotations).
+/// A weak AVL Tree (also called WAVL tree) is binary search tree closely
+/// related to AVL trees and red-black trees, combining the best properties of
+/// both. When built using insertions only it has the same upper height bound of
+/// AVL trees (~1.44 log2(n) where n is the number of elements in the tree)
+/// while at the same time requiring only a constant number of rotations for
+/// insertions and deletions (worst case deletion requires 2 rotations).
 pub struct WAVLTree<T>
 where
     T: Linked + ?Sized,
@@ -489,11 +513,12 @@ where
         self.size() == 0
     }
 
-    /// Returns a double-ended iterator over a sub-range of entries in the tree. The simplest way is
-    /// to use the range syntax `min..max`, thus `range(min..max)` will yield elements from min (inclusive)
-    /// to max (exclusive). The range may also be entered as `(Bound<T>, Bound<T>)`, so for example
-    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive
-    /// range from 4 to 10.
+    /// Returns a double-ended iterator over a sub-range of entries in the tree.
+    /// The simplest way is to use the range syntax `min..max`, thus
+    /// `range(min..max)` will yield elements from min (inclusive)
+    /// to max (exclusive). The range may also be entered as `(Bound<T>,
+    /// Bound<T>)`, so for example `range((Excluded(4), Included(10)))` will
+    /// yield a left-exclusive, right-inclusive range from 4 to 10.
     pub fn range<Q, R>(&self, range: R) -> Iter<'_, T>
     where
         <T as Linked>::Key: Borrow<Q>,
@@ -518,11 +543,12 @@ where
         }
     }
 
-    /// Returns a mutable double-ended iterator over a sub-range of entries in the tree. The simplest way is
-    /// to use the range syntax `min..max`, thus `range(min..max)` will yield elements from min (inclusive)
-    /// to max (exclusive). The range may also be entered as `(Bound<T>, Bound<T>)`, so for example
-    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive
-    /// range from 4 to 10.
+    /// Returns a mutable double-ended iterator over a sub-range of entries in
+    /// the tree. The simplest way is to use the range syntax `min..max`,
+    /// thus `range(min..max)` will yield elements from min (inclusive)
+    /// to max (exclusive). The range may also be entered as `(Bound<T>,
+    /// Bound<T>)`, so for example `range((Excluded(4), Included(10)))` will
+    /// yield a left-exclusive, right-inclusive range from 4 to 10.
     pub fn range_mut<Q, R>(&mut self, range: R) -> IterMut<'_, T>
     where
         <T as Linked>::Key: Borrow<Q>,
@@ -547,7 +573,8 @@ where
         }
     }
 
-    /// Returns the given key's corresponding entry in the tree for in-place manipulation.
+    /// Returns the given key's corresponding entry in the tree for in-place
+    /// manipulation.
     pub fn entry<Q>(&mut self, key: &Q) -> Entry<'_, T>
     where
         <T as Linked>::Key: Borrow<Q>,
@@ -678,7 +705,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the new entry is already linked to a different intrusive collection.
+    /// Panics if the new entry is already linked to a different intrusive
+    /// collection.
     pub fn insert(&mut self, element: T::Handle) -> Pin<&mut T> {
         unsafe {
             let mut ptr = T::into_ptr(element);
@@ -724,11 +752,13 @@ where
         }
     }
 
-    /// Removes an entry - identified by the given key - from the tree, returning the owned handle
-    /// if the associated entry was part of the tree.
+    /// Removes an entry - identified by the given key - from the tree,
+    /// returning the owned handle if the associated entry was part of the
+    /// tree.
     ///
-    /// The key may be any borrowed form of the entry’s key type, but the ordering on the borrowed
-    /// form *must* match the ordering on the key type.
+    /// The key may be any borrowed form of the entry’s key type, but the
+    /// ordering on the borrowed form *must* match the ordering on the key
+    /// type.
     pub fn remove<Q>(&mut self, key: &Q) -> Option<T::Handle>
     where
         <T as Linked>::Key: Borrow<Q>,
@@ -739,7 +769,8 @@ where
         Some(self.remove_internal(ptr))
     }
 
-    /// Returns a [`Cursor`] pointing at the gap before the smallest key greater than the given bound.
+    /// Returns a [`Cursor`] pointing at the gap before the smallest key greater
+    /// than the given bound.
     #[inline]
     pub fn lower_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, T>
     where
@@ -752,7 +783,8 @@ where
         }
     }
 
-    /// Returns a [`CursorMut`] pointing at the gap before the smallest key greater than the given bound.
+    /// Returns a [`CursorMut`] pointing at the gap before the smallest key
+    /// greater than the given bound.
     #[inline]
     pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, T>
     where
@@ -765,7 +797,8 @@ where
         }
     }
 
-    /// Returns a [`Cursor`] pointing at the gap after the greatest key smaller than the given bound.
+    /// Returns a [`Cursor`] pointing at the gap after the greatest key smaller
+    /// than the given bound.
     #[inline]
     pub fn upper_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, T>
     where
@@ -778,7 +811,8 @@ where
         }
     }
 
-    /// Returns a [`CursorMut`] pointing at the gap after the greatest key smaller than the given bound.
+    /// Returns a [`CursorMut`] pointing at the gap after the greatest key
+    /// smaller than the given bound.
     #[inline]
     pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, T>
     where
@@ -800,7 +834,8 @@ where
         }
     }
 
-    /// Gets a mutable iterator over the entries in the tree, sorted by their key.
+    /// Gets a mutable iterator over the entries in the tree, sorted by their
+    /// key.
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             head: self.root.map(|root| utils::find_minimum(root)),
@@ -811,7 +846,8 @@ where
 
     /// Removes all elements from the tree.
     ///
-    /// This will properly unlink and drop all entries, which requires iterating through the tree.
+    /// This will properly unlink and drop all entries, which requires iterating
+    /// through the tree.
     pub fn clear(&mut self) {
         if let Some(root) = self.root.take() {
             self.clear_inner(root);
@@ -837,7 +873,8 @@ where
         }
     }
 
-    /// Takes all the elements out of the `WAVLTree`, leaving it empty. The taken elements are returned as a new `WAVLTree`.
+    /// Takes all the elements out of the `WAVLTree`, leaving it empty. The
+    /// taken elements are returned as a new `WAVLTree`.
     #[inline]
     pub fn take(&mut self) -> Self {
         let tree = Self {
@@ -850,8 +887,8 @@ where
 
     /// Asserts as many of the tree's invariants as possible.
     ///
-    /// Note that with debug assertions enabled, this includes validating the WAVL rank-balancing
-    /// rules **which is disabled otherwise**.
+    /// Note that with debug assertions enabled, this includes validating the
+    /// WAVL rank-balancing rules **which is disabled otherwise**.
     #[track_caller]
     pub fn assert_valid(&self, ctx: &str) {
         unsafe {
@@ -879,7 +916,8 @@ where
             // assert that all links are set up correctly (no loops, self references, etc.)
             node_links.assert_valid(ctx);
 
-            // We can only check the WAVL rule if we track the rank, which we only do in debug builds
+            // We can only check the WAVL rule if we track the rank, which we only do in
+            // debug builds
             #[cfg(debug_assertions)]
             {
                 let parent_links = T::links(parent).as_ref();
@@ -1084,12 +1122,13 @@ where
         unsafe {
             let mut parent = T::links(x).as_ref().parent().unwrap();
 
-            // The WAVL rank rules require all rank differences to be either 1 or 2; 0 is now allowed.
-            // The parent was previously a 1,1 leaf, but is now a 0,1 unary node. 0 is not allowed
-            // so we need to rebalance.
+            // The WAVL rank rules require all rank differences to be either 1 or 2; 0 is
+            // now allowed. The parent was previously a 1,1 leaf, but is now a
+            // 0,1 unary node. 0 is not allowed so we need to rebalance.
             //
             // Sep 1: Promotion
-            // We begin with promoting the parent nodes, according to the following algorithm:
+            // We begin with promoting the parent nodes, according to the following
+            // algorithm:
             //
             // while parent_.is_some() && parent is 0,1
             //      promote parent
@@ -1097,7 +1136,8 @@ where
             //
             // To determine whether parent is a 0,1 node, we need `curr`s rank parity,
             // `parent`s rank parity and the other sibling's parity which we read below.
-            // Note, that they are all `let mut` because we need to update them each iteration.
+            // Note, that they are all `let mut` because we need to update them each
+            // iteration.
 
             let mut par_x: bool;
             let mut par_parent: bool;
@@ -1118,7 +1158,8 @@ where
                 parent = parent_;
 
                 // update parities
-                // note that we explicitly create new `T::links` references here bc we just updated the pointers.
+                // note that we explicitly create new `T::links` references here bc we just
+                // updated the pointers.
                 par_x = T::links(x).as_ref().rank_parity();
                 par_parent = T::links(parent).as_ref().rank_parity();
 
@@ -1129,8 +1170,8 @@ where
                 // Let N, P and S denote the current node, parent, and sibling parities
                 // that we read above. Then `parent` is 0,1 iff (!N * !P * S) + (N * P * !S)
                 //
-                // This means when the inverse is true, we reached a parent that's not 0,1 and so
-                // we can stop the promotion loop.
+                // This means when the inverse is true, we reached a parent that's not 0,1 and
+                // so we can stop the promotion loop.
                 if (!par_x || !par_parent || par_sibling) && (par_x || par_parent || !par_sibling) {
                     break;
                 }
@@ -1287,7 +1328,8 @@ where
             // Demote the node turning it into a 1,1 leaf.
             x_links.demote();
 
-            // By demoting this node, we just created a 3-child so we need to deal with that.
+            // By demoting this node, we just created a 3-child so we need to deal with
+            // that.
             self.rebalance_after_remove_3_child(Some(x), parent);
         } else {
             // Demote the node turning it into a 1,1 leaf.
@@ -1445,13 +1487,14 @@ where
 
 /// Links to other nodes in a [`WAVLTree`].
 ///
-/// In order to be part of a [`WAVLTree`], a type must contain an instance of this type, and must implement the [`Linked`] trait.
+/// In order to be part of a [`WAVLTree`], a type must contain an instance of
+/// this type, and must implement the [`Linked`] trait.
 ///
 /// # Debug assertions
 ///
-/// With debug assertions enabled, `Links` also keeps track of the nodes rank, this is so
-/// `WAVLTree::assert_valid` can assert the WAVL rank balancing rules. This increases the size of
-/// `Links` by an additional `usize`
+/// With debug assertions enabled, `Links` also keeps track of the nodes rank,
+/// this is so `WAVLTree::assert_valid` can assert the WAVL rank balancing
+/// rules. This increases the size of `Links` by an additional `usize`
 pub struct Links<T: ?Sized> {
     inner: UnsafeCell<LinksInner<T>>,
 }
@@ -1519,8 +1562,8 @@ impl<T: ?Sized> Links<T> {
     ///
     /// # Safety
     ///
-    /// Calling this method on a node that is linked to a tree, **will corrupt the tree** leaving
-    /// pointers to arbitrary memory around.
+    /// Calling this method on a node that is linked to a tree, **will corrupt
+    /// the tree** leaving pointers to arbitrary memory around.
     unsafe fn unlink(&mut self) {
         self.inner.get_mut().up = None;
         self.inner.get_mut().left = None;

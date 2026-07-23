@@ -1034,7 +1034,8 @@ impl<'a> Cursor<'a> {
         Some(Span {
             offset: self.pos.offset,
         })
-        // let (token, _) = self.parser.buf.tokens.get(self.cur.checked_sub(1)?)?;
+        // let (token, _) =
+        // self.parser.buf.tokens.get(self.cur.checked_sub(1)?)?;
         // Some(Span {
         //     offset: token.offset,
         // })
@@ -1230,9 +1231,9 @@ impl<'a> Cursor<'a> {
     /// Attempts to advance this cursor if the current token is a
     /// [`Token::Annotation`](crate::lexer::Token)
     ///
-    /// If the current token is `Annotation`, returns the annotation token as well
-    /// as a new [`Cursor`] pointing at the rest of the tokens in the stream.
-    /// Otherwise returns `None`.
+    /// If the current token is `Annotation`, returns the annotation token as
+    /// well as a new [`Cursor`] pointing at the rest of the tokens in the
+    /// stream. Otherwise returns `None`.
     ///
     /// This function will automatically skip over any comments, whitespace, or
     /// unknown annotations.

@@ -61,11 +61,13 @@ pub struct Tick {
     #[cfg(feature = "counters")]
     pub spawned: usize,
 
-    /// The number of tasks that were woken from outside their own `poll` calls since the last tick.
+    /// The number of tasks that were woken from outside their own `poll` calls
+    /// since the last tick.
     #[cfg(feature = "counters")]
     pub woken_external: usize,
 
-    /// The number of tasks that were woken from within their own `poll` calls during this tick.
+    /// The number of tasks that were woken from within their own `poll` calls
+    /// during this tick.
     #[cfg(feature = "counters")]
     pub woken_internal: usize,
 }
@@ -108,7 +110,8 @@ impl Executor {
 
     /// Closes the executor.
     ///
-    /// After calling close all ongoing and future calls to [`Worker::run`] will return `Err(Closed)`.
+    /// After calling close all ongoing and future calls to [`Worker::run`] will
+    /// return `Err(Closed)`.
     pub fn close(&self) {
         self.sleepers.close();
     }
@@ -167,8 +170,9 @@ impl Executor {
 
     /// Attempt spawn this [`Future`] onto this executor.
     ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an
+    /// [`crate::executor::Executor`] and a [`JoinHandle`] which can be used
+    /// to await the futures output as well as control some aspects
     /// of its runtime behaviour (such as cancelling it).
     ///
     /// # Errors
@@ -183,10 +187,12 @@ impl Executor {
         self.build_task().try_spawn(future)
     }
 
-    /// Attempt spawn this [`Future`] with the provided metadata onto this executor.
+    /// Attempt spawn this [`Future`] with the provided metadata onto this
+    /// executor.
     ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an
+    /// [`crate::executor::Executor`] and a [`JoinHandle`] which can be used
+    /// to await the futures output as well as control some aspects
     /// of its runtime behaviour (such as cancelling it).
     ///
     /// # Errors
@@ -235,7 +241,8 @@ impl Worker {
     ///
     /// # Errors
     ///
-    /// Returns `Err(Closed)` if the executor has been closed before the future completes.
+    /// Returns `Err(Closed)` if the executor has been closed before the future
+    /// completes.
     pub async fn run<F>(&mut self, future: F) -> Result<F::Output, Closed>
     where
         F: Future + Send,

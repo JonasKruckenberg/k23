@@ -22,7 +22,8 @@ use crate::time::{Ticks, TimeError, Timer};
 /// # Errors
 ///
 /// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call
+///    [`crate::time::set_global_timer`] first.
 /// 2. [`TimeError::DurationTooLong`] The requested duration is too big
 pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep<'_>, TimeError> {
     let ticks = timer.duration_to_ticks(duration)?;
@@ -37,8 +38,10 @@ pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep<'_>, TimeError> 
 /// # Errors
 ///
 /// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call
+///    [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into
+///    the future
 pub fn sleep_until(timer: &Timer, deadline: Instant) -> Result<Sleep<'_>, TimeError> {
     let deadline = deadline.as_ticks(timer)?;
 
@@ -150,8 +153,8 @@ mod tests {
     use crate::loom::sync::atomic::{AtomicBool, Ordering};
     use crate::time::test_util::MockClock;
 
-    // loom is not happy about this test. For whatever reason it triggers the "too many branches"
-    // error. But both the regular test AND miri are fine with it
+    // loom is not happy about this test. For whatever reason it triggers the "too
+    // many branches" error. But both the regular test AND miri are fine with it
     #[test]
     #[cfg(not(loom))]
     fn sleep_basically_works() {
@@ -200,8 +203,8 @@ mod tests {
             clock.advance(Duration::from_millis(250));
 
             // Tick 2:
-            //  We expect nothing to happen during this tick, since the task is still not ready yet
-            //  (we're only at 250ms not 500ms).
+            //  We expect nothing to happen during this tick, since the task is still not
+            // ready yet  (we're only at 250ms not 500ms).
             let tick = worker.tick();
             assert_eq!(tick.polled, 0); // the task isn't in the workers queue, so no tasks should be polled
             assert_eq!(tick.completed, 0); // and also no tasks completed of course
@@ -216,8 +219,9 @@ mod tests {
             clock.advance(Duration::from_millis(250));
 
             // Tick 3:
-            //  Polling right now should still technically do nothing, since the timer hasn't been
-            //  turned yet, and therefore the task hasn't been woken.
+            //  Polling right now should still technically do nothing, since the timer
+            // hasn't been  turned yet, and therefore the task hasn't been
+            // woken.
             let tick = worker.tick();
             assert_eq!(tick.polled, 0);
             assert_eq!(tick.completed, 0);
@@ -228,8 +232,8 @@ mod tests {
             assert!(next_deadline.is_none()); // consequently no deadline to wait for anymore
 
             // Tick 4:
-            //  Polling now should complete the task since we're at 500ms AND we turned the timer
-            //  to wake the task!
+            //  Polling now should complete the task since we're at 500ms AND we turned the
+            // timer  to wake the task!
             let tick = worker.tick();
             assert_eq!(tick.polled, 1); // we expect the task to have been in the work queue
             assert_eq!(tick.completed, 1); // and it should be ready now
@@ -249,10 +253,11 @@ mod tests {
 
     //     loom::model(|| {
     //         loom::lazy_static! {
-    //             static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
-    //         }
+    //             static ref EXEC: Executor<StdPark> = Executor::new(1,
+    // std_clock!());         }
 
-    //         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+    //         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(),
+    // FastRand::from_seed(0));
 
     //         worker.block_on(async {
     //             let begin = ::std::time::Instant::now();
@@ -283,8 +288,8 @@ mod tests {
     //
     //     loom::model(|| {
     //         loom::lazy_static! {
-    //             static ref EXEC: Executor<StdPark> = Executor::new(WORKERS, std_clock!());
-    //         }
+    //             static ref EXEC: Executor<StdPark> = Executor::new(WORKERS,
+    // std_clock!());         }
     //
     //         let _guard = StopOnPanic::new(&EXEC);
     //
@@ -292,22 +297,23 @@ mod tests {
     //             .map(|id| {
     //                 loom::thread::spawn(move || {
     //                     let mut worker =
-    //                         Worker::new(&EXEC, id, StdPark::for_current(), FastRand::from_seed(0));
+    //                         Worker::new(&EXEC, id, StdPark::for_current(),
+    // FastRand::from_seed(0));
     //
     //                     let tasks = (0..TASKS).map(|_| {
     //                         EXEC.try_spawn(async move {
     //                             let begin = ::std::time::Instant::now();
     //
-    //                             sleep(EXEC.timer(), Duration::from_millis(500))
-    //                                 .unwrap()
+    //                             sleep(EXEC.timer(),
+    // Duration::from_millis(500))                                 .unwrap()
     //                                 .await;
     //
     //                             let elapsed = begin.elapsed();
     //                             assert!(
-    //                                 elapsed.as_millis() >= 500 && elapsed.as_millis() <= 600,
-    //                                 "expected to sleep between 500ms and 600ms, but got {}",
-    //                                 elapsed.as_millis()
-    //                             );
+    //                                 elapsed.as_millis() >= 500 &&
+    // elapsed.as_millis() <= 600,                                 "expected
+    // to sleep between 500ms and 600ms, but got {}",
+    // elapsed.as_millis()                             );
     //                         })
     //                         .unwrap()
     //                     });

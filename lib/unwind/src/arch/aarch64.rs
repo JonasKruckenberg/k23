@@ -30,12 +30,14 @@ cfg_if! {
     }
 }
 
-/// Returns the default register rule for the given register on this architecture.
+/// Returns the default register rule for the given register on this
+/// architecture.
 pub fn default_register_rule_for(reg: Register) -> RegisterRule<usize> {
     // the AArch64 DWARF standard requires rules for callee-saved registers and
-    //  "registers intentionally unused by the program, for example as a consequence of the procedure call standard"
-    //  to be initialized to `RegisterRule::SameValue` while other registers should be initialized to `RegisterRule::Undefined`.
-    //  <https://github.com/ARM-software/abi-aa/blob/main/aadwarf64/aadwarf64.rst#43common-information-entries>
+    //  "registers intentionally unused by the program, for example as a consequence
+    // of the procedure call standard"  to be initialized to
+    // `RegisterRule::SameValue` while other registers should be initialized to
+    // `RegisterRule::Undefined`.  <https://github.com/ARM-software/abi-aa/blob/main/aadwarf64/aadwarf64.rst#43common-information-entries>
     //
     // <https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst#61machine-registers>
     // defines callee-saved registers to be
@@ -51,8 +53,8 @@ pub fn default_register_rule_for(reg: Register) -> RegisterRule<usize> {
 
 /// Register context when unwinding.
 ///
-/// This type is architecture-dependent, but generally holds a copy of all registers that are required
-/// to look up values while unwinding the stack.
+/// This type is architecture-dependent, but generally holds a copy of all
+/// registers that are required to look up values while unwinding the stack.
 #[repr(C)]
 #[derive(Clone, Default)]
 pub struct Registers {
@@ -220,8 +222,9 @@ macro_rules! restore {
 
 /// # Safety
 ///
-/// This function will restore whatever values are in the given `Context` into the machine registers
-/// **without** performing any sort of validation. The caller must ensure at least:
+/// This function will restore whatever values are in the given `Context` into
+/// the machine registers **without** performing any sort of validation. The
+/// caller must ensure at least:
 /// 1. `SP` `regs.sp` is a valid, correctly-aligned, writable stack address.
 pub unsafe fn restore_context(ctx: &Registers) -> ! {
     // Safety: ensured by caller

@@ -11,7 +11,8 @@ use crate::arch::{PageTableLevel, impl_maps_at};
 use crate::page_size::{Size1GiB, Size2MiB, Size4KiB, Size256TiB, Size512GiB};
 use crate::{MemoryAttributes, PhysicalAddress, VirtualAddress, WriteOrExecute};
 
-/// The number of usable bits in a `PhysicalAddress`. This may be used for address canonicalization.
+/// The number of usable bits in a `PhysicalAddress`. This may be used for
+/// address canonicalization.
 #[cfg_attr(not(test), expect(unused, reason = "only used by tests"))]
 const PHYSICAL_ADDRESS_BITS: usize = 56;
 
@@ -420,10 +421,11 @@ fn fence_all() {
     riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, usize::MAX).unwrap();
 }
 
-// NOTE(mem-core split): this round-trip test bounds its address strategy by the private
-// `PHYSICAL_ADDRESS_BITS`, which an out-of-crate integration test cannot reach. Left
-// commented for review — make `PHYSICAL_ADDRESS_BITS` `pub` (or inline its value) and move
-// this to `tests/arch_riscv64.rs`, taking `aligned_phys`/`phys` from `mem_testkit::proptest`.
+// NOTE(mem-core split): this round-trip test bounds its address strategy by the
+// private `PHYSICAL_ADDRESS_BITS`, which an out-of-crate integration test
+// cannot reach. Left commented for review — make `PHYSICAL_ADDRESS_BITS` `pub`
+// (or inline its value) and move this to `tests/arch_riscv64.rs`, taking
+// `aligned_phys`/`phys` from `mem_testkit::proptest`.
 /*
 proptest! {
     #[test]

@@ -29,8 +29,8 @@ pub async fn yield_now() {
             self.yielded = true;
 
             // Yielding works by immediately calling `wake_by_ref` which will reinsert this
-            // task into the queue (essentially a reschedule) and then returning `Poll::Pending`
-            // to signal that this task is not done yet
+            // task into the queue (essentially a reschedule) and then returning
+            // `Poll::Pending` to signal that this task is not done yet
             cx.waker().wake_by_ref();
             Poll::Pending
         }

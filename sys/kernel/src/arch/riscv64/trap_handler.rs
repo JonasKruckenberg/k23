@@ -49,8 +49,8 @@ pub fn init() {
 }
 
 /// Top of this CPU's trap stack. `sscratch` must hold this value whenever
-/// the CPU is outside the trap handler so the next trap's `csrrw sp, sscratch, sp`
-/// lands the new trap frame on the trap stack.
+/// the CPU is outside the trap handler so the next trap's `csrrw sp, sscratch,
+/// sp` lands the new trap frame on the trap stack.
 fn trap_stack_top() -> usize {
     // Safety: TRAP_STACK is a valid CPU-local static of the queried size.
     unsafe {
@@ -259,9 +259,9 @@ unsafe extern "C" fn default_trap_entry() {
 }
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
-// Note: The C-unwind here is important, we want the stable C ABI so we can call this function from
-// assembly, but we also want to be able to unwind past it into the trampoline above (so stack traces
-// are fully accurate)
+// Note: The C-unwind here is important, we want the stable C ABI so we can call
+// this function from assembly, but we also want to be able to unwind past it
+// into the trampoline above (so stack traces are fully accurate)
 extern "C-unwind" fn default_trap_handler(frame: &mut unwind::Registers) {
     // The trap entry deliberately doesn't store `x0` into the frame — `x0`
     // is hardwired to zero, and the trap stack is zero-initialised at boot.
@@ -313,14 +313,15 @@ extern "C-unwind" fn default_trap_handler(frame: &mut unwind::Registers) {
         Trap::Exception(
             Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
         ) => {
-            // first attempt the page fault handler, can it recover us from this by fixing up mappings?
+            // first attempt the page fault handler, can it recover us from this by fixing
+            // up mappings?
             if crate::mem::handle_page_fault(cause, tval).is_break() {
                 IN_TRAP.set(false);
                 return;
             }
 
-            // if not attempt the wasm fault handler, is the current trap caused by a user program?
-            // if so can it kill the program?
+            // if not attempt the wasm fault handler, is the current trap caused by a user
+            // program? if so can it kill the program?
             if let ControlFlow::Break(saved) =
                 crate::wasm::trap_handler::handle_wasm_exception(epc, fp, tval)
             {
@@ -360,9 +361,10 @@ fn handle_kernel_exception(
     tval: VirtualAddress,
 ) -> ! {
     // let's go ahead and begin unwinding the stack that caused the fault
-    // Note: we use unwinding here to give kernel code the chance to catch this and recover from it.
-    // If the unwinding reaches the root `catch_unwind` in `main.rs` this will tear down the entire
-    // system causing all CPUs to shut down.
+    // Note: we use unwinding here to give kernel code the chance to catch this and
+    // recover from it. If the unwinding reaches the root `catch_unwind` in
+    // `main.rs` this will tear down the entire system causing all CPUs to shut
+    // down.
 
     tracing::error!("KERNEL TRAP {cause:?} epc={epc};tval={tval}");
 
@@ -461,8 +463,8 @@ mod tests {
 
     /// `gimli::RiscV` aliases must land in the GPR/FPR slot assigned by the
     /// RISC-V psABI. `s2..s11` live at `x18..x27` (not `x10..x19`) and
-    /// `fs2..fs11` at `f18..f27` — code that patches a [`kunwind::Registers`] via
-    /// `frame[RiscV::S2] = ...` relies on this mapping holding.
+    /// `fs2..fs11` at `f18..f27` — code that patches a [`kunwind::Registers`]
+    /// via `frame[RiscV::S2] = ...` relies on this mapping holding.
     #[test::test]
     async fn registers_index_matches_riscv_abi() {
         let mut r = unwind::Registers::default();

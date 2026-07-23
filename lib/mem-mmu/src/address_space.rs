@@ -43,12 +43,14 @@ impl<A: Arch> HardwareAddressSpace<A> {
         })
     }
 
-    /// Constructs a new `AddressSpace` from its raw components: architecture-specific data and the root table.
+    /// Constructs a new `AddressSpace` from its raw components:
+    /// architecture-specific data and the root table.
     ///
     /// #  Safety
     ///
-    /// The caller must ensure the address space defined by `arch`, `root_page_table`, and `physmap`
-    /// indeed represents a properly initialized address space according to [`Active`].
+    /// The caller must ensure the address space defined by `arch`,
+    /// `root_page_table`, and `physmap` indeed represents a properly
+    /// initialized address space according to [`Active`].
     pub unsafe fn from_parts(arch: A, root_page_table: Table<A, marker::Owned>) -> Self {
         Self {
             root_page_table,
@@ -56,13 +58,15 @@ impl<A: Arch> HardwareAddressSpace<A> {
         }
     }
 
-    /// Decomposes an `AddressSpace` into its raw components: architecture-specific data and the root table.
+    /// Decomposes an `AddressSpace` into its raw components:
+    /// architecture-specific data and the root table.
     pub fn into_parts(self) -> (A, Table<A, marker::Owned>) {
         (self.arch, self.root_page_table)
     }
 
-    /// Decomposes an `AddressSpace` into its raw components: architecture-specific data and the
-    /// physical address of the root page table.
+    /// Decomposes an `AddressSpace` into its raw components:
+    /// architecture-specific data and the physical address of the root page
+    /// table.
     pub fn into_raw_parts(self) -> (A, PhysicalAddress) {
         let (root_page_table, depth) = self.root_page_table.into_raw_parts();
         debug_assert_eq!(depth, 0);
@@ -85,12 +89,13 @@ impl<A: Arch> HardwareAddressSpace<A> {
     ///
     /// # Safety
     ///
-    /// After this method returns, all pointers become dangling and as such any access through
-    /// pre-existing pointers is Undefined Behavior. This includes implicit references by the CPU
-    /// such as the instruction pointer.
+    /// After this method returns, all pointers become dangling and as such any
+    /// access through pre-existing pointers is Undefined Behavior. This
+    /// includes implicit references by the CPU such as the instruction
+    /// pointer.
     ///
-    /// This might seem impossible to uphold, except for identity-mappings which we consider valid
-    /// even after activating the address space.
+    /// This might seem impossible to uphold, except for identity-mappings which
+    /// we consider valid even after activating the address space.
     pub unsafe fn activate(&mut self) {
         debug_assert!(
             self.arch.active_table().is_none(),
@@ -106,14 +111,16 @@ impl<A: Arch> HardwareAddressSpace<A> {
         // Safety: ensured by caller
         unsafe { arch.set_active_table(root_page_table.address()) };
 
-        // NB: this is load-bearing. We need to ensure to flush the entire address space with all
-        // CPUs so that it correctly takes effect (especially so if the address space ID was reused).
+        // NB: this is load-bearing. We need to ensure to flush the entire address space
+        // with all CPUs so that it correctly takes effect (especially so if the
+        // address space ID was reused).
         arch.fence_all();
     }
 
-    /// Return the corresponding [`PhysicalAddress`] and [`MemoryAttributes`] for the given
-    /// [`VirtualAddress`] if mapped. The returned [`PageTableLevel`] described the page table level
-    /// at which the mapping was found.
+    /// Return the corresponding [`PhysicalAddress`] and [`MemoryAttributes`]
+    /// for the given [`VirtualAddress`] if mapped. The returned
+    /// [`PageTableLevel`] described the page table level at which the
+    /// mapping was found.
     pub fn lookup(
         &self,
         virt: VirtualAddress,
@@ -129,13 +136,14 @@ impl<A: Arch> HardwareAddressSpace<A> {
             if entry.is_table() {
                 debug_assert!((table.depth() as usize + 1) < A::LEVELS.len());
 
-                // Safety: We checked the entry is a table above (1.) know the depth is correct (2.).
+                // Safety: We checked the entry is a table above (1.) know the depth is correct
+                // (2.).
                 table = unsafe { Table::from_raw_parts(entry.address(), table.depth() + 1) };
             } else if entry.is_leaf() {
                 let lower_bits = virt.get() & (level.page_size() - 1);
 
-                // `entry.address()` is aligned to `level.page_size()` on all supported architectures
-                // meaning the lower bits must already be zero
+                // `entry.address()` is aligned to `level.page_size()` on all supported
+                // architectures meaning the lower bits must already be zero
                 return Some((
                     PhysicalAddress::new(entry.address().get() | lower_bits),
                     entry.attributes(),
@@ -155,18 +163,22 @@ impl<A: Arch> HardwareAddressSpace<A> {
         None
     }
 
-    /// Maps the virtual address range `virt` to *possibly discontiguous* block(s) of physical memory
-    /// `phys` with the specified memory attributes.
+    /// Maps the virtual address range `virt` to *possibly discontiguous*
+    /// block(s) of physical memory `phys` with the specified memory
+    /// attributes.
     ///
     /// If this returns `Ok`, the mapping is added to the address space.
     ///
-    /// Note that this method **does not** establish any ordering between address space modification
-    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// new mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    /// Note that this method **does not** establish any ordering between
+    /// address space modification and accesses through the mapping, nor
+    /// does it imply a page table cache flush. To ensure the new mapping is
+    /// visible to the calling CPU you must call [`flush`][Flush::flush] on the
+    /// returned `[Flush`].
     ///
-    /// After the modifications have been synchronized with current execution, all accesses to the virtual
-    /// address range will translate to accesses of the physical address range and adhere to the
-    /// access rules established by the `MemoryAttributes`.
+    /// After the modifications have been synchronized with current execution,
+    /// all accesses to the virtual address range will translate to accesses
+    /// of the physical address range and adhere to the access rules
+    /// established by the `MemoryAttributes`.
     ///
     /// # Safety
     ///
@@ -177,8 +189,9 @@ impl<A: Arch> HardwareAddressSpace<A> {
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates the mapping cannot be established. NOTE: The address space may remain
-    /// partially altered. The caller should call *unmap* on the virtual address range upon failure.
+    /// Returning `Err` indicates the mapping cannot be established. NOTE: The
+    /// address space may remain partially altered. The caller should call
+    /// *unmap* on the virtual address range upon failure.
     pub unsafe fn map<S: PageSize>(
         &mut self,
         mut virt: Range<VirtualAddress>,
@@ -212,18 +225,21 @@ impl<A: Arch> HardwareAddressSpace<A> {
         Ok(())
     }
 
-    /// Maps the virtual address range `virt` to a continuous region of physical memory starting at `phys`
-    /// with the specified memory attributes.
+    /// Maps the virtual address range `virt` to a continuous region of physical
+    /// memory starting at `phys` with the specified memory attributes.
     ///
     /// If this returns `Ok`, the mapping is added to the address space.
     ///
-    /// Note that this method **does not** establish any ordering between address space modification
-    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// new mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    /// Note that this method **does not** establish any ordering between
+    /// address space modification and accesses through the mapping, nor
+    /// does it imply a page table cache flush. To ensure the new mapping is
+    /// visible to the calling CPU you must call [`flush`][Flush::flush] on the
+    /// returned `[Flush`].
     ///
-    /// After the modifications have been synchronized with current execution, all accesses to the virtual
-    /// address range will translate to accesses of the physical address range and adhere to the
-    /// access rules established by the `MemoryAttributes`.
+    /// After the modifications have been synchronized with current execution,
+    /// all accesses to the virtual address range will translate to accesses
+    /// of the physical address range and adhere to the access rules
+    /// established by the `MemoryAttributes`.
     ///
     /// # Safety
     ///
@@ -234,8 +250,9 @@ impl<A: Arch> HardwareAddressSpace<A> {
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates the mapping cannot be established. NOTE: The address space may remain
-    /// partially altered. The caller should call *unmap* on the virtual address range upon failure.
+    /// Returning `Err` indicates the mapping cannot be established. NOTE: The
+    /// address space may remain partially altered. The caller should call
+    /// *unmap* on the virtual address range upon failure.
     pub unsafe fn map_contiguous<S: PageSize>(
         &mut self,
         virt: Range<VirtualAddress>,
@@ -285,15 +302,19 @@ impl<A: Arch> HardwareAddressSpace<A> {
         Ok(())
     }
 
-    /// Remaps the virtual address range `virt` to new *possibly discontiguous* block(s) of physical
-    /// memory `phys`. The old physical memory region is not freed.
+    /// Remaps the virtual address range `virt` to new *possibly discontiguous*
+    /// block(s) of physical memory `phys`. The old physical memory region
+    /// is not freed.
     ///
-    /// Note that this method **does not** establish any ordering between address space modification
-    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// updated mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned [`Flush`].
+    /// Note that this method **does not** establish any ordering between
+    /// address space modification and accesses through the mapping, nor
+    /// does it imply a page table cache flush. To ensure the
+    /// updated mapping is visible to the calling CPU you must call
+    /// [`flush`][Flush::flush] on the returned [`Flush`].
     ///
-    /// After the modifications have been synchronized with current execution, all accesses to the virtual
-    /// address range will translate to accesses of the new physical address range.
+    /// After the modifications have been synchronized with current execution,
+    /// all accesses to the virtual address range will translate to accesses
+    /// of the new physical address range.
     ///
     /// # Safety
     ///
@@ -304,8 +325,9 @@ impl<A: Arch> HardwareAddressSpace<A> {
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates the mapping cannot be established. NOTE: The address space may remain
-    /// partially altered. The caller should call *unmap* on the virtual address range upon failure.
+    /// Returning `Err` indicates the mapping cannot be established. NOTE: The
+    /// address space may remain partially altered. The caller should call
+    /// *unmap* on the virtual address range upon failure.
     pub unsafe fn remap<S: PageSize>(
         &mut self,
         mut virt: Range<VirtualAddress>,
@@ -335,15 +357,19 @@ impl<A: Arch> HardwareAddressSpace<A> {
         Ok(())
     }
 
-    /// Remaps the virtual address range `virt` to a new continuous region of physical memory starting
-    /// at `phys`. The old physical memory region is not freed.
+    /// Remaps the virtual address range `virt` to a new continuous region of
+    /// physical memory starting at `phys`. The old physical memory region
+    /// is not freed.
     ///
-    /// Note that this method **does not** establish any ordering between address space modification
-    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// updated mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned [`Flush`].
+    /// Note that this method **does not** establish any ordering between
+    /// address space modification and accesses through the mapping, nor
+    /// does it imply a page table cache flush. To ensure the
+    /// updated mapping is visible to the calling CPU you must call
+    /// [`flush`][Flush::flush] on the returned [`Flush`].
     ///
-    /// After the modifications have been synchronized with current execution, all accesses to the virtual
-    /// address range will translate to accesses of the new physical address range.
+    /// After the modifications have been synchronized with current execution,
+    /// all accesses to the virtual address range will translate to accesses
+    /// of the new physical address range.
     ///
     /// # Safety
     ///
@@ -390,12 +416,15 @@ impl<A: Arch> HardwareAddressSpace<A> {
 
     /// Set the [`MemoryAttributes`] for the virtual address range `virt`.
     ///
-    /// Note that this method **does not** establish any ordering between address space modification
-    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// updated mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    /// Note that this method **does not** establish any ordering between
+    /// address space modification and accesses through the mapping, nor
+    /// does it imply a page table cache flush. To ensure the
+    /// updated mapping is visible to the calling CPU you must call
+    /// [`flush`][Flush::flush] on the returned `[Flush`].
     ///
-    /// After the modifications have been synchronized with current execution, all accesses to the virtual
-    /// address range adhere to the access rules established by the `MemoryAttributes`.
+    /// After the modifications have been synchronized with current execution,
+    /// all accesses to the virtual address range adhere to the access rules
+    /// established by the `MemoryAttributes`.
     ///
     /// # Safety
     ///
@@ -435,12 +464,14 @@ impl<A: Arch> HardwareAddressSpace<A> {
 
     /// Unmaps the virtual address range `virt`.
     ///
-    /// Note that this method **does not** establish any ordering between address space modification
-    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// removal is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    /// Note that this method **does not** establish any ordering between
+    /// address space modification and accesses through the mapping, nor
+    /// does it imply a page table cache flush. To ensure the removal is
+    /// visible to the calling CPU you must call [`flush`][Flush::flush] on the
+    /// returned `[Flush`].
     ///
-    /// After the modifications have been synchronized with current execution, all accesses to the virtual
-    /// address range will cause a page fault.
+    /// After the modifications have been synchronized with current execution,
+    /// all accesses to the virtual address range will cause a page fault.
     ///
     /// # Safety
     ///
@@ -481,27 +512,32 @@ impl<A: Arch> HardwareAddressSpace<A> {
         }
     }
 
-    /// Identity-maps the physical address range with the specified memory attributes.
+    /// Identity-maps the physical address range with the specified memory
+    /// attributes.
     ///
     /// If this returns `Ok`, the mapping is added to the address space.
     ///
-    /// Note that this method **does not** establish any ordering between address space modification
-    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
-    /// new mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    /// Note that this method **does not** establish any ordering between
+    /// address space modification and accesses through the mapping, nor
+    /// does it imply a page table cache flush. To ensure the new mapping is
+    /// visible to the calling CPU you must call [`flush`][Flush::flush] on the
+    /// returned `[Flush`].
     ///
-    /// After the modifications have been synchronized with current execution, all accesses to the virtual
-    /// address range will translate to accesses of the physical address range and adhere to the
-    /// access rules established by the `MemoryAttributes`.
+    /// After the modifications have been synchronized with current execution,
+    /// all accesses to the virtual address range will translate to accesses
+    /// of the physical address range and adhere to the access rules
+    /// established by the `MemoryAttributes`.
     ///
     /// # Safety
     ///
-    /// 1. The entire virtual address range corresponding to `phys` must be unmapped.
+    /// 1. The entire virtual address range corresponding to `phys` must be
+    ///    unmapped.
     /// 2. `phys` must be aligned to `S`.
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates the mapping cannot be established and the address space remains
-    /// unaltered.
+    /// Returning `Err` indicates the mapping cannot be established and the
+    /// address space remains unaltered.
     pub unsafe fn map_identity<S: PageSize>(
         &mut self,
         phys: Range<PhysicalAddress>,
@@ -611,7 +647,8 @@ where
         self.phys = phys;
 
         // TODO fence(modified pages, 0) if attributes includes GLOBAL
-        // TODO we can omit the fence here and lazily change the mapping in the fault handler
+        // TODO we can omit the fence here and lazily change the mapping in the fault
+        // handler
         self.flush
             .invalidate(Range::from_start_len(va, count as usize * S::BYTES));
 
@@ -712,8 +749,8 @@ where
         }
 
         // TODO fence(modified pages, 0) if attributes includes GLOBAL
-        // TODO we can omit the fence here IF the attributes are MORE PERMISSIVE than before and
-        //  lazily change the mapping in the fault handler
+        // TODO we can omit the fence here IF the attributes are MORE PERMISSIVE than
+        // before and  lazily change the mapping in the fault handler
         self.flush
             .invalidate(Range::from_start_len(va, count as usize * S::BYTES));
 
@@ -744,8 +781,8 @@ where
         physmap: &PhysMap,
         arch: &A,
     ) -> Result<(), Infallible> {
-        // `ascend` is called after we may have run `fill` to free all its pages on the subtable.
-        // If its empty now, clear and free the table itself.
+        // `ascend` is called after we may have run `fill` to free all its pages on the
+        // subtable. If its empty now, clear and free the table itself.
 
         // Safety: `child_base`/`child_depth` name the just-visited child table, and we
         // inherit `table`'s mutable access to the tree.

@@ -172,7 +172,8 @@ impl<'ctx> FallibleIterator for SymbolsIter<'_, 'ctx> {
     }
 }
 
-/// Context necessary to resolve an address to its symbol name and source location.
+/// Context necessary to resolve an address to its symbol name and source
+/// location.
 pub struct SymbolizeContext<'a> {
     addr2line: addr2line::Context<EndianSlice<'a, NativeEndian>>,
     elf: xmas_elf::ElfFile<'a>,
@@ -202,8 +203,8 @@ impl<'a> SymbolizeContext<'a> {
 
     /// # Errors
     ///
-    /// Returns an error if the given address doesn't correspond to a symbol or parsing the DWARF info
-    /// fails.
+    /// Returns an error if the given address doesn't correspond to a symbol or
+    /// parsing the DWARF info fails.
     ///
     /// # Panics
     ///

@@ -107,7 +107,8 @@ fn split_options(spec: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// Parse the leading decimal baud rate from an options string (`115200n8` → 115200).
+/// Parse the leading decimal baud rate from an options string (`115200n8` →
+/// 115200).
 fn parse_baud(options: &str) -> Option<u32> {
     options
         .split(|c: char| !c.is_ascii_digit())
@@ -125,7 +126,8 @@ fn u32_prop(node: &Node<'_>, name: &str) -> Option<u32> {
 ///
 /// # Errors
 ///
-/// Fails with `Err(Error::TooManyRegions)` if the firmware reported more than `N` physical memory regions.
+/// Fails with `Err(Error::TooManyRegions)` if the firmware reported more than
+/// `N` physical memory regions.
 pub fn physical_memory_regions<const N: usize>(
     fdt: &Fdt,
 ) -> crate::Result<ArrayVec<MemoryRegion, N>> {
@@ -201,7 +203,8 @@ fn collect_regions<const N: usize>(
 
 /// Apply a `reservation` with a given `kind` to the set of memory regions.
 ///
-/// Will ensure the given reserved range _does not_ appear as usable AND is marked as unusable in the list.
+/// Will ensure the given reserved range _does not_ appear as usable AND is
+/// marked as unusable in the list.
 ///
 /// # Errors
 ///

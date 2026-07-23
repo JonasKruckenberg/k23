@@ -26,8 +26,8 @@ pub struct CpuLocal<T: Send> {
     /// elements. Each bucket is lazily allocated.
     buckets: [AtomicPtr<Entry<T>>; BUCKETS],
 
-    /// The number of values in the cpu-local storage. This can be less than the real number of values,
-    /// but is never more.
+    /// The number of values in the cpu-local storage. This can be less than the
+    /// real number of values, but is never more.
     values: AtomicUsize,
 }
 
@@ -88,9 +88,9 @@ impl<T: Send> CpuLocal<T> {
         }
     }
 
-    /// Creates a new `CpuLocal` with an initial capacity. If less than the capacity cpus
-    /// access the cpu-local storage it will never reallocate. The capacity may be rounded up to the
-    /// nearest power of two.
+    /// Creates a new `CpuLocal` with an initial capacity. If less than the
+    /// capacity cpus access the cpu-local storage it will never reallocate.
+    /// The capacity may be rounded up to the nearest power of two.
     ///
     /// # Panics
     ///
@@ -479,8 +479,9 @@ impl<'a, T: Send> Iterator for IterMut<'a, T> {
 impl<T: Send> ExactSizeIterator for IterMut<'_, T> {}
 impl<T: Send> FusedIterator for IterMut<'_, T> {}
 
-// Manual impl so we don't call Debug on the CpuLocal, as doing so would create a reference to
-// this cpu's value that potentially aliases with a mutable reference we have given out.
+// Manual impl so we don't call Debug on the CpuLocal, as doing so would create
+// a reference to this cpu's value that potentially aliases with a mutable
+// reference we have given out.
 impl<T: Send + fmt::Debug> fmt::Debug for IterMut<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IterMut").field("raw", &self.raw).finish()
@@ -706,8 +707,9 @@ mod tests {
         }
         let dropped = Arc::new(AtomicUsize::new(0));
 
-        // We use a high `id` here to guarantee that a lazily allocated bucket somewhere in the middle is used.
-        // Neither iteration nor `Drop` must early-return on `null` buckets that are used for lower `buckets`.
+        // We use a high `id` here to guarantee that a lazily allocated bucket somewhere
+        // in the middle is used. Neither iteration nor `Drop` must early-return
+        // on `null` buckets that are used for lower `buckets`.
         let cpu = Cpu::new(1234);
         assert!(cpu.bucket > 1);
 

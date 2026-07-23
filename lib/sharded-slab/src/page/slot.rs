@@ -167,9 +167,10 @@ where
     /// Marks this slot to be released, returning `true` if the slot can be
     /// mutated *now* and `false` otherwise.
     ///
-    /// This method checks if there are any references to this slot. If there _are_ valid
-    /// references, it just marks them for modification and returns and the next thread calling
-    /// either `clear_storage` or `remove_value` will try and modify the storage
+    /// This method checks if there are any references to this slot. If there
+    /// _are_ valid references, it just marks them for modification and
+    /// returns and the next thread calling either `clear_storage` or
+    /// `remove_value` will try and modify the storage
     fn mark_release(&self, generation: Generation<C>) -> Option<bool> {
         let mut lifecycle = self.lifecycle.load(Ordering::Acquire);
         let mut curr_gen;
@@ -236,7 +237,8 @@ where
 
     /// Mutates this slot.
     ///
-    /// This method spins until no references to this slot are left, and calls the mutator
+    /// This method spins until no references to this slot are left, and calls
+    /// the mutator
     fn release_with<F, M, R>(
         &self,
         generation: Generation<C>,
@@ -315,9 +317,10 @@ where
 
     /// Initialize a slot
     ///
-    /// This method initializes and sets up the state for a slot. When being used in `Pool`, we
-    /// only need to ensure that the `Slot` is in the right `state, while when being used in a
-    /// `Slab` we want to insert a value into it, as the memory is not initialized
+    /// This method initializes and sets up the state for a slot. When being
+    /// used in `Pool`, we only need to ensure that the `Slot` is in the
+    /// right `state, while when being used in a `Slab` we want to insert a
+    /// value into it, as the memory is not initialized
     pub(crate) fn init(&self) -> Option<InitGuard<T, C>> {
         // Load the current lifecycle state.
         let lifecycle = self.lifecycle.load(Ordering::Acquire);
@@ -356,7 +359,8 @@ where
 
     /// Insert a value into a slot
     ///
-    /// We first initialize the state and then insert the passed in value into the slot.
+    /// We first initialize the state and then insert the passed in value into
+    /// the slot.
     #[inline]
     pub(crate) fn insert(&self, value: &mut Option<T>) -> Option<Generation<C>> {
         debug_assert!(self.is_empty(), "inserted into full slot");
@@ -380,9 +384,10 @@ where
     /// Tries to remove the value in the slot, returning `true` if the value was
     /// removed.
     ///
-    /// This method tries to remove the value in the slot. If there are existing references, then
-    /// the slot is marked for removal and the next thread calling either this method or
-    /// `remove_value` will do the work instead.
+    /// This method tries to remove the value in the slot. If there are existing
+    /// references, then the slot is marked for removal and the next thread
+    /// calling either this method or `remove_value` will do the work
+    /// instead.
     #[inline]
     pub(super) fn try_remove_value<F: FreeList<C>>(
         &self,
@@ -442,8 +447,8 @@ where
 
     /// Try to clear this slot's storage
     ///
-    /// If there are references to this slot, then we mark this slot for clearing and let the last
-    /// thread do the work for us.
+    /// If there are references to this slot, then we mark this slot for
+    /// clearing and let the last thread do the work for us.
     #[inline]
     pub(super) fn try_clear_storage<F: FreeList<C>>(
         &self,
@@ -477,15 +482,16 @@ where
 
     /// Clear this slot's storage
     ///
-    /// This method blocks until all references have been dropped and clears the storage.
+    /// This method blocks until all references have been dropped and clears the
+    /// storage.
     pub(super) fn clear_storage<F: FreeList<C>>(
         &self,
         generation: Generation<C>,
         offset: usize,
         free: &F,
     ) -> bool {
-        // release_with will _always_ wait until it can release the slot or just return if the slot
-        // has already been released.
+        // release_with will _always_ wait until it can release the slot or just return
+        // if the slot has already been released.
         self.release_with(generation, offset, free, |item| {
             let cleared = item.map(|inner| Clear::clear(inner)).is_some();
             log::trace!("-> cleared: {}", cleared);

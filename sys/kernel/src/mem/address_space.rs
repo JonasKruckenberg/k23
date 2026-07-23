@@ -28,7 +28,8 @@ use crate::mem::address_space_region::AddressSpaceRegion;
 use crate::mem::frame_alloc::FrameAllocator;
 use crate::mem::{ArchAddressSpace, PageFaultFlags, Permissions};
 
-// const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
+// const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS -
+// arch::PAGE_SHIFT as u32) + 1).unwrap();
 const VIRT_ALLOC_ENTROPY: u8 = 27;
 
 #[derive(Debug, Clone, Copy)]
@@ -43,20 +44,23 @@ pub struct AddressSpace {
     pub(super) regions: wavltree::WAVLTree<AddressSpaceRegion>,
     /// The maximum range this address space can encompass.
     ///
-    /// This is used to check new mappings against and speed up page fault handling.
+    /// This is used to check new mappings against and speed up page fault
+    /// handling.
     max_range: RangeInclusive<VirtualAddress>,
-    /// The pseudo-random number generator used for address space layout randomization or `None`
-    /// if ASLR is disabled.
+    /// The pseudo-random number generator used for address space layout
+    /// randomization or `None` if ASLR is disabled.
     rng: Option<ChaCha20Rng>,
-    /// The hardware address space backing this "logical" address space that changes need to be
-    /// materialized into in order to take effect.
+    /// The hardware address space backing this "logical" address space that
+    /// changes need to be materialized into in order to take effect.
     pub arch: arch::AddressSpace,
     pub frame_alloc: &'static FrameAllocator,
     last_fault: Option<(NonNull<AddressSpaceRegion>, VirtualAddress)>,
 }
-// Safety: the last_fault field makes the not-Send, but its only ever accessed behind a &mut Self
+// Safety: the last_fault field makes the not-Send, but its only ever accessed
+// behind a &mut Self
 unsafe impl Send for AddressSpace {}
-// Safety: the last_fault field makes the not-Send, but its only ever accessed behind a &mut Self
+// Safety: the last_fault field makes the not-Send, but its only ever accessed
+// behind a &mut Self
 unsafe impl Sync for AddressSpace {}
 
 impl fmt::Debug for AddressSpace {
@@ -224,10 +228,10 @@ impl AddressSpace {
         );
 
         // ensure the entire range is mapped and doesn't cover any holes
-        // `for_each_region_in_range` covers the last half so we just need to check that the regions
-        // aren't smaller than the requested range.
-        // We do that by adding up their sizes checking that their total size is at least as large
-        // as the requested range.
+        // `for_each_region_in_range` covers the last half so we just need to check that
+        // the regions aren't smaller than the requested range.
+        // We do that by adding up their sizes checking that their total size is at
+        // least as large as the requested range.
         let mut bytes_seen = 0;
         self.for_each_region_in_range(range, |region| {
             bytes_seen += region.range.len();
@@ -282,12 +286,12 @@ impl AddressSpace {
         ensure!(new_permissions.is_valid());
 
         // ensure the entire range is mapped and doesn't cover any holes
-        // `for_each_region_in_range` covers the last half so we just need to check that the regions
-        // aren't smaller than the requested range.
-        // We do that by adding up their sizes checking that their total size is at least as large
-        // as the requested range.
-        // Along the way we also check for each region that the new permissions are a subset of the
-        // current ones.
+        // `for_each_region_in_range` covers the last half so we just need to check that
+        // the regions aren't smaller than the requested range.
+        // We do that by adding up their sizes checking that their total size is at
+        // least as large as the requested range.
+        // Along the way we also check for each region that the new permissions are a
+        // subset of the current ones.
         let mut bytes_seen = 0;
         self.for_each_region_in_range(range, |region| {
             bytes_seen += region.range.len();
@@ -463,9 +467,10 @@ impl AddressSpace {
         Ok(region)
     }
 
-    /// Calls the provided callback for each `AddressSpaceRegion` in the given virtual address range.
-    /// This method will ensure the provided range does not cover any holes where no region exists,
-    /// returning an error on the first hole encountered.
+    /// Calls the provided callback for each `AddressSpaceRegion` in the given
+    /// virtual address range. This method will ensure the provided range
+    /// does not cover any holes where no region exists, returning an error
+    /// on the first hole encountered.
     fn for_each_region_in_range<F>(
         &self,
         range: Range<VirtualAddress>,
@@ -490,22 +495,28 @@ impl AddressSpace {
         Ok(())
     }
 
-    /// Find a spot in the address space that satisfies the given `layout` requirements.
+    /// Find a spot in the address space that satisfies the given `layout`
+    /// requirements.
     ///
-    /// This function will walk the ordered set of `Mappings` from left to right, looking for a gap
-    /// that is large enough to fit the given `layout`.
+    /// This function will walk the ordered set of `Mappings` from left to
+    /// right, looking for a gap that is large enough to fit the given
+    /// `layout`.
     ///
-    /// To enable ASLR we additionally choose a random `target_index` and require that the chosen
-    /// gap is at lest the `target_index`th gap in the address space. The `target_index` is chosen
-    /// in the range [0, 2^entropy).
-    /// `entropy` is a configurable value, but by default it is set to `arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT + 1`
-    /// which is the number of usable bits when allocating virtual memory addresses. `arch::VIRT_ADDR_BITS`
-    /// is the total number of usable bits in a virtual address, and `arch::PAGE_SHIFT` is the number
-    /// of bits that are "lost" to used because all addresses must be at least page aligned.
+    /// To enable ASLR we additionally choose a random `target_index` and
+    /// require that the chosen gap is at lest the `target_index`th gap in
+    /// the address space. The `target_index` is chosen in the range [0,
+    /// 2^entropy). `entropy` is a configurable value, but by default it is
+    /// set to `arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT + 1` which is the
+    /// number of usable bits when allocating virtual memory addresses.
+    /// `arch::VIRT_ADDR_BITS` is the total number of usable bits in a
+    /// virtual address, and `arch::PAGE_SHIFT` is the number of bits that
+    /// are "lost" to used because all addresses must be at least page aligned.
     ///
-    /// If the algorithm fails to find a suitable spot in the first attempt, it will have collected the
-    /// total number of candidate spots and retry with a new `target_index` in the range [0, candidate_spot_count)
-    /// which guarantees that a spot will be found as long as `candidate_spot_count > 0`.
+    /// If the algorithm fails to find a suitable spot in the first attempt, it
+    /// will have collected the total number of candidate spots and retry
+    /// with a new `target_index` in the range [0, candidate_spot_count)
+    /// which guarantees that a spot will be found as long as
+    /// `candidate_spot_count > 0`.
     fn find_spot(&mut self, layout: Layout, entropy: u8) -> crate::Result<VirtualAddress> {
         // behaviour:
         // - find the leftmost gap that satisfies the size and alignment requirements
@@ -525,7 +536,9 @@ impl AddressSpace {
             Ok(spot) => spot,
             Err(0) => bail!("out of virtual memory"),
             Err(candidate_spot_count) => {
-                // tracing::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
+                // tracing::trace!("couldn't find spot in first attempt (max_candidate_spaces
+                // {max_candidate_spaces}), retrying with (candidate_spot_count
+                // {candidate_spot_count})");
                 let selected_index: usize = self
                     .rng
                     .as_mut()
@@ -555,9 +568,10 @@ impl AddressSpace {
                     && aligned.end.is_aligned_to(layout.align())
             );
 
-            // ranges passed in here can become empty for a number of reasons (aligning might produce ranges
-            // where end > start, or the range might be empty to begin with) in either case an empty
-            // range means no spots are available
+            // ranges passed in here can become empty for a number of reasons (aligning
+            // might produce ranges where end > start, or the range might be
+            // empty to begin with) in either case an empty range means no spots
+            // are available
             if aligned.is_empty() {
                 return 0;
             }
@@ -590,7 +604,8 @@ impl AddressSpace {
             target_index -= spot_count;
         }
 
-        // see if there is a suitable gap between the start of the address space and the first mapping
+        // see if there is a suitable gap between the start of the address space and the
+        // first mapping
         if let Some(root) = self.regions.root().get() {
             let aligned_gap =
                 Range::from(self.max_range.start..root.max_range.start).align_in(layout.align());
@@ -660,7 +675,8 @@ impl AddressSpace {
             maybe_node = node.links.parent().map(|ptr| unsafe { ptr.as_ref() });
         }
 
-        // see if there is a suitable gap between the end of the last mapping and the end of the address space
+        // see if there is a suitable gap between the end of the last mapping and the
+        // end of the address space
         if let Some(root) = self.regions.root().get() {
             let aligned_gap =
                 Range::from(root.max_range.end..self.max_range.last).align_in(layout.align());
@@ -697,7 +713,8 @@ impl Drop for Batch<'_> {
     fn drop(&mut self) {
         if !self.actions.is_empty() {
             tracing::error!("batch was not flushed before dropping");
-            // panic_unwind::panic_in_drop!("batch was not flushed before dropping");
+            // panic_unwind::panic_in_drop!("batch was not flushed before
+            // dropping");
         }
     }
 }

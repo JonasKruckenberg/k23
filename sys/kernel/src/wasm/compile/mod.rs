@@ -65,7 +65,8 @@ pub trait Compiler {
         index: DefinedFuncIndex,
     ) -> crate::Result<CompiledFunction>;
 
-    // Compile a trampoline for calling the  a(host-defined) function through the array
+    // Compile a trampoline for calling the  a(host-defined) function through the
+    // array
     /// calling convention used to by WASM to call into host code.
     fn compile_wasm_to_array_trampoline(
         &self,
@@ -108,7 +109,8 @@ pub struct CompiledFunctionInfo {
     /// The [`FunctionLoc`] indicating the location of this function in the text
     /// section of the compilation artifact.
     pub wasm_func_loc: FunctionLoc,
-    /// A trampoline for host callers (e.g. `Func::wrap`) calling into this function (if needed).
+    /// A trampoline for host callers (e.g. `Func::wrap`) calling into this
+    /// function (if needed).
     pub array_to_wasm_trampoline: Option<FunctionLoc>,
     pub start_srcloc: FilePos,
 }
@@ -157,8 +159,9 @@ impl<'a> CompileInputs<'a> {
                 })
             }));
 
-            // Compile a host->wasm trampoline for every function that are flags as "escaping"
-            // and could therefore theoretically be called by native code.
+            // Compile a host->wasm trampoline for every function that are flags as
+            // "escaping" and could therefore theoretically be called by native
+            // code.
             let func_index = translation.module.func_index(def_func_index);
             if translation.module.functions[func_index].is_escaping() {
                 inputs.push(Box::new(move |compiler| {

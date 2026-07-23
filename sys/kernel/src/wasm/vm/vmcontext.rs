@@ -132,8 +132,9 @@ pub union VMVal {
     anyref: u32,
 }
 
-// Safety: This type is just a bag-of-bits so it's up to the caller to figure out how
-// to safely deal with threading concerns and safely access interior bits.
+// Safety: This type is just a bag-of-bits so it's up to the caller to figure
+// out how to safely deal with threading concerns and safely access interior
+// bits.
 unsafe impl Send for VMVal {}
 // Safety: See above
 unsafe impl Sync for VMVal {}
@@ -150,7 +151,8 @@ impl fmt::Debug for VMVal {
             }
         }
 
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         unsafe {
             f.debug_struct("VMVal")
                 .field("i32", &Hex(self.i32))
@@ -170,7 +172,8 @@ impl VMVal {
     /// Create a null reference that is compatible with any of
     /// `{any,extern,func}ref`.
     pub fn null() -> VMVal {
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         unsafe {
             let raw = MaybeUninit::<Self>::zeroed().assume_init();
             debug_assert_eq!(raw.get_anyref(), 0);
@@ -259,14 +262,16 @@ impl VMVal {
     /// Gets the WebAssembly `i32` value
     #[inline]
     pub fn get_i32(&self) -> i32 {
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         unsafe { i32::from_le(self.i32) }
     }
 
     /// Gets the WebAssembly `i64` value
     #[inline]
     pub fn get_i64(&self) -> i64 {
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         unsafe { i64::from_le(self.i64) }
     }
 
@@ -285,35 +290,40 @@ impl VMVal {
     /// Gets the WebAssembly `f32` value
     #[inline]
     pub fn get_f32(&self) -> u32 {
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         unsafe { u32::from_le(self.f32) }
     }
 
     /// Gets the WebAssembly `f64` value
     #[inline]
     pub fn get_f64(&self) -> u64 {
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         unsafe { u64::from_le(self.f64) }
     }
 
     /// Gets the WebAssembly `v128` value
     #[inline]
     pub fn get_v128(&self) -> u128 {
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         unsafe { u128::from_le_bytes(self.v128) }
     }
 
     /// Gets the WebAssembly `funcref` value
     #[inline]
     pub fn get_funcref(&self) -> *mut c_void {
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         unsafe { self.funcref.map_addr(usize::from_le) }
     }
 
     /// Gets the WebAssembly `externref` value
     #[inline]
     pub fn get_externref(&self) -> u32 {
-        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if
+        // nonsensical)
         u32::from_le(unsafe { self.externref })
     }
 
@@ -336,10 +346,10 @@ pub type VMArrayCallFunction = unsafe extern "C" fn(
 #[repr(transparent)]
 pub struct VMWasmCallFunction(VMFunctionBody);
 
-/// A placeholder byte-sized type which is just used to provide some amount of type
-/// safety when dealing with pointers to JIT-compiled function bodies. Note that it's
-/// deliberately not Copy, as we shouldn't be carelessly copying function body bytes
-/// around.
+/// A placeholder byte-sized type which is just used to provide some amount of
+/// type safety when dealing with pointers to JIT-compiled function bodies. Note
+/// that it's deliberately not Copy, as we shouldn't be carelessly copying
+/// function body bytes around.
 #[repr(C)]
 pub struct VMFunctionBody(u8);
 // SAFETY: this structure is never read and is safe to pass to jit code.
@@ -437,9 +447,11 @@ pub struct VMTableDefinition {
 }
 // SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
 unsafe impl VmSafe for VMTableDefinition {}
-// Safety: The store synchronization protocol ensures this type will only ever be access in a thread-safe way
+// Safety: The store synchronization protocol ensures this type will only ever
+// be access in a thread-safe way
 unsafe impl Send for VMTableDefinition {}
-// Safety: The store synchronization protocol ensures this type will only ever be access in a thread-safe way
+// Safety: The store synchronization protocol ensures this type will only ever
+// be access in a thread-safe way
 unsafe impl Sync for VMTableDefinition {}
 
 /// The fields compiled code needs to access to utilize a WebAssembly linear
@@ -710,8 +722,9 @@ impl VMGlobalDefinition {
     // }
     //
     // /// Initialize a global to the given GC reference.
-    // pub unsafe fn init_gc_ref(&mut self, gc_store: &mut GcStore, gc_ref: Option<&VMGcRef>) {
-    //     assert!(cfg!(feature = "gc") || gc_ref.is_none());
+    // pub unsafe fn init_gc_ref(&mut self, gc_store: &mut GcStore, gc_ref:
+    // Option<&VMGcRef>) {     assert!(cfg!(feature = "gc") ||
+    // gc_ref.is_none());
     //
     //     let dest = &mut *(self
     //         .storage
@@ -723,10 +736,12 @@ impl VMGlobalDefinition {
     // }
     //
     // /// Write a GC reference into this global value.
-    // pub unsafe fn write_gc_ref(&mut self, gc_store: &mut GcStore, gc_ref: Option<&VMGcRef>) {
-    //     assert!(cfg!(feature = "gc") || gc_ref.is_none());
+    // pub unsafe fn write_gc_ref(&mut self, gc_store: &mut GcStore, gc_ref:
+    // Option<&VMGcRef>) {     assert!(cfg!(feature = "gc") ||
+    // gc_ref.is_none());
     //
-    //     let dest = &mut *(self.storage.as_mut().as_mut_ptr().cast::<Option<VMGcRef>>());
+    //     let dest = &mut
+    // *(self.storage.as_mut().as_mut_ptr().cast::<Option<VMGcRef>>());
     //     assert!(cfg!(feature = "gc") || dest.is_none());
     //
     //     gc_store.write_gc_ref(dest, gc_ref)
@@ -746,7 +761,6 @@ impl VMGlobalDefinition {
 }
 
 /// A WebAssembly tag defined within the instance.
-///
 #[derive(Debug)]
 #[repr(C)]
 pub struct VMTagDefinition {
@@ -827,7 +841,8 @@ impl VMFuncRef {
     ///
     /// This method is unsafe because it can be called with any pointers. They
     /// must all be valid for this wasm function call to proceed. For example
-    /// `args_and_results` must be large enough to handle all the arguments/results for this call.
+    /// `args_and_results` must be large enough to handle all the
+    /// arguments/results for this call.
     ///
     /// Note that the unsafety invariants to maintain here are not currently
     /// exhaustively documented.
@@ -855,7 +870,6 @@ pub struct VMStoreContext {
     // trailing afterwards. That makes the offsets in this structure easier to
     // calculate on 32-bit platforms as we don't have to worry about the
     // alignment of 64-bit integers.
-    //
     /// Indicator of how much fuel has been consumed and is remaining to
     /// WebAssembly.
     ///
@@ -921,9 +935,9 @@ pub struct VMStoreContext {
 // SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
 unsafe impl VmSafe for VMStoreContext {}
 
-// Safety: The `VMStoreContext` type is a pod-type with no destructor, and we don't
-// access any fields from other threads, so add in these trait impls which are
-// otherwise not available due to the `fuel_consumed` and `epoch_deadline`
+// Safety: The `VMStoreContext` type is a pod-type with no destructor, and we
+// don't access any fields from other threads, so add in these trait impls which
+// are otherwise not available due to the `fuel_consumed` and `epoch_deadline`
 // variables in `VMStoreContext`.
 unsafe impl Send for VMStoreContext {}
 // Safety: see above
@@ -1029,7 +1043,8 @@ impl VMContext {
     }
 }
 
-/// An "opaque" version of `VMContext` which must be explicitly casted to a target context.
+/// An "opaque" version of `VMContext` which must be explicitly casted to a
+/// target context.
 pub struct VMOpaqueContext {
     magic: u32,
     _marker: PhantomPinned,

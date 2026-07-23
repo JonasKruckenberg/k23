@@ -21,9 +21,9 @@ use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 
 /// A lock that provides data access to either one writer or many readers.
 ///
-/// This lock behaves in a similar manner to its namesake `std::sync::RwLock` but uses
-/// spinning for synchronisation instead. Unlike its namesake, this lock does not
-/// track lock poisoning.
+/// This lock behaves in a similar manner to its namesake `std::sync::RwLock`
+/// but uses spinning for synchronisation instead. Unlike its namesake, this
+/// lock does not track lock poisoning.
 ///
 /// This type of lock allows a number of readers or at most one writer at any
 /// point in time. The write portion of this lock typically allows modification
@@ -41,11 +41,12 @@ use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 ///
 /// Based on Facebook's
 /// [`folly/RWSpinLock.h`](https://github.com/facebook/folly/blob/a0394d84f2d5c3e50ebfd0566f9d3acb52cfab5a/folly/synchronization/RWSpinLock.h).
-/// This implementation is unfair to writers - if the lock always has readers, then no writers will
-/// ever get a chance. Using an upgradeable lock can *somewhat* alleviate this issue as no
-/// new readers are allowed when an upgradeable handle is held, but upgradeable handles can be taken
-/// when there are existing readers. However if the lock is that highly contended and writes are
-/// crucial then this implementation may be a poor choice.
+/// This implementation is unfair to writers - if the lock always has readers,
+/// then no writers will ever get a chance. Using an upgradeable lock can
+/// *somewhat* alleviate this issue as no new readers are allowed when an
+/// upgradeable handle is held, but upgradeable handles can be taken when there
+/// are existing readers. However if the lock is that highly contended and
+/// writes are crucial then this implementation may be a poor choice.
 ///
 /// # Examples
 ///
@@ -88,18 +89,21 @@ pub struct Upgradeable<'a, T: 'a + ?Sized> {
     lock: &'a RwLock<T>,
 }
 
-// Safety: spinlocks can be unlocked from any thread, therefore `RwLock` is `Send` as long as `T` is `Send`.
+// Safety: spinlocks can be unlocked from any thread, therefore `RwLock` is
+// `Send` as long as `T` is `Send`.
 unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
-// Safety: `RwLock` (by design) can be read from multiple threads which requires `T: Sync`.
-// It also (again by design) hands out `&mut T` so other threads _could_ `mem::take` the value.
-// This means `T` must be safe to move to a different thread, hence `T: Send`.
+// Safety: `RwLock` (by design) can be read from multiple threads which requires
+// `T: Sync`. It also (again by design) hands out `&mut T` so other threads
+// _could_ `mem::take` the value. This means `T` must be safe to move to a
+// different thread, hence `T: Send`.
 unsafe impl<T: ?Sized + Send + Sync> Sync for RwLock<T> {}
 
-// Safety: sending an `Upgradeable` to another thread gives that thread `&T` directly
-// (`T: Sync`) and the ability to upgrade to `&mut T` (`T: Send`).
+// Safety: sending an `Upgradeable` to another thread gives that thread `&T`
+// directly (`T: Sync`) and the ability to upgrade to `&mut T` (`T: Send`).
 unsafe impl<T: ?Sized + Send + Sync> Send for Upgradeable<'_, T> {}
-// Safety: `&Upgradeable` derefs to `&T` (`T: Sync`), and because the handle can be upgraded
-// to exclusive access it inherits the upgrade requirement of `T: Send`.
+// Safety: `&Upgradeable` derefs to `&T` (`T: Sync`), and because the handle can
+// be upgraded to exclusive access it inherits the upgrade requirement of `T:
+// Send`.
 unsafe impl<T: ?Sized + Send + Sync> Sync for Upgradeable<'_, T> {}
 
 impl<T> RwLock<T> {
@@ -334,12 +338,15 @@ impl<T: ?Sized> RwLock<T> {
         self.lock.load(Ordering::Relaxed) & WRITER != 0
     }
 
-    /// Return the number of readers that currently hold the lock (including upgradable readers).
+    /// Return the number of readers that currently hold the lock (including
+    /// upgradable readers).
     ///
     /// # Safety
     ///
-    /// This function provides no synchronization guarantees and so its result should be considered 'out of date'
-    /// the instant it is called. Do not use it for synchronization purposes. However, it may be useful as a heuristic.
+    /// This function provides no synchronization guarantees and so its result
+    /// should be considered 'out of date' the instant it is called. Do not
+    /// use it for synchronization purposes. However, it may be useful as a
+    /// heuristic.
     pub fn reader_count(&self) -> usize {
         let state = self.lock.load(Ordering::Relaxed);
         state / READER + (state & UPGRADED) / UPGRADED
@@ -347,12 +354,15 @@ impl<T: ?Sized> RwLock<T> {
 
     /// Return the number of writers that currently hold the lock.
     ///
-    /// Because [`RwLock`] guarantees exclusive mutable access, this function may only return either `0` or `1`.
+    /// Because [`RwLock`] guarantees exclusive mutable access, this function
+    /// may only return either `0` or `1`.
     ///
     /// # Safety
     ///
-    /// This function provides no synchronization guarantees and so its result should be considered 'out of date'
-    /// the instant it is called. Do not use it for synchronization purposes. However, it may be useful as a heuristic.
+    /// This function provides no synchronization guarantees and so its result
+    /// should be considered 'out of date' the instant it is called. Do not
+    /// use it for synchronization purposes. However, it may be useful as a
+    /// heuristic.
     pub fn writer_count(&self) -> usize {
         (self.lock.load(Ordering::Relaxed) & WRITER) / WRITER
     }
@@ -398,8 +408,8 @@ impl<T: ?Sized> RwLock<T> {
     fn raw_try_read(&self) -> bool {
         let value = self.acquire_reader();
 
-        // We check the UPGRADED bit here so that new readers are prevented when an UPGRADED lock is held.
-        // This helps reduce writer starvation.
+        // We check the UPGRADED bit here so that new readers are prevented when an
+        // UPGRADED lock is held. This helps reduce writer starvation.
         if value & (WRITER | UPGRADED) != 0 {
             // Lock is taken, undo.
             self.lock.fetch_sub(READER, Ordering::Release);
@@ -413,9 +423,9 @@ impl<T: ?Sized> RwLock<T> {
     ///
     /// # Safety
     ///
-    /// The caller must hold a read reference acquired via [`Self::raw_try_read`]
-    /// (or handed over by [`Upgradeable::downgrade`]) and must not release it by
-    /// other means.
+    /// The caller must hold a read reference acquired via
+    /// [`Self::raw_try_read`] (or handed over by
+    /// [`Upgradeable::downgrade`]) and must not release it by other means.
     #[inline]
     unsafe fn raw_release_read(&self) {
         debug_assert!(self.lock.load(Ordering::Relaxed) & !(WRITER | UPGRADED) > 0);
@@ -451,7 +461,8 @@ impl<T: ?Sized> RwLock<T> {
         debug_assert_eq!(self.lock.load(Ordering::Relaxed) & WRITER, WRITER);
 
         // Writer is responsible for clearing both WRITER and UPGRADED bits.
-        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while this lock is held.
+        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while
+        // this lock is held.
         self.lock.fetch_and(!(WRITER | UPGRADED), Ordering::Release);
     }
 
@@ -514,8 +525,8 @@ impl<T: ?Sized> RwLock<T> {
     /// # Safety
     ///
     /// The caller must hold the `WRITER` bit and must have acquired it via
-    /// [`Self::raw_upgrade`], so that the `UPGRADED` bit is this thread's to own
-    /// afterwards.
+    /// [`Self::raw_upgrade`], so that the `UPGRADED` bit is this thread's to
+    /// own afterwards.
     #[inline]
     unsafe fn raw_downgrade_write_to_upgradeable(&self) {
         debug_assert_eq!(self.lock.load(Ordering::Relaxed) & WRITER, WRITER);
@@ -677,8 +688,8 @@ impl<'a, T: ?Sized> Upgradeable<'a, T> {
         lock.data.with(|ptr| f(unsafe { &*ptr }))
     }
 
-    /// Runs `f` with exclusive access, then trades the `WRITER` bit back for the
-    /// `UPGRADED` bit.
+    /// Runs `f` with exclusive access, then trades the `WRITER` bit back for
+    /// the `UPGRADED` bit.
     ///
     /// The caller must have just won the `UPGRADED` -> `WRITER` trade.
     #[inline]

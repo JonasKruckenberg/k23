@@ -24,12 +24,14 @@ pub struct Table<A: Arch, BorrowType> {
 }
 
 impl<A: Arch, BorrowType> Table<A, BorrowType> {
-    /// Constructs a `Table` from its raw components: the base address and its depth the in the page table hierarchy.
+    /// Constructs a `Table` from its raw components: the base address and its
+    /// depth the in the page table hierarchy.
     ///
     /// # Safety
     ///
     /// 1. The base address must indeed point to a page table.
-    /// 2. The caller must make sure it has `BorrowType` access to the table memory.
+    /// 2. The caller must make sure it has `BorrowType` access to the table
+    ///    memory.
     /// 3. The table must indeed be at the given depth in the hierarchy.
     pub(crate) const unsafe fn from_raw_parts(base: PhysicalAddress, depth: u8) -> Self {
         Self {
@@ -50,7 +52,8 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
         self.depth
     }
 
-    /// Returns the [`PageTableLevel`] of this table, describing its layout and associated block size.
+    /// Returns the [`PageTableLevel`] of this table, describing its layout and
+    /// associated block size.
     pub(crate) fn level(&self) -> &'static PageTableLevel {
         &A::LEVELS[self.depth as usize]
     }
@@ -71,23 +74,26 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
     /// Returns `true` when _all_ page table entries in this table are _vacant_.
     pub fn is_empty(&self, physmap: &PhysMap, arch: &A) -> bool {
         (0..self.level().entries()).all(|entry_index| {
-            // Safety: we iterate through the entries for this level above, `entry_index` is always in-bounds
+            // Safety: we iterate through the entries for this level above, `entry_index` is
+            // always in-bounds
             unsafe { self.get(entry_index, physmap, arch) }.is_vacant()
         })
     }
 
-    /// Returns the `A::PageTableEntry` at the given `index` without moving it. This leaves the entry
-    /// unchanged.
+    /// Returns the `A::PageTableEntry` at the given `index` without moving it.
+    /// This leaves the entry unchanged.
     ///
     /// # Safety
     ///
-    /// The caller must ensure `index` is in-bounds (less than the number of entries at this level).
+    /// The caller must ensure `index` is in-bounds (less than the number of
+    /// entries at this level).
     pub unsafe fn get(&self, index: u16, physmap: &PhysMap, arch: &A) -> A::PageTableEntry {
         let entry_virt = self.entry_address(index, physmap);
 
-        // Safety: The address is always well aligned by the way we calculate it above (2.) we also
-        // know `0` is a valid pattern for `A::PageTableEntry` and we know that we can access the
-        // location either through the physmap or because we're still in bootstrapping.
+        // Safety: The address is always well aligned by the way we calculate it above
+        // (2.) we also know `0` is a valid pattern for `A::PageTableEntry` and
+        // we know that we can access the location either through the physmap or
+        // because we're still in bootstrapping.
         unsafe { arch.read(entry_virt) }
     }
 }
@@ -97,8 +103,8 @@ impl<A: Arch> Table<A, marker::Owned> {
     ///
     /// # Errors
     ///
-    /// Returns [`AllocError`] if the frame allocator cannot provide a granule-sized,
-    /// granule-aligned frame for the root table.
+    /// Returns [`AllocError`] if the frame allocator cannot provide a
+    /// granule-sized, granule-aligned frame for the root table.
     pub fn allocate(
         frame_allocator: impl FrameAllocator,
         physmap: &PhysMap,
@@ -137,18 +143,19 @@ impl<A: Arch> Table<A, marker::Owned> {
     }
 }
 
-/// Visits page-table entries as [`visit`](Table::visit) walks the tree down to the
-/// `S`-sized leaf level.
+/// Visits page-table entries as [`visit`](Table::visit) walks the tree down to
+/// the `S`-sized leaf level.
 pub trait Visitor<A: Arch, S: PageSize> {
-    /// Error type; the first `Err` a method returns aborts the walk and propagates
-    /// out of it.
+    /// Error type; the first `Err` a method returns aborts the walk and
+    /// propagates out of it.
     type Error;
 
     /// Called on the way **down** for the interior entry at `index` in `table`.
     ///
-    /// Returns the base address of the child table to descend into, or `None` to stop
-    /// descending. The default is read-only: it descends into an existing table and
-    /// stops at anything else, never writing the entry back.
+    /// Returns the base address of the child table to descend into, or `None`
+    /// to stop descending. The default is read-only: it descends into an
+    /// existing table and stops at anything else, never writing the entry
+    /// back.
     ///
     /// # Errors
     ///
@@ -180,9 +187,9 @@ pub trait Visitor<A: Arch, S: PageSize> {
         }
     }
 
-    /// Called on the way **up** once the child table at `child_base`/`child_depth`,
-    /// beneath the interior entry at `index` in `table`, has been fully visited.
-    /// Defaults to a no-op.
+    /// Called on the way **up** once the child table at
+    /// `child_base`/`child_depth`, beneath the interior entry at `index` in
+    /// `table`, has been fully visited. Defaults to a no-op.
     ///
     /// # Errors
     ///
@@ -200,9 +207,9 @@ pub trait Visitor<A: Arch, S: PageSize> {
         Ok(())
     }
 
-    /// Called once for the contiguous run of `count` leaf entries starting at index
-    /// `first` in `table`, whose first entry maps the `S`-sized page at `va` (the run
-    /// spans `count` pages from there).
+    /// Called once for the contiguous run of `count` leaf entries starting at
+    /// index `first` in `table`, whose first entry maps the `S`-sized page
+    /// at `va` (the run spans `count` pages from there).
     ///
     /// # Errors
     ///
@@ -228,11 +235,13 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
         }
     }
 
-    /// Overrides the `A::PageTableEntry` at the given `index` without reading or dropping the old value.
+    /// Overrides the `A::PageTableEntry` at the given `index` without reading
+    /// or dropping the old value.
     ///
     /// # Safety
     ///
-    /// The caller must ensure `index` is in-bounds (less than the number of entries at this level).
+    /// The caller must ensure `index` is in-bounds (less than the number of
+    /// entries at this level).
     pub unsafe fn set(
         &mut self,
         index: u16,
@@ -244,9 +253,10 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
 
         let entry_virt = self.entry_address(index, physmap);
 
-        // Safety: The address is always well aligned by the way we calculate it above (2.) we also
-        // know `0` is a valid pattern for `A::PageTableEntry` and we know that we can access the
-        // location either through the physmap or because we're still in bootstrapping.
+        // Safety: The address is always well aligned by the way we calculate it above
+        // (2.) we also know `0` is a valid pattern for `A::PageTableEntry` and
+        // we know that we can access the location either through the physmap or
+        // because we're still in bootstrapping.
         unsafe { arch.write(entry_virt, entry) }
     }
 
@@ -269,8 +279,8 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
         V: Visitor<A, S>,
     {
         if range.len() == S::BYTES {
-            // Optimized fast-path for single leaf-page operations such as when committing, decommitting, etc individual
-            // CoW pages.
+            // Optimized fast-path for single leaf-page operations such as when committing,
+            // decommitting, etc individual CoW pages.
             visit_leaf::<S, A, V>(self, range.start, physmap, arch, visitor)
         } else {
             visit_range::<S, A, V>(self, range, physmap, arch, visitor)

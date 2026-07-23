@@ -106,9 +106,10 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Build a minimally-sized FAT ESP containing `EFI/BOOT/{boot_file}`, `EFI/k23/kernel.elf`,
-/// and  `EFI/k23/kernel.debug`. The ESP is materialized directly at `esp_path`, streaming
-/// the loader and kernel (and debug file) from disk so we never hold them in memory.
+/// Build a minimally-sized FAT ESP containing `EFI/BOOT/{boot_file}`,
+/// `EFI/k23/kernel.elf`, and  `EFI/k23/kernel.debug`. The ESP is materialized
+/// directly at `esp_path`, streaming the loader and kernel (and debug file)
+/// from disk so we never hold them in memory.
 fn build_esp(
     loader: &Path,
     kernel: &Path,

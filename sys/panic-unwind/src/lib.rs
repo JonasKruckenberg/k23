@@ -18,9 +18,9 @@ use cpu_local::cpu_local;
 use unwind::UnwindException;
 
 // Single exception header shared by every in-flight panic.
-// We need _some_ pointer to pass through the system (that is expected by the landing pad code)
-// so we use this static so we can check against a known address AND the class field.
-// This is safe since we only every read from this.
+// We need _some_ pointer to pass through the system (that is expected by the
+// landing pad code) so we use this static so we can check against a known
+// address AND the class field. This is safe since we only every read from this.
 static PANIC_EXCEPTION: UnwindException = UnwindException::new();
 
 cpu_local! {
@@ -97,9 +97,10 @@ fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 
     log::error!("CPU {info}");
 
-    // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
-    //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
-    //  is no good way to do conditional compilation based on the opt-level.
+    // FIXME 32 seems adequate for unoptimized builds where the callstack can get
+    // quite deep  but (at least at the moment) is absolute overkill for
+    // optimized builds. Sadly there  is no good way to do conditional
+    // compilation based on the opt-level.
     const MAX_BACKTRACE_FRAMES: usize = 32;
 
     match backtrace::__rust_end_short_backtrace(
@@ -131,8 +132,8 @@ fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 #[inline(never)]
 #[unsafe(no_mangle)]
 fn rust_panic(regs: unwind::Registers, pc: usize) -> ! {
-    // NB: `PANIC_EXCEPTION` is actually treated as immutable, nothing ever writes through this
-    // but the rustc `intrinsics::catch_unwind` require a mut ptr.
+    // NB: `PANIC_EXCEPTION` is actually treated as immutable, nothing ever writes
+    // through this but the rustc `intrinsics::catch_unwind` require a mut ptr.
     let exception = ptr::from_ref(&PANIC_EXCEPTION).cast_mut();
 
     // Safety: `PANIC_EXCEPTION` is a static, it trivially outlives the unwind.

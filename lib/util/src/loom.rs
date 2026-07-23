@@ -7,10 +7,12 @@
 
 /// Wraps a `const fn` stripping the "constness" when compiled under loom.
 ///
-/// `loom` works by tracking additional state alongside each type. This has the annoying limitation that
-/// many methods that are `const` in `core` cannot be `const` in `loom` because of this additional tracking.
+/// `loom` works by tracking additional state alongside each type. This has the
+/// annoying limitation that many methods that are `const` in `core` cannot be
+/// `const` in `loom` because of this additional tracking.
 ///
-/// As you can imagine this makes writing `const` functions that use `loom` types difficult.
+/// As you can imagine this makes writing `const` functions that use `loom`
+/// types difficult.
 ///
 /// # Example
 ///

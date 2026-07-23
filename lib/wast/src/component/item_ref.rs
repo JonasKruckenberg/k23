@@ -54,7 +54,8 @@ impl<'a, K: Parse<'a>> Parse<'a> for CoreItemRef<'a, K> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         // This does not parse the surrounding `(` and `)` because
         // core prefix is context dependent and only the caller knows if it should be
-        // present for core references; therefore, the caller parses the parens and any core prefix
+        // present for core references; therefore, the caller parses the parens and any
+        // core prefix
         let kind = parser.parse::<K>()?;
         let idx = parser.parse()?;
         let export_name = parser.parse()?;

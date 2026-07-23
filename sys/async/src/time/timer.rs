@@ -48,8 +48,8 @@ struct Core {
     now: Ticks,
     /// Timer wheels
     ///
-    /// Each timer has 6 wheels with 64 slots, giving each wheel a precision multiplier
-    /// of `64^x` where `x` is the wheel level:
+    /// Each timer has 6 wheels with 64 slots, giving each wheel a precision
+    /// multiplier of `64^x` where `x` is the wheel level:
     ///
     /// Levels:
     /// - 64^0 slots
@@ -59,9 +59,10 @@ struct Core {
     /// - 64^4 slots
     /// - 64^5 slots
     ///
-    /// For example, a timer constructed from the default QEMU RISC-V CPU timebase frequency of `10_000_000 hz`
-    /// and therefore a `tick_duration` of `100 ns` (10000000 hz => 1/10000000 s => 0,0000001 s => 100ns)
-    /// will have the following wheel configuration:
+    /// For example, a timer constructed from the default QEMU RISC-V CPU
+    /// timebase frequency of `10_000_000 hz` and therefore a
+    /// `tick_duration` of `100 ns` (10000000 hz => 1/10000000 s => 0,0000001 s
+    /// => 100ns) will have the following wheel configuration:
     ///
     /// | wheel | multiplier |                               |
     /// |-------|------------|-------------------------------|
@@ -72,12 +73,12 @@ struct Core {
     /// | 4     | 64^4       | 17 sec range / ~18 min range  |
     /// | 5     | 64^5       | 18 min range / ~19 hr range   |
     ///
-    /// As you can see, such a timer configuration can track time up to 19 hours into the future with
-    /// a precision of 100 nanoseconds. Quite high precision at the cost of a quite maximum timeout
-    /// duration.
+    /// As you can see, such a timer configuration can track time up to 19 hours
+    /// into the future with a precision of 100 nanoseconds. Quite high
+    /// precision at the cost of a quite maximum timeout duration.
     ///
-    /// Here is another example of a "lower precision" clock configuration where the `tick_duration`
-    /// is `1 ms`:
+    /// Here is another example of a "lower precision" clock configuration where
+    /// the `tick_duration` is `1 ms`:
     ///
     /// | wheel | multiplier |                               |
     /// |-------|------------|-------------------------------|
@@ -88,8 +89,9 @@ struct Core {
     /// | 4     | 64^4       | ~ 4 hr slots / ~ 12 day range |
     /// | 5     | 64^5       | ~ 12 day slots / ~ 2 yr range |
     ///
-    /// As you can see with this configuration we are able to track time up to 2 years into the future
-    /// with a precision of 1 millisecond which should be an acceptable tradeoff for most applications.
+    /// As you can see with this configuration we are able to track time up to 2
+    /// years into the future with a precision of 1 millisecond which should
+    /// be an acceptable tradeoff for most applications.
     wheels: [Wheel; Core::WHEELS],
 }
 
@@ -155,7 +157,8 @@ impl Timer {
     /// Convert the given raw [`Ticks`] into a [`Duration`] using this timers
     /// internal tick duration.
     ///
-    /// Returns `None` if the given `ticks` cannot be represented by a `Duration`.
+    /// Returns `None` if the given `ticks` cannot be represented by a
+    /// `Duration`.
     pub fn ticks_to_duration(&self, ticks: Ticks) -> Option<Duration> {
         ticks
             .0
@@ -168,8 +171,9 @@ impl Timer {
     ///
     /// # Errors
     ///
-    /// This method returns a `[TimeError::DurationTooLong`] if the conversion from the given [`Duration`]
-    /// into the 64-bits [`Ticks`] would overflow.
+    /// This method returns a `[TimeError::DurationTooLong`] if the conversion
+    /// from the given [`Duration`] into the 64-bits [`Ticks`] would
+    /// overflow.
     pub fn duration_to_ticks(&self, duration: Duration) -> Result<Ticks, TimeError> {
         let duration_nanos =
             checked_duration_to_nanos(duration).ok_or(TimeError::DurationTooLong {
@@ -183,7 +187,8 @@ impl Timer {
     /// Advance the timer to the current time, waking any ready tasks.
     ///
     /// The return value indicates the number of tasks woken during this turn
-    /// as well as the next deadline (if any) at which new tasks will become ready.
+    /// as well as the next deadline (if any) at which new tasks will become
+    /// ready.
     ///
     /// It is a good idea for the caller to wait until that deadline is reached.
     pub fn turn(&self) -> (usize, Option<Deadline>) {
@@ -192,11 +197,12 @@ impl Timer {
 
     /// Try to advance the timer to the current time, waking any ready tasks.
     ///
-    /// This method *does not* block when the inner timer mutex lock cannot be acquired,
-    /// making it suitable to call in interrupt handlers.
+    /// This method *does not* block when the inner timer mutex lock cannot be
+    /// acquired, making it suitable to call in interrupt handlers.
     ///
     /// The return value indicates the number of tasks woken during this turn
-    /// as well as the next deadline (if any) at which new tasks will become ready.
+    /// as well as the next deadline (if any) at which new tasks will become
+    /// ready.
     ///
     /// It is a good idea for the caller to wait until that deadline is reached.
     pub fn try_turn(&self) -> Option<(usize, Option<Deadline>)> {
@@ -231,8 +237,9 @@ impl Timer {
 
     /// Schedule a wakeup using this timers hardware [`Clock`].
     ///
-    /// If the provided argument is `Some()` the clock is instructed to schedule a wakeup
-    /// at that deadline, if `None` is provided, a deadline *maximally far in the future* is chosen.
+    /// If the provided argument is `Some()` the clock is instructed to schedule
+    /// a wakeup at that deadline, if `None` is provided, a deadline
+    /// *maximally far in the future* is chosen.
     pub fn schedule_wakeup(&self, maybe_next_deadline: Option<Deadline>) {
         if let Some(next_deadline) = maybe_next_deadline {
             let virt = next_deadline.as_ticks();

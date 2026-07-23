@@ -54,9 +54,10 @@ jobs:
           BASE: ${{ inputs.base }}
         run: |
           if [ -z "$BASE" ]; then
-            targets='//...'
+            echo '//...' > targets.txt
           else
-            targets=$(nix develop .#ci --command just changed-targets "$BASE" < /dev/null)
+            nix develop .#ci --command just changed-targets "$BASE" < /dev/null > targets.txt
           fi
+          targets=$(cat targets.txt)
           echo "Impacted: ${targets:-<none>}"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"

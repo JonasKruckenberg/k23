@@ -68,8 +68,9 @@ pub(crate) trait RangeTreeInteger: Copy + Debug + Send + Sync + Unpin {
 
     /// Returns the index of the first pivot greater than or equal to `search`.
     ///
-    /// Because this assumes that pivots are sorted, it can be implemented either
-    /// as a binary search or by counting the number of pivots less than `search`.
+    /// Because this assumes that pivots are sorted, it can be implemented
+    /// either as a binary search or by counting the number of pivots less
+    /// than `search`.
     ///
     ///  # Safety
     ///

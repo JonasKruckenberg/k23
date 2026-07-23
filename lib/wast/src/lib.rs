@@ -16,9 +16,8 @@
 //!   module for you. You likely won't use this much.
 //!
 //! * [`parser`] - this is the workhorse of this crate. The [`parser`] module
-//!   provides the [`Parse`][] trait primarily and utilities
-//!   around working with a [`Parser`](`parser::Parser`) to parse streams of
-//!   tokens.
+//!   provides the [`Parse`][] trait primarily and utilities around working with
+//!   a [`Parser`](`parser::Parser`) to parse streams of tokens.
 //!
 //! * [`Module`](crate::core::Module) - this contains an Abstract Syntax Tree
 //!   (AST) of the WebAssembly Text format (WAT) as well as the unofficial WAST
@@ -44,8 +43,8 @@
 //! then this feature can be disabled.
 //!
 //! This crate also has an off-by-default `dwarf` feature which enables using
-//! [`core::EncodeOptions::dwarf`] to embed DWARF debugging information in generated
-//! binaries.
+//! [`core::EncodeOptions::dwarf`] to embed DWARF debugging information in
+//! generated binaries.
 //!
 //! [`Parse`]: parser::Parse
 //! [`LexError`]: lexer::LexError
@@ -118,7 +117,8 @@ extern crate alloc;
 /// }
 /// ```
 ///
-/// Note that the keyword name can only start with a lower-case letter, i.e. 'a'..'z'.
+/// Note that the keyword name can only start with a lower-case letter, i.e.
+/// 'a'..'z'.
 #[macro_export]
 macro_rules! custom_keyword {
     ($name:ident) => {

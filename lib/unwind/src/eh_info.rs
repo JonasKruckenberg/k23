@@ -13,9 +13,10 @@ use spin::LazyLock;
 
 use super::utils::{deref_pointer, get_unlimited_slice};
 
-// Below is a fun hack: We need a reference to the `.eh_frame` and `.eh_frame_hdr` sections and
-// must therefore force the linker to retain those even in release builds. By abusing mutable statics
-// like below we get a reference to the section start AND force it to not be garbage collected.
+// Below is a fun hack: We need a reference to the `.eh_frame` and
+// `.eh_frame_hdr` sections and must therefore force the linker to retain those
+// even in release builds. By abusing mutable statics like below we get a
+// reference to the section start AND force it to not be garbage collected.
 
 #[used(linker)]
 #[unsafe(link_section = ".eh_frame")]
@@ -36,7 +37,8 @@ pub struct EhInfo {
 }
 
 impl EhInfo {
-    /// Attempt to lookup up the Frame Descriptor Entry (FDE) for the given address.
+    /// Attempt to lookup up the Frame Descriptor Entry (FDE) for the given
+    /// address.
     ///
     /// # Errors
     ///

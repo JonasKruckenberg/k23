@@ -33,7 +33,8 @@ pub const TRAP_ATOMIC_WAIT_NON_SHARED_MEMORY: TrapCode =
 pub enum TrapKind {
     /// Internal assertion failed
     InternalAssertionFailed,
-    /// A wasm atomic operation was presented with a not-naturally-aligned linear-memory address.
+    /// A wasm atomic operation was presented with a not-naturally-aligned
+    /// linear-memory address.
     HeapMisaligned,
     /// Out-of-bounds access to a table.
     TableOutOfBounds,
@@ -59,7 +60,8 @@ pub enum TrapKind {
     /// Failed float-to-int conversion.
     BadConversionToInteger,
 
-    /// Used to indicate that a trap was raised by atomic wait operations on non shared memory.
+    /// Used to indicate that a trap was raised by atomic wait operations on non
+    /// shared memory.
     AtomicWaitNonSharedMemory,
 }
 

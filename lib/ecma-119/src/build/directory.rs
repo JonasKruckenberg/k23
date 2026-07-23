@@ -48,7 +48,8 @@ impl<'a> File<'a> {
     /// # Errors
     ///
     /// Returns `Err` when
-    /// - the file sie exceeds `u32::MAX` (ECMA-119 single-extent files are limited to 4 GiB - 1)
+    /// - the file sie exceeds `u32::MAX` (ECMA-119 single-extent files are
+    ///   limited to 4 GiB - 1)
     pub fn from_bytes(bytes: impl Into<Cow<'a, [u8]>>) -> anyhow::Result<Self> {
         let bytes = bytes.into();
         let len = u32::try_from(bytes.len())?;
@@ -64,7 +65,8 @@ impl<'a> File<'a> {
     ///
     /// Returns `Err` when
     /// - the file cannot be opened
-    /// - when the file sie exceeds `u32::MAX` (ECMA-119 single-extent files are limited to 4 GiB - 1)
+    /// - when the file sie exceeds `u32::MAX` (ECMA-119 single-extent files are
+    ///   limited to 4 GiB - 1)
     pub fn from_path(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let file = fs::File::open(path)?;
         let len = u32::try_from(file.metadata()?.len())?;

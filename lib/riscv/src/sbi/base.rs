@@ -29,9 +29,11 @@ pub fn get_spec_version() -> super::Result<SbiVersion> {
     })
 }
 
-/// Returns the current SBI implementation ID, which is different for every SBI implementation.
+/// Returns the current SBI implementation ID, which is different for every SBI
+/// implementation.
 ///
-/// It is intended that this implementation ID allows software to probe for SBI implementation quirks.
+/// It is intended that this implementation ID allows software to probe for SBI
+/// implementation quirks.
 ///
 /// # Known Implementation IDs
 ///

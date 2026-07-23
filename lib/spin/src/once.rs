@@ -14,9 +14,9 @@ use crate::loom::sync::atomic::{AtomicU8, Ordering};
 
 /// No initialization has run yet, and no thread is currently using the Once.
 const STATUS_INCOMPLETE: u8 = 0;
-/// Some thread has previously attempted to initialize the Once, but it panicked,
-/// so the Once is now poisoned. There are no other threads currently accessing
-/// this Once.
+/// Some thread has previously attempted to initialize the Once, but it
+/// panicked, so the Once is now poisoned. There are no other threads currently
+/// accessing this Once.
 const STATUS_POISONED: u8 = 1;
 /// Some thread is currently attempting to run initialization. It may succeed,
 /// so all future threads need to wait for it to finish.

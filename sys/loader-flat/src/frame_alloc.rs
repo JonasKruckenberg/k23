@@ -19,11 +19,12 @@ use mem_core::{AddressRangeExt, AllocError, FrameAllocator, PhysicalAddress};
 
 pub const DEFAULT_MAX_REGIONS: usize = 16;
 
-/// Simple bump allocator (cannot free) that can be used to allocate physical memory frames early during system
-/// bootstrap.
+/// Simple bump allocator (cannot free) that can be used to allocate physical
+/// memory frames early during system bootstrap.
 ///
-/// This allocator supports discontiguous physical memory by default. By default, up to [`DEFAULT_MAX_REGIONS`]
-/// but this limit can be adjusted by explicitly specifying the const-generic parameter.
+/// This allocator supports discontiguous physical memory by default. By
+/// default, up to [`DEFAULT_MAX_REGIONS`] but this limit can be adjusted by
+/// explicitly specifying the const-generic parameter.
 pub struct BumpAllocator<R, const MAX_REGIONS: usize = DEFAULT_MAX_REGIONS>
 where
     R: lock_api::RawMutex,
@@ -54,7 +55,8 @@ impl<R, const MAX_REGIONS: usize> BumpAllocator<R, MAX_REGIONS>
 where
     R: lock_api::RawMutex,
 {
-    /// Constructs a new bump allocator from the given regions of physical memory.
+    /// Constructs a new bump allocator from the given regions of physical
+    /// memory.
     ///
     /// # Panics
     ///
@@ -161,8 +163,8 @@ where
     }
 }
 
-// Safety: bump allocator manages raw physical memory regions, they remain valid theoretically
-// forever we merely hand out "land claims" to it.
+// Safety: bump allocator manages raw physical memory regions, they remain valid
+// theoretically forever we merely hand out "land claims" to it.
 unsafe impl<R, const MAX_REGIONS: usize> FrameAllocator for BumpAllocator<R, MAX_REGIONS>
 where
     R: lock_api::RawMutex,
@@ -209,20 +211,22 @@ where
 
     /// # Safety
     ///
-    /// Per the [`FrameAllocator`] contract: `block` must denote a block of frames
-    /// currently allocated via this allocator, and `layout` must fit that block.
+    /// Per the [`FrameAllocator`] contract: `block` must denote a block of
+    /// frames currently allocated via this allocator, and `layout` must fit
+    /// that block.
     unsafe fn deallocate(&self, _block: PhysicalAddress, _layout: Layout) {
         unimplemented!("BumpAllocator does not support deallocation");
     }
 }
 
 impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
-    /// Fast-path for allocation from the "current" arena. Most modern machines have a single large
-    /// physical memory region. During creation, we determine the largest physical memory region
-    /// and designate it as the "current" arena.
+    /// Fast-path for allocation from the "current" arena. Most modern machines
+    /// have a single large physical memory region. During creation, we
+    /// determine the largest physical memory region and designate it as the
+    /// "current" arena.
     ///
-    /// This means this fast-path can fulfill the vast majority of requests with a single allocation
-    /// from this "main" arena.
+    /// This means this fast-path can fulfill the vast majority of requests with
+    /// a single allocation from this "main" arena.
     #[inline(always)]
     fn allocate_contiguous_fast(
         &mut self,
@@ -232,8 +236,8 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
         self.arenas[self.current_arena_hint].allocate(min_align, layout)
     }
 
-    /// Cold-path when we have exhausted the capacity of the current region and need to consider
-    /// other regions.
+    /// Cold-path when we have exhausted the capacity of the current region and
+    /// need to consider other regions.
     #[inline(never)]
     #[cold]
     fn allocate_contiguous_slow(
@@ -243,9 +247,10 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
     ) -> Option<PhysicalAddress> {
         let current_arena_hint = self.current_arena_hint;
 
-        // NB: we know this method is called when the "current region" (as indicated by the current region hint)
-        // is exhausted. We therefore begin our search at the next region (offset 1..) wrapping around
-        // at the end to double-check previous regions (they might have capacity still). But we still
+        // NB: we know this method is called when the "current region" (as indicated by
+        // the current region hint) is exhausted. We therefore begin our search
+        // at the next region (offset 1..) wrapping around at the end to
+        // double-check previous regions (they might have capacity still). But we still
         // don't double-check the "current region" as we know it cant fit `layout`.
         for offset in 1..self.arenas.len() {
             let i = (current_arena_hint + offset) % self.arenas.len();
@@ -263,8 +268,8 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
         None
     }
 
-    /// Cold-path for discontiguous allocations when we have exhausted the capacity of the current
-    /// region and need to consider other regions.
+    /// Cold-path for discontiguous allocations when we have exhausted the
+    /// capacity of the current region and need to consider other regions.
     #[inline(never)]
     #[cold]
     fn allocate_slow(
@@ -312,8 +317,8 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
                 .collect::<ArrayVec<_, MAX_REGIONS>>()
         );
 
-        // if we've gone through all regions without fully allocating the required memory we cant
-        // satisfy this allocation request.
+        // if we've gone through all regions without fully allocating the required
+        // memory we cant satisfy this allocation request.
         // we might have allocated some blocks though, so lets go and clean them up now
 
         for block in blocks {
@@ -322,7 +327,8 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
                 .iter_mut()
                 .find(|region| region.region.overlaps(&block))
             else {
-                // every block was just allocated from one of these arenas, so this is unreachable
+                // every block was just allocated from one of these arenas, so this is
+                // unreachable
                 debug_assert!(
                     false,
                     "block {block:?} must belong to an arena. this is a bug!"
@@ -374,22 +380,25 @@ impl Arena {
         self.region.end.offset_from_unsigned(self.ptr)
     }
 
-    /// Returns the used (allocated) slice of the physical memory region managed by this arena
+    /// Returns the used (allocated) slice of the physical memory region managed
+    /// by this arena
     #[inline]
     pub fn used(&self) -> Range<PhysicalAddress> {
         Range::from(self.ptr..self.region.end)
     }
 
-    /// Returns the free (not allocated) slice of the physical memory region managed by this arena
+    /// Returns the free (not allocated) slice of the physical memory region
+    /// managed by this arena
     #[inline]
     pub fn free(&self) -> Range<PhysicalAddress> {
         Range::from(self.region.start..self.ptr)
     }
 
-    /// Deallocates a given memory block IF it is the last block that was allocated from this arena.
+    /// Deallocates a given memory block IF it is the last block that was
+    /// allocated from this arena.
     ///
-    /// Returns `true` if the block was freed, or `false` if it was not the last allocated block
-    /// (in which case the arena is left unchanged).
+    /// Returns `true` if the block was freed, or `false` if it was not the last
+    /// allocated block (in which case the arena is left unchanged).
     fn deallocate_if_last(&mut self, block: Range<PhysicalAddress>) -> bool {
         if self.ptr == block.start {
             self.ptr = block.end;
@@ -399,7 +408,8 @@ impl Arena {
         }
     }
 
-    /// Attempt to allocate enough memory to satisfy the size and alignment requirements of `layout`.
+    /// Attempt to allocate enough memory to satisfy the size and alignment
+    /// requirements of `layout`.
     #[inline]
     fn allocate(&mut self, min_align: NonZeroUsize, layout: Layout) -> Option<PhysicalAddress> {
         debug_assert!(
@@ -424,7 +434,8 @@ impl Arena {
                 // the requested alignment is equal to our minimum alignment
 
                 // round up the layout size to be a multiple of the layout's alignment
-                // Safety: `Layout` guarantees that rounding the size up to its align cannot overflow
+                // Safety: `Layout` guarantees that rounding the size up to its align cannot
+                // overflow
                 let aligned_size = unsafe { round_up_to_unchecked(layout.size(), layout.align()) };
 
                 if self.capacity() < aligned_size {
@@ -437,13 +448,14 @@ impl Arena {
                 // the requested alignment is greater than our minimum alignment
 
                 // round up the layout size to be a multiple of the layout's alignment.
-                // Safety: `Layout` guarantees that rounding the size up to its align cannot overflow
+                // Safety: `Layout` guarantees that rounding the size up to its align cannot
+                // overflow
                 let aligned_size = unsafe { round_up_to_unchecked(layout.size(), layout.align()) };
 
                 let aligned_ptr = self.ptr.align_down(layout.align());
 
-                // NB: we're not using .capacity() here because we actually care about the capacity
-                // that's left *after* aligning the bump pointer down
+                // NB: we're not using .capacity() here because we actually care about the
+                // capacity that's left *after* aligning the bump pointer down
                 let capacity = aligned_ptr.offset_from_unsigned(self.region.start);
 
                 if aligned_ptr < self.region.start || capacity < aligned_size {
@@ -539,8 +551,9 @@ mod tests {
     use mem_testkit::{EmulateArch, Machine, MachineBuilder, archtest};
 
     // The allocator's own items (`BumpAllocator`, `Arena`, …) and the crate-root `use` imports
-    // (`Arch`, `Layout`, `FrameAllocator`, `MemoryRegion`, `PhysicalAddress`, …) come in through
-    // this glob, so only the test-harness-specific names are imported explicitly above.
+    // (`Arch`, `Layout`, `FrameAllocator`, `MemoryRegion`, `PhysicalAddress`, …) come in
+    // through this glob, so only the test-harness-specific names are imported explicitly
+    // above.
     use super::*;
 
     fn assert_zeroed(frame: PhysicalAddress, bytes: usize, physmap: &PhysMap, arch: &impl Arch) {

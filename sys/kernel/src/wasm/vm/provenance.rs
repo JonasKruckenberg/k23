@@ -92,8 +92,8 @@ impl<T> From<NonNull<T>> for VmPtr<T> {
 /// A custom "marker trait" used to tag types that are safe to share with
 /// compiled wasm code.
 ///
-/// The intention of this trait is to be used as a bound in a few core locations,
-/// such as `Instance::vmctx_plus_offset_mut`, and otherwise not
+/// The intention of this trait is to be used as a bound in a few core
+/// locations, such as `Instance::vmctx_plus_offset_mut`, and otherwise not
 /// present very often. The purpose of this trait is to ensure that all types
 /// stored to be shared with compiled code have a known layout and are
 /// guaranteed to be "safe" to share with compiled wasm code.
@@ -131,8 +131,8 @@ impl<T> From<NonNull<T>> for VmPtr<T> {
 /// with compiled code.
 pub unsafe trait VmSafe {}
 
-// Safety: Implementations for primitive types. Note that atomics are included here as
-// some atomic values are shared with compiled code. Rust's atomics are
+// Safety: Implementations for primitive types. Note that atomics are included
+// here as some atomic values are shared with compiled code. Rust's atomics are
 // guaranteed to have the same memory representation as their primitive.
 unsafe impl VmSafe for u8 {}
 // Safety: see above
@@ -166,9 +166,9 @@ unsafe impl VmSafe for core::sync::atomic::AtomicU64 {}
 // Safety: VMSharedTypeIndex is just a `u32` which is always VmSafe
 unsafe impl VmSafe for VMSharedTypeIndex {}
 
-// Safety: Core implementations for `VmPtr`. Notably `VMPtr<T>` requires that `T` also
-// implements `VmSafe`. Additionally an `Option` wrapper is allowed as that's
-// just a nullable pointer.
+// Safety: Core implementations for `VmPtr`. Notably `VMPtr<T>` requires that
+// `T` also implements `VmSafe`. Additionally an `Option` wrapper is allowed as
+// that's just a nullable pointer.
 unsafe impl<T: VmSafe> VmSafe for VmPtr<T> {}
 // Safety: see above
 unsafe impl<T: VmSafe> VmSafe for Option<VmPtr<T>> {}

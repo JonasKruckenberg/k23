@@ -5,20 +5,20 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! `addr2line` provides a cross-platform library for retrieving per-address debug information
-//! from files with DWARF debug information. Given an address, it can return the file name,
-//! line number, and function name associated with that address, as well as the inline call
-//! stack leading to that address.
+//! `addr2line` provides a cross-platform library for retrieving per-address
+//! debug information from files with DWARF debug information. Given an address,
+//! it can return the file name, line number, and function name associated with
+//! that address, as well as the inline call stack leading to that address.
 //!
-//! At the lowest level, the library uses a [`Context`] to cache parsed information so that
-//! multiple lookups are efficient. To create a `Context`, you first need to open and parse the
-//! file using an object file parser such as [`object`](https://github.com/gimli-rs/object),
+//! At the lowest level, the library uses a [`Context`] to cache parsed
+//! information so that multiple lookups are efficient. To create a `Context`,
+//! you first need to open and parse the file using an object file parser such as [`object`](https://github.com/gimli-rs/object),
 //! create a [`gimli::Dwarf`], and finally call [`Context::from_dwarf`].
 //!
 //! Location information is obtained with [`Context::find_location`] or
 //! [`Context::find_location_range`]. Function information is obtained with
-//! [`Context::find_frames`], which returns a frame for each inline function. Each frame
-//! contains both name and location.
+//! [`Context::find_frames`], which returns a frame for each inline function.
+//! Each frame contains both name and location.
 
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
@@ -67,8 +67,9 @@ enum DebugFile {
 
 /// The state necessary to perform address to line translation.
 ///
-/// Constructing a `Context` is somewhat costly, so users should aim to reuse `Context`s
-/// when performing lookups for many addresses in the same executable.
+/// Constructing a `Context` is somewhat costly, so users should aim to reuse
+/// `Context`s when performing lookups for many addresses in the same
+/// executable.
 pub struct Context<R: gimli::Reader> {
     sections: Arc<gimli::Dwarf<R>>,
     units: ResUnits<R>,
@@ -156,7 +157,8 @@ impl<R: gimli::Reader> Context<R> {
 }
 
 impl<R: gimli::Reader> Context<R> {
-    /// Find the source file and line corresponding to the given virtual memory address.
+    /// Find the source file and line corresponding to the given virtual memory
+    /// address.
     ///
     /// # Errors
     ///
@@ -170,8 +172,9 @@ impl<R: gimli::Reader> Context<R> {
         Ok(None)
     }
 
-    /// Return source file and lines for a range of addresses. For each location it also
-    /// returns the address and size of the range of the underlying instructions.
+    /// Return source file and lines for a range of addresses. For each location
+    /// it also returns the address and size of the range of the underlying
+    /// instructions.
     ///
     /// # Errors
     ///
@@ -186,15 +189,16 @@ impl<R: gimli::Reader> Context<R> {
             .find_location_range(probe_low, probe_high, &self.sections))
     }
 
-    /// Return an iterator for the function frames corresponding to the given virtual
-    /// memory address.
+    /// Return an iterator for the function frames corresponding to the given
+    /// virtual memory address.
     ///
-    /// If the probe address is not for an inline function then only one frame is
-    /// returned.
+    /// If the probe address is not for an inline function then only one frame
+    /// is returned.
     ///
-    /// If the probe address is for an inline function then the first frame corresponds
-    /// to the innermost inline function.  Subsequent frames contain the caller and call
-    /// location, until an non-inline caller is reached.
+    /// If the probe address is for an inline function then the first frame
+    /// corresponds to the innermost inline function.  Subsequent frames
+    /// contain the caller and call location, until an non-inline caller is
+    /// reached.
     pub fn find_frames(
         &self,
         probe: u64,
@@ -233,7 +237,8 @@ impl<R: gimli::Reader> Context<R> {
 }
 
 impl<R: gimli::Reader> Context<R> {
-    // Find the unit containing the given offset, and convert the offset into a unit offset.
+    // Find the unit containing the given offset, and convert the offset into a unit
+    // offset.
     fn find_unit(
         &self,
         offset: gimli::DebugInfoOffset<R::Offset>,

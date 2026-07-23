@@ -38,7 +38,8 @@ pub(crate) fn is_d_char(b: u8) -> bool {
 
 /// Returns `true` if `b` is a valid a-character (ECMA-119 §7.4.2).
 ///
-/// a-characters: d-characters plus SPACE and `! " % & ' ( ) * + , - . / : ; < = > ?`
+/// a-characters: d-characters plus SPACE and `! " % & ' ( ) * + , - . / : ; < =
+/// > ?`
 #[inline]
 pub(crate) fn is_a_char(b: u8) -> bool {
     b.is_ascii_uppercase()

@@ -18,9 +18,9 @@ use proptest::prelude::{Just, Strategy, any};
 
 /// Produces arbitrary `VirtualAddress`s across the whole `usize` range.
 ///
-/// Replaces the former `proptest_derive::Arbitrary` derive on `VirtualAddress`; keeping
-/// the strategy here (rather than an `Arbitrary` impl in `mem-core`) keeps `mem-core`
-/// free of any `proptest` dependency.
+/// Replaces the former `proptest_derive::Arbitrary` derive on `VirtualAddress`;
+/// keeping the strategy here (rather than an `Arbitrary` impl in `mem-core`)
+/// keeps `mem-core` free of any `proptest` dependency.
 pub fn any_virt() -> impl Strategy<Value = VirtualAddress> {
     any::<usize>().prop_map(VirtualAddress::new)
 }
@@ -33,8 +33,9 @@ pub fn any_phys() -> impl Strategy<Value = PhysicalAddress> {
 /// Produces arbitrary *valid* `MemoryAttributes`.
 ///
 /// Generates only valid bit patterns: an arbitrary `u8` would allow the
-/// `WRITE_OR_EXECUTE` pattern `0b11`, which has no `WriteOrExecute` variant and panics
-/// in `get`. Replaces the former `Arbitrary for MemoryAttributes` impl in `mem-core`.
+/// `WRITE_OR_EXECUTE` pattern `0b11`, which has no `WriteOrExecute` variant and
+/// panics in `get`. Replaces the former `Arbitrary for MemoryAttributes` impl
+/// in `mem-core`.
 pub fn attrs() -> impl Strategy<Value = MemoryAttributes> {
     (any::<bool>(), 0u8..3).prop_map(|(read, write_or_execute)| {
         let write_or_execute = match write_or_execute {
@@ -84,8 +85,8 @@ pub fn aligned_phys(
     addr.prop_map(move |value| value.align_down(alignment))
 }
 
-/// Produces a set of [`Layout`]s for regions of physical memory aligned to `alignment`.
-/// Most useful for initializing an emulated machine.
+/// Produces a set of [`Layout`]s for regions of physical memory aligned to
+/// `alignment`. Most useful for initializing an emulated machine.
 ///
 /// # Panics
 ///
@@ -110,7 +111,8 @@ pub fn region_layouts(
         regions
             .into_iter()
             .map(|size| {
-                // Safety: `alignment` is a power of two (asserted above), hence non-zero, so `- 1` cannot underflow
+                // Safety: `alignment` is a power of two (asserted above), hence non-zero, so `-
+                // 1` cannot underflow
                 let align_minus_one = unsafe { alignment.unchecked_sub(1) };
 
                 let size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
@@ -123,8 +125,8 @@ pub fn region_layouts(
     })
 }
 
-/// Produces a set of *sorted*, *non-overlapping* regions of physical memory aligned to `alignment`.
-/// Most useful for initializing an emulated machine.
+/// Produces a set of *sorted*, *non-overlapping* regions of physical memory
+/// aligned to `alignment`. Most useful for initializing an emulated machine.
 ///
 /// # Panics
 ///
@@ -181,8 +183,8 @@ pub fn regions_phys(
     })
 }
 
-/// Picks an arbitrary `PhysicalAddress` from a strategy that produces physical memory regions such
-/// as [`regions_phys`].
+/// Picks an arbitrary `PhysicalAddress` from a strategy that produces physical
+/// memory regions such as [`regions_phys`].
 pub fn pick_address_in_regions(
     regions: impl Strategy<Value = Vec<Range<PhysicalAddress>>>,
 ) -> impl Strategy<Value = (Vec<Range<PhysicalAddress>>, PhysicalAddress)> {
@@ -198,7 +200,8 @@ pub fn pick_address_in_regions(
     })
 }
 
-/// Produces a set of *sorted*, *non-overlapping* regions of virtual memory aligned to `alignment`.
+/// Produces a set of *sorted*, *non-overlapping* regions of virtual memory
+/// aligned to `alignment`.
 ///
 /// # Panics
 ///

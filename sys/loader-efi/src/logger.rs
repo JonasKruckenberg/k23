@@ -65,7 +65,8 @@ impl log::Log for Logger {
             return;
         }
 
-        // Safety: `new` and `set_output` ensure the pointer is either NUL or points to a valid, initialized output
+        // Safety: `new` and `set_output` ensure the pointer is either NUL or points to
+        // a valid, initialized output
         if let Some(output) = unsafe { self.output().as_mut() } {
             let _ = writeln!(
                 output,

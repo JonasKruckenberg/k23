@@ -154,7 +154,8 @@ pub async fn run_tests(global: &'static state::Global) -> crate::Result<Conclusi
         }
     });
 
-    // we handle test failures through `Conclusion` so it is safe to ignore the result here
+    // we handle test failures through `Conclusion` so it is safe to ignore the
+    // result here
     let _ = try_join_all(tests).await;
 
     printer.print_summary(&conclusion);
@@ -187,13 +188,13 @@ pub fn all_tests() -> &'static [Test] {
     let byte_offset = stop as usize - start as usize;
 
     let Some(len) = byte_offset.checked_div(stride) else {
-        // Safety: `byte_offset.checked_div(stride)` returns `None` only when `stride == 0`,
-        // i.e. `size_of::<Test>() == 0`. The `#[distributed_slice]` macro asserts `size_of::<T>() > 0`
-        // so this branch is unreachable.
+        // Safety: `byte_offset.checked_div(stride)` returns `None` only when `stride ==
+        // 0`, i.e. `size_of::<Test>() == 0`. The `#[distributed_slice]` macro
+        // asserts `size_of::<T>() > 0` so this branch is unreachable.
         unsafe { hint::unreachable_unchecked() }
     };
 
-    // Safety: the linker populates `k23_tests` with properly aligned, initialized `Test` entries
-    // (registered by `#[ktest::test]`).
+    // Safety: the linker populates `k23_tests` with properly aligned, initialized
+    // `Test` entries (registered by `#[ktest::test]`).
     unsafe { slice::from_raw_parts(start, len) }
 }

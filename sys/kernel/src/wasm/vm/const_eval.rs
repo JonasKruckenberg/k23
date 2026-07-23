@@ -54,8 +54,8 @@ impl<'a> ConstEvalContext<'a> {
     }
 
     fn struct_fields_len(&self, _store: &mut StoreOpaque, _shared_ty: VMSharedTypeIndex) -> usize {
-        // let struct_ty = StructType::from_shared_type_index(store.engine(), shared_ty);
-        // let fields = struct_ty.fields();
+        // let struct_ty = StructType::from_shared_type_index(store.engine(),
+        // shared_ty); let fields = struct_ty.fields();
         // fields.len()
         todo!()
     }
@@ -67,8 +67,8 @@ impl<'a> ConstEvalContext<'a> {
         _shared_ty: VMSharedTypeIndex,
         _fields: &[VMVal],
     ) -> crate::Result<VMVal> {
-        // let struct_ty = StructType::from_shared_type_index(store.engine(), shared_ty);
-        // let fields = fields
+        // let struct_ty = StructType::from_shared_type_index(store.engine(),
+        // shared_ty); let fields = fields
         //     .iter()
         //     .zip(struct_ty.fields())
         //     .map(|(raw, ty)| {
@@ -136,9 +136,9 @@ impl<'a> ConstEvalContext<'a> {
 impl ConstExprEvaluator {
     /// Evaluate a `ConstExpr` returning the result value.
     ///
-    /// The only use of const expressions at the moment is to produce init values for globals,
-    /// or tables or to calculate offsets. As such all uses *require* a const expression to return
-    /// exactly one result.
+    /// The only use of const expressions at the moment is to produce init
+    /// values for globals, or tables or to calculate offsets. As such all
+    /// uses *require* a const expression to return exactly one result.
     ///
     /// # Errors
     ///
@@ -146,8 +146,9 @@ impl ConstExprEvaluator {
     ///
     /// # Panics
     ///
-    /// The only uses of const expressions require them to evaluate to exactly one result.
-    /// This method will panic if there is not exactly one result.
+    /// The only uses of const expressions require them to evaluate to exactly
+    /// one result. This method will panic if there is not exactly one
+    /// result.
     pub fn eval(
         &mut self,
         store: &mut StoreOpaque,
@@ -211,8 +212,8 @@ impl ConstExprEvaluator {
                     //
                     // if self.stack.len() < len {
                     //     bail!(
-                    //         "const expr evaluation error: expected at least {len} values on the stack, found {}",
-                    //         self.stack.len()
+                    //         "const expr evaluation error: expected at least {len} values on the
+                    // stack, found {}",         self.stack.len()
                     //     )
                     // }
                     //
@@ -244,7 +245,8 @@ impl ConstExprEvaluator {
                     // #[allow(clippy::cast_sign_loss)]
                     // let len = self.pop()?.get_i32() as u32;
                     //
-                    // let elem = Val::from_vmval(&mut store, self.pop()?, ty.element_type().unpack());
+                    // let elem = Val::from_vmval(&mut store, self.pop()?,
+                    // ty.element_type().unpack());
                     //
                     // let pre = ArrayRefPre::_new(&mut store, ty);
                     // let array = ArrayRef::_new(&mut store, &pre, &elem, len)?;
@@ -286,8 +288,8 @@ impl ConstExprEvaluator {
                     // let array_size = usize::try_from(*array_size).unwrap();
                     // if self.stack.len() < array_size {
                     //     bail!(
-                    //         "const expr evaluation error: expected at least {array_size} values on the stack, found {}",
-                    //         self.stack.len()
+                    //         "const expr evaluation error: expected at least {array_size} values
+                    // on the stack, found {}",         self.stack.len()
                     //     )
                     // }
                     //
@@ -318,7 +320,8 @@ impl ConstExprEvaluator {
             Ok(self.stack.pop().unwrap())
         } else {
             let len = self.stack.len();
-            // we need to correctly clear the stack here for the next time we try to use the const eval
+            // we need to correctly clear the stack here for the next time we try to use the
+            // const eval
             self.stack.clear();
             bail!("const expr evaluation error: expected 1 resulting value, found {len}",)
         }

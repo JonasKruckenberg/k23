@@ -47,12 +47,14 @@ impl Flush {
         }
     }
 
-    /// Ignores the contents of the `Flush` and will NOT issue TLB invalidations.
+    /// Ignores the contents of the `Flush` and will NOT issue TLB
+    /// invalidations.
     ///
     /// # Safety
     ///
-    /// Not flushing after mutating the page translation tables will likely lead to unintended
-    /// consequences such as inconsistent views of the address space between different cpus.
+    /// Not flushing after mutating the page translation tables will likely lead
+    /// to unintended consequences such as inconsistent views of the address
+    /// space between different cpus.
     ///
     /// You should only call this if you know what you're doing.
     pub const unsafe fn ignore(self) {

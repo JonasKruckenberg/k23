@@ -179,8 +179,9 @@ impl<T, M> PartialEq<&'_ JoinHandle<T, M>> for Id {
 impl<T, M> JoinHandle<T, M> {
     /// Cancels the task associated with the handle.
     ///
-    /// Awaiting a cancelled task might complete as usual if the task was already completed at
-    /// the time it was cancelled, but most likely it will fail with a [cancelled] [`JoinError`].
+    /// Awaiting a cancelled task might complete as usual if the task was
+    /// already completed at the time it was cancelled, but most likely it
+    /// will fail with a [cancelled] [`JoinError`].
     ///
     /// See [the module level docs] for details.
     ///
@@ -270,7 +271,6 @@ impl<T> JoinError<T> {
     /// Returns true if the error was caused by the task panicking.
     ///
     /// # Examples
-    ///
     //     ```
     //     use std::panic;
     //

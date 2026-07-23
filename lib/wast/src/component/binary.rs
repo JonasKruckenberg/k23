@@ -193,7 +193,8 @@ impl<'a> Encoder<'a> {
         match &module.kind {
             CoreModuleKind::Import { .. } => unreachable!("should be expanded already"),
             CoreModuleKind::Inline { fields } => {
-                // TODO: replace this with a wasm-encoder based encoding (should return `wasm_encoder::Module`)
+                // TODO: replace this with a wasm-encoder based encoding (should return
+                // `wasm_encoder::Module`)
                 let data = crate::core::binary::encode(&module.id, &module.name, fields, options);
                 self.component.section(&RawSection {
                     id: ComponentSectionId::CoreModule.into(),

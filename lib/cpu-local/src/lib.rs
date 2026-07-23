@@ -7,30 +7,36 @@
 
 //! `no_std` per-CPU storage primitive.
 //!
-//! The `cpu_local!` macro is essentially just a convenience wrapper around the (nightly only)
-//! [`#[thread_local]`][thread_local_attr] attribute, which translates to LLVMs `thread_local` attribute.
+//! The `cpu_local!` macro is essentially just a convenience wrapper around the
+//! (nightly only) [`#[thread_local]`][thread_local_attr] attribute, which
+//! translates to LLVMs `thread_local` attribute.
 //!
 //! # Comparison with `thread_local`
 //!
-//! `cpu_local` mirrors the API of `thread_local` and uses the same compiler internals, but has one big conceptual difference:
-//! `thread_local` runs the TLS values `Drop` impls when e.g. the thread gets torn down, while `cpu_local` doesn't.
-//! This is usually fine for `no_std` environments where a "thread" is the same as a physical CPU, and
-//! means `cpu_local` is vastly simpler, doesn't depend on `alloc` and has a panic-free core API.
+//! `cpu_local` mirrors the API of `thread_local` and uses the same compiler
+//! internals, but has one big conceptual difference: `thread_local` runs the
+//! TLS values `Drop` impls when e.g. the thread gets torn down, while
+//! `cpu_local` doesn't. This is usually fine for `no_std` environments where a
+//! "thread" is the same as a physical CPU, and means `cpu_local` is vastly
+//! simpler, doesn't depend on `alloc` and has a panic-free core API.
 //!
 //! # Why no mutable access?
 //!
-//! While CPU-local values are safe from race-conditions, they still allow you to obtain multiple
-//! references to the same data from different places on the call stack. Which could still allow
-//! you to obtain multiple mutable references to the same value at the same time, a big no-no!
+//! While CPU-local values are safe from race-conditions, they still allow you
+//! to obtain multiple references to the same data from different places on the
+//! call stack. Which could still allow you to obtain multiple mutable
+//! references to the same value at the same time, a big no-no!
 //!
-//! Just like regular statics, you can use [`Cell`] or [`RefCell`] to work around this limitation and
-//! [`LocalKey`] even provides convenience methods for those two containers.
+//! Just like regular statics, you can use [`Cell`] or [`RefCell`] to work
+//! around this limitation and [`LocalKey`] even provides convenience methods
+//! for those two containers.
 //!
 //! # `const` initializers
 //!
-//! The default `cpu_local!` declaration will lazily initialize the storage on first access.
-//! Types which have `const` constructors however, can opt into a more optimized representation by
-//! using a `const {}` block in the declaration:
+//! The default `cpu_local!` declaration will lazily initialize the storage on
+//! first access. Types which have `const` constructors however, can opt into a
+//! more optimized representation by using a `const {}` block in the
+//! declaration:
 //!
 //! ```
 //! #![feature(thread_local)]
@@ -49,28 +55,35 @@
 //!
 //! # `no_std` support
 //!
-//! This crate supports `no_std` by default, but depending on the target you **need** to set up the machine
-//! state (e.g. set the thread pointer correctly).
+//! This crate supports `no_std` by default, but depending on the target you
+//! **need** to set up the machine state (e.g. set the thread pointer
+//! correctly).
 //!
-//! **IF YOU DO NOT TO SET UP TLS CORRECTLY ALL CODE HERE HAS UNDEFINED BEHAVIOUR**.
+//! **IF YOU DO NOT TO SET UP TLS CORRECTLY ALL CODE HERE HAS UNDEFINED
+//! BEHAVIOUR**.
 //!
-//! (The methods in this crate will likely attempt to access arbitrary memory locations)
+//! (The methods in this crate will likely attempt to access arbitrary memory
+//! locations)
 //!
-//! Correctly setting up the machine state for TLS greatly depends on the target you are compiling for,
-//! but here is the rough outline for TLS support on RISC-V with the `"tls-model": "local-exec"` (which
-//! is what the k23 kernel uses):
+//! Correctly setting up the machine state for TLS greatly depends on the target
+//! you are compiling for, but here is the rough outline for TLS support on
+//! RISC-V with the `"tls-model": "local-exec"` (which is what the k23 kernel
+//! uses):
 //!
-//! LLVM will place all *non-zero initialized* `cpu_local` statics into a special `TLS` ELF segment.
-//! The segments size on-disk without any zero-initialized statics is called its `file_size`, while the
-//! size including all zero-initialized statics is called its `memory_size` (because that is how many
-//! bytes the final segment will take up in memory). At boot time, you need to parse this data from
-//! the ELF file and allocate `memory_size` chunks of zero-initialized memory for each CPU that you
-//! wish to bring online. You then need to copy the TLS segments data into the first `file_size` bytes
-//! of each chunk (tdata always comes before tbss). Finally you need to set the RISC-V thread pointer
-//! `tp` to the beginning of the CPUs allocated TLS chunk.
+//! LLVM will place all *non-zero initialized* `cpu_local` statics into a
+//! special `TLS` ELF segment. The segments size on-disk without any
+//! zero-initialized statics is called its `file_size`, while the size including
+//! all zero-initialized statics is called its `memory_size` (because that is
+//! how many bytes the final segment will take up in memory). At boot time, you
+//! need to parse this data from the ELF file and allocate `memory_size` chunks
+//! of zero-initialized memory for each CPU that you wish to bring online. You
+//! then need to copy the TLS segments data into the first `file_size` bytes
+//! of each chunk (tdata always comes before tbss). Finally you need to set the
+//! RISC-V thread pointer `tp` to the beginning of the CPUs allocated TLS chunk.
 //!
-//! If you are unsure whether your `no_std` target supports TLS or what model it uses, chances are it
-//! doesn't. In that case, you will need to define a [custom target specification] that does.
+//! If you are unsure whether your `no_std` target supports TLS or what model it
+//! uses, chances are it doesn't. In that case, you will need to define a
+//! [custom target specification] that does.
 //!
 //! [thread_local_attr]: <https://github.com/rust-lang/rust/issues/29594>
 //! [custom target specification]: <https://doc.rust-lang.org/beta/rustc/targets/custom.html>
@@ -108,8 +121,9 @@ use core::ptr::NonNull;
 ///  assert_eq!(BAR[1], 2.0);
 /// ```
 ///
-/// Just like the stdlib's version this you can only obtain shared references (`&T`), so to modify
-/// the CPU-local you will need an interior-mutability container such as [`Cell`] or [`RefCell`]
+/// Just like the stdlib's version this you can only obtain shared references
+/// (`&T`), so to modify the CPU-local you will need an interior-mutability
+/// container such as [`Cell`] or [`RefCell`]
 ///
 /// [cpu local]: crate#what-do-i-use-this-for
 /// [`Cell`]: core::cell::Cell
@@ -208,7 +222,8 @@ pub struct LocalKey<T> {
 }
 
 impl<T> LocalKey<T> {
-    /// Construct a new LocalKey from it's accessor function. DO NOT USE THIS DIRECTLY!
+    /// Construct a new LocalKey from it's accessor function. DO NOT USE THIS
+    /// DIRECTLY!
     #[doc(hidden)]
     pub const unsafe fn new(inner: fn(Option<&mut Option<T>>) -> NonNull<T>) -> Self {
         Self { inner }

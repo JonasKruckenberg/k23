@@ -37,9 +37,11 @@ pub struct Table {
     /// The optional maximum accessible size, in elements, for this table.
     maximum: Option<usize>,
 }
-// Safety: The store synchronization protocol ensures this type will only ever be access in a thread-safe way
+// Safety: The store synchronization protocol ensures this type will only ever
+// be access in a thread-safe way
 unsafe impl Send for Table {}
-// Safety: The store synchronization protocol ensures this type will only ever be access in a thread-safe way
+// Safety: The store synchronization protocol ensures this type will only ever
+// be access in a thread-safe way
 unsafe impl Sync for Table {}
 
 impl Table {
@@ -129,8 +131,9 @@ impl Table {
             return Ok(None);
         }
 
-        // we only support static tables that have all their memory reserved (not allocated) upfront
-        // this means resizing is as simple as just updating the size field
+        // we only support static tables that have all their memory reserved (not
+        // allocated) upfront this means resizing is as simple as just updating
+        // the size field
         self.size = new_size;
 
         self.fill(

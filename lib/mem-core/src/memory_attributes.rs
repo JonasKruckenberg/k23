@@ -79,12 +79,14 @@ impl MemoryAttributes {
         matches!(self.get(Self::WRITE_OR_EXECUTE), WriteOrExecute::Write)
     }
 
-    /// Returns whether these `MemoryAttributes` allow executing instructions from memory.
+    /// Returns whether these `MemoryAttributes` allow executing instructions
+    /// from memory.
     pub fn allows_execution(&self) -> bool {
         matches!(self.get(Self::WRITE_OR_EXECUTE), WriteOrExecute::Execute)
     }
 
-    /// Returns the [`MemoryKind`] (cacheability / ordering class) of the region.
+    /// Returns the [`MemoryKind`] (cacheability / ordering class) of the
+    /// region.
     pub fn kind(&self) -> MemoryKind {
         self.get(Self::KIND)
     }

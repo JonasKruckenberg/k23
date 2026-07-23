@@ -58,14 +58,15 @@ impl FuncTranslator {
         builder.switch_to_block(entry_block);
         builder.seal_block(entry_block); // Declare all predecessors known.
 
-        // Make sure the entry block is inserted in the layout before we make any callbacks to
-        // `environ`. The callback functions may need to insert things in the entry block.
+        // Make sure the entry block is inserted in the layout before we make any
+        // callbacks to `environ`. The callback functions may need to insert
+        // things in the entry block.
         builder.ensure_inserted_block();
 
         let num_params = declare_wasm_parameters(&mut builder, entry_block, env);
 
-        // Set up the translation state with a single pushed control block representing the whole
-        // function and its return values.
+        // Set up the translation state with a single pushed control block representing
+        // the whole function and its return values.
         let exit_block = builder.create_block();
         builder.append_block_params_for_function_returns(exit_block);
         self.state.initialize(&builder.func.signature, exit_block);
@@ -94,8 +95,8 @@ fn declare_wasm_parameters(
     let mut next_local = 0;
     for i in 0..sig_len {
         let param_type = builder.func.signature.params[i];
-        // There may be additional special-purpose parameters in addition to the normal WebAssembly
-        // signature parameters. For example, a `vmctx` pointer.
+        // There may be additional special-purpose parameters in addition to the normal
+        // WebAssembly signature parameters. For example, a `vmctx` pointer.
         if env.is_wasm_parameter(i) {
             // This is a normal WebAssembly signature parameter, so create a local for it.
             let local = builder.declare_var(param_type.value_type);
@@ -203,8 +204,8 @@ fn declare_locals(
 
 /// Parse the function body in `reader`.
 ///
-/// This assumes that the local variable declarations have already been parsed and function
-/// arguments and locals are declared in the builder.
+/// This assumes that the local variable declarations have already been parsed
+/// and function arguments and locals are declared in the builder.
 fn translate_function_body(
     validator: &mut FuncValidator<impl WasmModuleResources>,
     mut reader: OperatorsReader,
@@ -212,7 +213,8 @@ fn translate_function_body(
     state: &mut FuncTranslationState,
     env: &mut TranslationEnvironment,
 ) -> crate::Result<()> {
-    // The control stack is initialized with a single block representing the whole function.
+    // The control stack is initialized with a single block representing the whole
+    // function.
     debug_assert_eq!(state.control_stack.len(), 1, "State not initialized");
 
     while !reader.eof() {
@@ -225,11 +227,11 @@ fn translate_function_body(
     reader.finish()?;
     // env.after_translate_function(builder, state)?;
 
-    // The final `End` operator left us in the exit block where we need to manually add a return
-    // instruction.
+    // The final `End` operator left us in the exit block where we need to manually
+    // add a return instruction.
     //
-    // If the exit block is unreachable, it may not have the correct arguments, so we would
-    // generate a return instruction that doesn't match the signature.
+    // If the exit block is unreachable, it may not have the correct arguments, so
+    // we would generate a return instruction that doesn't match the signature.
     if state.reachable && !builder.is_unreachable() {
         bitcast_wasm_returns(&mut state.stack, builder, env);
         builder.ins().return_(&state.stack);
@@ -244,6 +246,7 @@ fn translate_function_body(
 
 /// Get the current source location from a readers position.
 fn cur_srcloc(pos: usize) -> ir::SourceLoc {
-    // We record source locations as byte code offsets relative to the beginning of the file.
+    // We record source locations as byte code offsets relative to the beginning of
+    // the file.
     ir::SourceLoc::new(u32::try_from(pos).unwrap())
 }

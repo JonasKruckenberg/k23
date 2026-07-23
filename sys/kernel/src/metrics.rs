@@ -6,9 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 //! Kernel counters
 //!
-//! Kernel counters are per-cpu, unsigned integer counters that facilitate diagnostics across the
-//! whole kernel. Questions like "how many times has X happened over N seconds?", "has X ever happened?"
-//! can be answered using this API.
+//! Kernel counters are per-cpu, unsigned integer counters that facilitate
+//! diagnostics across the whole kernel. Questions like "how many times has X
+//! happened over N seconds?", "has X ever happened?" can be answered using this
+//! API.
 //!
 //! Counters are declared in their respective modules like so:
 //! ```rust
@@ -21,9 +22,9 @@
 //! }
 //! ```
 //!
-//! Kernel counters are always per-cpu, which means each cpu keeps an individual counter. Methods
-//! on `Counter` can be used to sum events across cpus or even get the maximum or minimum value across
-//! cpus.
+//! Kernel counters are always per-cpu, which means each cpu keeps an individual
+//! counter. Methods on `Counter` can be used to sum events across cpus or even
+//! get the maximum or minimum value across cpus.
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -72,7 +73,8 @@ impl Counter {
         self.arena.get_or_default().store(value, Ordering::Relaxed);
     }
 
-    /// Set the absolute value of the counter if the provided value is larger than the current value.
+    /// Set the absolute value of the counter if the provided value is larger
+    /// than the current value.
     pub fn max(&self, value: u64) {
         let _ =
             self.arena
@@ -82,7 +84,8 @@ impl Counter {
                 });
     }
 
-    /// Set the absolute value of the counter if the provided value is smaller than the current value.
+    /// Set the absolute value of the counter if the provided value is smaller
+    /// than the current value.
     pub fn min(&self, value: u64) {
         let _ =
             self.arena
@@ -92,7 +95,8 @@ impl Counter {
                 });
     }
 
-    /// Get the counter value of the calling cpu, or `None` if the counter was never written to.
+    /// Get the counter value of the calling cpu, or `None` if the counter was
+    /// never written to.
     pub fn get(&self) -> Option<u64> {
         Some(self.arena.get()?.load(Ordering::Relaxed))
     }

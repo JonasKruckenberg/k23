@@ -187,8 +187,9 @@ impl Arena {
         }
 
         // Initialize all frame structs
-        // The base frame we pulled from the freelist is already correctly initialized, but all following
-        // frames of its buddy "block" are left uninitialized, so we need to do that now.
+        // The base frame we pulled from the freelist is already correctly initialized,
+        // but all following frames of its buddy "block" are left uninitialized,
+        // so we need to do that now.
         let frames = {
             let uninit: &mut [MaybeUninit<FrameInfo>] =
                 // Safety: we just allocate the frames

@@ -22,25 +22,30 @@ impl Instant {
     ///
     /// # Panics
     ///
-    /// This method panics if the conversion from the "now" [`Ticks`] would overflow.
+    /// This method panics if the conversion from the "now" [`Ticks`] would
+    /// overflow.
     pub fn now(timer: &Timer) -> Self {
         let now = timer.now();
         Self(timer.ticks_to_duration(now).unwrap())
     }
 
-    /// Create a new `Instant` from the given raw [`Ticks`] using the provided timer.
+    /// Create a new `Instant` from the given raw [`Ticks`] using the provided
+    /// timer.
     ///
     /// # Panics
     ///
-    /// This method panics if the conversion from the given [`Ticks`] would overflow.
+    /// This method panics if the conversion from the given [`Ticks`] would
+    /// overflow.
     pub fn from_ticks(timer: &Timer, ticks: Ticks) -> Self {
         let duration = timer.ticks_to_duration(ticks).unwrap();
         Self(duration)
     }
 
-    /// Create a new `Instant` from the given raw `u64` ticks using the timers clock.
+    /// Create a new `Instant` from the given raw `u64` ticks using the timers
+    /// clock.
     ///
-    /// Returns `None` if the given `raw_ticks` cannot be represented by an `Instant`.
+    /// Returns `None` if the given `raw_ticks` cannot be represented by an
+    /// `Instant`.
     pub fn from_raw_ticks(timer: &Timer, raw_ticks: u64) -> Option<Self> {
         let duration = timer.clock().checked_ticks_to_duration(raw_ticks)?;
         Some(Self(duration))
@@ -50,18 +55,21 @@ impl Instant {
     ///
     /// # Errors
     ///
-    ///This method returns a `[TimeError::DurationTooLong`] if this instant cannot be represented by the 64-bit `Ticks` type.
+    ///This method returns a `[TimeError::DurationTooLong`] if this instant
+    /// cannot be represented by the 64-bit `Ticks` type.
     pub fn as_ticks(&self, timer: &Timer) -> Result<Ticks, TimeError> {
         timer.duration_to_ticks(self.0)
     }
 
-    /// Create a timestamp in the "very-far-future", panicking if no global timer is configured.
+    /// Create a timestamp in the "very-far-future", panicking if no global
+    /// timer is configured.
     ///
     /// TODO elaborate
     pub fn far_future(timer: &Timer) -> Self {
         // Returns an instant roughly 30 years from now.
-        // This is used instead of `Duration::MAX` because conversion to ticks might cause an overflow
-        // but doing checked or saturating conversions in those functions is too expensive.
+        // This is used instead of `Duration::MAX` because conversion to ticks might
+        // cause an overflow but doing checked or saturating conversions in
+        // those functions is too expensive.
         Self::now(timer) + Duration::from_secs(86400 * 365 * 30)
     }
 
@@ -84,8 +92,8 @@ impl Instant {
     /// Returns the amount of time elapsed from another instant to this one,
     /// or None if that instant is later than this one.
     ///
-    /// Due to [monotonicity bugs], even under correct logical ordering of the passed `Instant`s,
-    /// this method can return `None`.
+    /// Due to [monotonicity bugs], even under correct logical ordering of the
+    /// passed `Instant`s, this method can return `None`.
     pub fn checked_duration_since(&self, earlier: Self) -> Option<Duration> {
         if *self >= earlier {
             let (secs, nanos) = if self.0.subsec_nanos() >= earlier.0.subsec_nanos() {
@@ -109,14 +117,14 @@ impl Instant {
         }
     }
 
-    /// Returns `Some(t)` where `t` is the time `self + duration` if `t` can be represented as
-    /// `Instant` or `None` otherwise.
+    /// Returns `Some(t)` where `t` is the time `self + duration` if `t` can be
+    /// represented as `Instant` or `None` otherwise.
     pub fn checked_add(&self, duration: Duration) -> Option<Self> {
         self.0.checked_add(duration).map(Self)
     }
 
-    /// Returns `Some(t)` where `t` is the time `self - duration` if `t` can be represented as
-    /// `Instant` or `None` otherwise.
+    /// Returns `Some(t)` where `t` is the time `self - duration` if `t` can be
+    /// represented as `Instant` or `None` otherwise.
     pub fn checked_sub(&self, duration: Duration) -> Option<Self> {
         self.0.checked_sub(duration).map(Self)
     }
@@ -127,8 +135,9 @@ impl Add<Duration> for Instant {
 
     /// # Panics
     ///
-    /// This function may panic if the resulting point in time cannot be represented by the
-    /// underlying data structure. See [`Instant::checked_add`] for a version without panic.
+    /// This function may panic if the resulting point in time cannot be
+    /// represented by the underlying data structure. See
+    /// [`Instant::checked_add`] for a version without panic.
     fn add(self, other: Duration) -> Instant {
         self.checked_add(other)
             .expect("overflow when adding duration to instant")
@@ -164,9 +173,9 @@ impl Sub<Instant> for Instant {
     ///
     /// # Panics
     ///
-    /// Previous Rust versions panicked when `other` was later than `self`. Currently this
-    /// method saturates. Future versions may reintroduce the panic in some circumstances.
-    /// See [Monotonicity].
+    /// Previous Rust versions panicked when `other` was later than `self`.
+    /// Currently this method saturates. Future versions may reintroduce the
+    /// panic in some circumstances. See [Monotonicity].
     ///
     /// [Monotonicity]: Instant#monotonicity
     fn sub(self, other: Instant) -> Duration {

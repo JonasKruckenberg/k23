@@ -36,7 +36,8 @@ impl<C: cfg::Config> Addr<C> {
         let shifted = (self.addr + C::INITIAL_SZ) >> C::ADDR_INDEX_SHIFT;
         // Now, we can  determine the number of twos places by counting the
         // number of leading  zeros (unused twos places) in the number's binary
-        // representation, and subtracting that count from the total number of bits in a word.
+        // representation, and subtracting that count from the total number of bits in a
+        // word.
         usize::BITS as usize - shifted.leading_zeros() as usize
     }
 
@@ -142,11 +143,12 @@ where
 
     /// Return the head of the freelist
     ///
-    /// If there is space on the local list, it returns the head of the local list. Otherwise, it
-    /// pops all the slots from the global list and returns the head of that list
+    /// If there is space on the local list, it returns the head of the local
+    /// list. Otherwise, it pops all the slots from the global list and
+    /// returns the head of that list
     ///
-    /// *Note*: The local list's head is reset when setting the new state in the slot pointed to be
-    /// `head` returned from this function
+    /// *Note*: The local list's head is reset when setting the new state in the
+    /// slot pointed to be `head` returned from this function
     #[inline]
     fn pop(&self, local: &Local) -> Option<usize> {
         let head = local.head();
@@ -246,8 +248,9 @@ where
         }
     }
 
-    // Need this function separately, as we need to pass a function pointer to `filter_map` and
-    // `Slot::value` just returns a `&T`, specifically a `&Option<T>` for this impl.
+    // Need this function separately, as we need to pass a function pointer to
+    // `filter_map` and `Slot::value` just returns a `&T`, specifically a
+    // `&Option<T>` for this impl.
     fn make_ref(slot: &'a Slot<Option<T>, C>) -> Option<&'a T> {
         slot.value().as_ref()
     }
@@ -305,9 +308,9 @@ where
         let mut slab = Vec::with_capacity(self.size);
         slab.extend((1..self.size).map(Slot::new));
         slab.push(Slot::new(Self::NULL));
-        // safety: this mut access is safe — it only occurs to initially allocate the page,
-        // which only happens on this thread; if the page has not yet been allocated, other
-        // threads will not try to access it yet.
+        // safety: this mut access is safe — it only occurs to initially allocate the
+        // page, which only happens on this thread; if the page has not yet been
+        // allocated, other threads will not try to access it yet.
         unsafe {
             *self.slab.get() = Some(slab.into_boxed_slice());
         }

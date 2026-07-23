@@ -54,7 +54,8 @@ pub(super) enum Definition {
 impl<T> Linker<T> {
     /// Create a new `Linker`.
     ///
-    /// This linker is scoped to the provided engine and cannot be used to link modules from other engines.
+    /// This linker is scoped to the provided engine and cannot be used to link
+    /// modules from other engines.
     pub fn new(engine: &Engine) -> Self {
         Self {
             engine: engine.clone(),
@@ -121,7 +122,8 @@ impl<T> Linker<T> {
         Ok(self)
     }
 
-    /// Define all exports of the provided `instance` under the module name `module_name`.
+    /// Define all exports of the provided `instance` under the module name
+    /// `module_name`.
     ///
     /// # Errors
     ///
@@ -146,10 +148,12 @@ impl<T> Linker<T> {
 
     /// Instantiate the provided `module`.
     ///
-    /// This step resolve the modules imports using definitions from this linker, then pass them
-    /// on to `Instance::new_unchecked` for instantiation.
+    /// This step resolve the modules imports using definitions from this
+    /// linker, then pass them on to `Instance::new_unchecked` for
+    /// instantiation.
     ///
-    /// Each import of module will be looked up in this Linker and must have previously been defined.
+    /// Each import of module will be looked up in this Linker and must have
+    /// previously been defined.
     ///
     /// # Errors
     ///

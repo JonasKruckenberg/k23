@@ -60,10 +60,11 @@ pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate val
 pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
 /// The initial size of the kernel heap in pages.
 ///
-/// This initial size should be small enough so the loaders less sophisticated allocator can
-/// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
-/// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
-/// size and can dynamically grow the heap as needed.
+/// This initial size should be small enough so the loaders less sophisticated
+/// allocator can doesn't cause startup slowdown & inefficient mapping, but
+/// large enough so we can bootstrap our own virtual memory subsystem. At that
+/// point we are no longer reliant on this initial heap size and can dynamically
+/// grow the heap as needed.
 pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
 pub type Result<T> = anyhow::Result<T>;
@@ -78,9 +79,9 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
-    // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
-    // bubble up to this point is also a good idea since we can perform some last cleanup and
-    // print an error message.
+    // Unwinding expects at least one landing pad in the callstack, but capturing
+    // all unwinds that bubble up to this point is also a good idea since we can
+    // perform some last cleanup and print an error message.
     let res = panic_unwind::catch_unwind(|| {
         backtrace::__rust_begin_short_backtrace(|| kmain(boot_info));
     });
@@ -94,8 +95,8 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
                 hint::spin_loop();
             }
         }
-        // If the panic propagates up to this catch here there is nothing we can do, this is a terminal
-        // failure.
+        // If the panic propagates up to this catch here there is nothing we can do, this is a
+        // terminal failure.
         Err(_) => {
             tracing::error!("unrecoverable kernel panic");
             abort()
@@ -139,8 +140,8 @@ fn kmain(boot_info: &'static BootInfo) {
     tracing::init_early(console_tx);
     log::info!("{boot_info}");
 
-    // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
-    // is available
+    // initialize a simple bump allocator for allocating memory before our virtual
+    // memory subsystem is available
     let allocatable_memories = allocatable_memory_regions(boot_info);
     log::info!("allocatable memories: {:?}", allocatable_memories);
     let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
@@ -177,9 +178,10 @@ fn kmain(boot_info: &'static BootInfo) {
         .collect();
     let frame_alloc = frame_alloc::init(boot_alloc, free_regions, &boot_info.physmap);
 
-    // wire the frame allocator into the kernel heap's OOM handler so the heap can grow
-    // automatically. Must come after `frame_alloc::init`; safe to come before `mem::init`
-    // since the OOM handler doesn't touch the kernel address space.
+    // wire the frame allocator into the kernel heap's OOM handler so the heap can
+    // grow automatically. Must come after `frame_alloc::init`; safe to come
+    // before `mem::init` since the OOM handler doesn't touch the kernel address
+    // space.
     allocator::late_init(frame_alloc, bootargs.heap_max);
 
     // initialize the virtual memory subsystem
@@ -234,10 +236,12 @@ fn kmain(boot_info: &'static BootInfo) {
     }
 }
 
-/// Builds a list of memory regions from the boot info that are usable for allocation.
+/// Builds a list of memory regions from the boot info that are usable for
+/// allocation.
 ///
-/// The regions handed off by the loader are guaranteed non-overlapping and sorted by start
-/// address; this function coalesces contiguous neighbours into one entry.
+/// The regions handed off by the loader are guaranteed non-overlapping and
+/// sorted by start address; this function coalesces contiguous neighbours into
+/// one entry.
 fn allocatable_memory_regions(
     boot_info: &BootInfo,
 ) -> ArrayVec<Range<PhysicalAddress>, { loader_api::MAX_MEMORY_REGIONS }> {

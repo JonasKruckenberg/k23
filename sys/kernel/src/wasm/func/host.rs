@@ -179,8 +179,8 @@ pub unsafe trait HostParams {
     ///
     /// # Safety
     ///
-    /// This function is unsafe as it's up to the caller to ensure that `values` are
-    /// valid for this given type.
+    /// This function is unsafe as it's up to the caller to ensure that `values`
+    /// are valid for this given type.
     unsafe fn load(store: &mut StoreOpaque, values: &mut [MaybeUninit<VMVal>]) -> Self;
 }
 

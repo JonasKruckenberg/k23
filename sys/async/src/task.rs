@@ -35,8 +35,8 @@ use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, Wa
 
 /// Outcome of calling [`Task::poll`].
 ///
-/// This type describes how to proceed with a given task, whether it needs to be rescheduled
-/// or can be dropped etc.
+/// This type describes how to proceed with a given task, whether it needs to be
+/// rescheduled or can be dropped etc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PollResult {
     /// The task has completed, without waking a [`JoinHandle`] waker.
@@ -59,21 +59,25 @@ pub(crate) enum PollResult {
 
     /// The task has woken itself during the poll.
     ///
-    /// The scheduler should re-schedule the task, rather than dropping the [`TaskRef`].
+    /// The scheduler should re-schedule the task, rather than dropping the
+    /// [`TaskRef`].
     PendingSchedule,
 }
 
 /// A type-erased, reference-counted pointer to a spawned `Task`.
 ///
-/// Once a  `Task` is spawned, it is generally pinned in memory (a requirement of [`Future`]). Instead
-/// of moving `Task`s around the scheduler, we therefore use `TaskRef`s which are just pointers to the
-/// pinned `Task`. `TaskRef`s are type-erased interacting with the allocated `Tasks` through their
-/// `Vtable` methods. This is done to reduce the monopolization cost otherwise incurred, since futures,
-/// especially ones crated through `async {}` blocks, `async` closures or `async fn` calls are all
-/// treated as *unique*, *disjoint* types which would all cause separate normalizations. E.g. spawning
-/// 10 futures on the runtime (which is not a lot) would cause 10 different copies of the entire runtime
-/// to be compiled, obviously terrible! The `Vtable` allows us to treat all spawned futures, regardless
-/// of their exact type, the same way.
+/// Once a  `Task` is spawned, it is generally pinned in memory (a requirement
+/// of [`Future`]). Instead of moving `Task`s around the scheduler, we therefore
+/// use `TaskRef`s which are just pointers to the pinned `Task`. `TaskRef`s are
+/// type-erased interacting with the allocated `Tasks` through their
+/// `Vtable` methods. This is done to reduce the monopolization cost otherwise
+/// incurred, since futures, especially ones crated through `async {}` blocks,
+/// `async` closures or `async fn` calls are all treated as *unique*, *disjoint*
+/// types which would all cause separate normalizations. E.g. spawning
+/// 10 futures on the runtime (which is not a lot) would cause 10 different
+/// copies of the entire runtime to be compiled, obviously terrible! The
+/// `Vtable` allows us to treat all spawned futures, regardless of their exact
+/// type, the same way.
 ///
 /// `TaskRef`s are reference-counted, and the task will be deallocated when the
 /// last `TaskRef` pointing to it is dropped.
@@ -90,56 +94,63 @@ struct TaskInner<F: Future, M> {
 
     /// The future that the task is running.
     ///
-    /// If `COMPLETE` is one, then the `JoinHandle` has exclusive access to this field
-    /// If COMPLETE is zero, then the RUNNING bitfield functions as
+    /// If `COMPLETE` is one, then the `JoinHandle` has exclusive access to this
+    /// field If COMPLETE is zero, then the RUNNING bitfield functions as
     /// a lock for the stage field, and it can be accessed only by the thread
     /// that set RUNNING to one.
     stage: UnsafeCell<Stage<F>>,
 
     /// Consumer task waiting on completion of this task.
     ///
-    /// This field may be access by different threads: on one cpu we may complete a task and *read*
-    /// the waker field to invoke the waker, and in another thread the task's `JoinHandle` may be
-    /// polled, and if the task hasn't yet completed, the `JoinHandle` may *write* a waker to the
-    /// waker field. The `JOIN_WAKER` bit in the headers`state` field ensures safe access by multiple
-    /// cpu to the waker field using the following rules:
+    /// This field may be access by different threads: on one cpu we may
+    /// complete a task and *read* the waker field to invoke the waker, and
+    /// in another thread the task's `JoinHandle` may be polled, and if the
+    /// task hasn't yet completed, the `JoinHandle` may *write* a waker to the
+    /// waker field. The `JOIN_WAKER` bit in the headers`state` field ensures
+    /// safe access by multiple cpu to the waker field using the following
+    /// rules:
     ///
     /// 1. `JOIN_WAKER` is initialized to zero.
     ///
-    /// 2. If `JOIN_WAKER` is zero, then the `JoinHandle` has exclusive (mutable)
+    /// 2. If `JOIN_WAKER` is zero, then the `JoinHandle` has exclusive
+    ///    (mutable) access to the waker field.
+    ///
+    /// 3. If `JOIN_WAKER` is one,  then the `JoinHandle` has shared (read-only)
     ///    access to the waker field.
     ///
-    /// 3. If `JOIN_WAKER` is one,  then the `JoinHandle` has shared (read-only) access to the waker
-    ///    field.
+    /// 4. If `JOIN_WAKER` is one and COMPLETE is one, then the executor has
+    ///    shared (read-only) access to the waker field.
     ///
-    /// 4. If `JOIN_WAKER` is one and COMPLETE is one, then the executor has shared (read-only) access
-    ///    to the waker field.
+    /// 5. If the `JoinHandle` needs to write to the waker field, then the
+    ///    `JoinHandle` needs to (i) successfully set `JOIN_WAKER` to zero if it
+    ///    is not already zero to gain exclusive access to the waker field per
+    ///    rule 2, (ii) write a waker, and (iii) successfully set `JOIN_WAKER`
+    ///    to one. If the `JoinHandle` unsets `JOIN_WAKER` in the process of
+    ///    being dropped to clear the waker field, only steps (i) and (ii) are
+    ///    relevant.
     ///
-    /// 5. If the `JoinHandle` needs to write to the waker field, then the `JoinHandle` needs to
-    ///    (i) successfully set `JOIN_WAKER` to zero if it is not already zero to gain exclusive access
-    ///    to the waker field per rule 2, (ii) write a waker, and (iii) successfully set `JOIN_WAKER`
-    ///    to one. If the `JoinHandle` unsets `JOIN_WAKER` in the process of being dropped
-    ///    to clear the waker field, only steps (i) and (ii) are relevant.
-    ///
-    /// 6. The `JoinHandle` can change `JOIN_WAKER` only if COMPLETE is zero (i.e.
-    ///    the task hasn't yet completed). The executor can change `JOIN_WAKER` only
-    ///    if COMPLETE is one.
+    /// 6. The `JoinHandle` can change `JOIN_WAKER` only if COMPLETE is zero
+    ///    (i.e. the task hasn't yet completed). The executor can change
+    ///    `JOIN_WAKER` only if COMPLETE is one.
     ///
     /// 7. If `JOIN_INTEREST` is zero and COMPLETE is one, then the executor has
-    ///    exclusive (mutable) access to the waker field. This might happen if the
-    ///    `JoinHandle` gets dropped right after the task completes and the executor
-    ///    sets the `COMPLETE` bit. In this case the executor needs the mutable access
-    ///    to the waker field to drop it.
+    ///    exclusive (mutable) access to the waker field. This might happen if
+    ///    the `JoinHandle` gets dropped right after the task completes and the
+    ///    executor sets the `COMPLETE` bit. In this case the executor needs the
+    ///    mutable access to the waker field to drop it.
     ///
     /// Rule 6 implies that the steps (i) or (iii) of rule 5 may fail due to a
-    /// race. If step (i) fails, then the attempt to write a waker is aborted. If step (iii) fails
-    /// because `COMPLETE` is set to one by another thread after step (i), then the waker field is
-    /// cleared. Once `COMPLETE` is one (i.e. task has completed), the `JoinHandle` will not
-    /// modify `JOIN_WAKER`. After the runtime sets COMPLETE to one, it invokes the waker if there
-    /// is one so in this case when a task completes the `JOIN_WAKER` bit implicates to the runtime
-    /// whether it should invoke the waker or not. After the runtime is done with using the waker
-    /// during task completion, it unsets the `JOIN_WAKER` bit to give the `JoinHandle` exclusive
-    /// access again so that it is able to drop the waker at a later point.
+    /// race. If step (i) fails, then the attempt to write a waker is aborted.
+    /// If step (iii) fails because `COMPLETE` is set to one by another
+    /// thread after step (i), then the waker field is cleared. Once
+    /// `COMPLETE` is one (i.e. task has completed), the `JoinHandle` will not
+    /// modify `JOIN_WAKER`. After the runtime sets COMPLETE to one, it invokes
+    /// the waker if there is one so in this case when a task completes the
+    /// `JOIN_WAKER` bit implicates to the runtime whether it should invoke
+    /// the waker or not. After the runtime is done with using the waker
+    /// during task completion, it unsets the `JOIN_WAKER` bit to give the
+    /// `JoinHandle` exclusive access again so that it is able to drop the
+    /// waker at a later point.
     join_waker: UnsafeCell<Option<Waker>>,
 }
 
@@ -150,7 +161,8 @@ struct HeaderAndMetadata<M> {
     metadata: M,
 }
 
-/// The current lifecycle stage of the future. Either the future itself or its output.
+/// The current lifecycle stage of the future. Either the future itself or its
+/// output.
 #[repr(C)] // https://github.com/rust-lang/miri/issues/3780
 enum Stage<F: Future> {
     /// The future is still pending.
@@ -169,7 +181,8 @@ enum Stage<F: Future> {
 pub(crate) struct Header {
     /// The task's state.
     ///
-    /// This field is access with atomic instructions, so it's always safe to access it.
+    /// This field is access with atomic instructions, so it's always safe to
+    /// access it.
     state: State,
     /// The task vtable for this task.
     vtable: &'static VTable,
@@ -217,7 +230,8 @@ impl TaskRef {
 
     /// # Safety
     ///
-    /// The caller must ensure the generic argument matches the metadata type this task got created with.
+    /// The caller must ensure the generic argument matches the metadata type
+    /// this task got created with.
     pub unsafe fn metadata<M>(&self) -> &M {
         // Safety: ensured by caller
         unsafe { &self.0.cast::<HeaderAndMetadata<M>>().as_ref().metadata }
@@ -253,8 +267,8 @@ impl TaskRef {
 
     /// # Safety
     ///
-    /// The caller needs to make sure that `T` is the same type as the one that this `TaskRef` was
-    /// created with.
+    /// The caller needs to make sure that `T` is the same type as the one that
+    /// this `TaskRef` was created with.
     pub(crate) unsafe fn poll_join<T>(
         &self,
         cx: &mut Context<'_>,
@@ -262,8 +276,8 @@ impl TaskRef {
         let poll_join_fn = self.header().vtable.poll_join;
         let mut slot = CheckedMaybeUninit::<Result<T, JoinError<T>>>::uninit();
 
-        // Safety: This is called through the Vtable and as long as the caller makes sure that the `T` is the right
-        // type, this call is safe
+        // Safety: This is called through the Vtable and as long as the caller makes
+        // sure that the `T` is the right type, this call is safe
         let result = unsafe { poll_join_fn(self.0, NonNull::from(&mut slot).cast::<()>(), cx) };
 
         result.map(|result| {
@@ -288,11 +302,13 @@ impl TaskRef {
     ///
     /// # Safety
     ///
-    /// The new scheduler `S` must be of the **same** type as the scheduler that this task got created
-    /// with. The shape of the allocated tasks depend on the type of the scheduler, binding a task
-    /// to a differently typed scheduler will therefore cause invalid memory accesses.
+    /// The new scheduler `S` must be of the **same** type as the scheduler that
+    /// this task got created with. The shape of the allocated tasks depend
+    /// on the type of the scheduler, binding a task to a differently typed
+    /// scheduler will therefore cause invalid memory accesses.
     pub(crate) fn bind_scheduler(&self, scheduler: &'static Scheduler) {
-        // Safety: the repr(C) on Schedulable ensures the layout matches and this cast is safe
+        // Safety: the repr(C) on Schedulable ensures the layout matches and this cast
+        // is safe
         unsafe {
             self.0
                 .as_ref()
@@ -411,13 +427,13 @@ impl TaskRef {
 
     fn wake(self) {
         match self.state().wake_by_val() {
-            // `Enqueue` means we should put the task back into the queue. In this case we want to assign
-            // ownership of the TaskRef to the scheduler.
+            // `Enqueue` means we should put the task back into the queue. In this case we want to
+            // assign ownership of the TaskRef to the scheduler.
             WakeByValAction::Enqueue => {
                 self.schedule();
             }
-            // `Drop` means (unsurprisingly) the opposite: The task does not need to be enqueued, and
-            // we should therefore drop this handle.
+            // `Drop` means (unsurprisingly) the opposite: The task does not need to be enqueued,
+            // and we should therefore drop this handle.
             WakeByValAction::Drop => {
                 drop(self);
             }
@@ -765,8 +781,8 @@ impl<F: Future, M> Task<F, M> {
     ///
     /// # Safety
     ///
-    /// The caller has to ensure this cpu has exclusive mutable access to the tasks `stage` field (ie the
-    /// future or output).
+    /// The caller has to ensure this cpu has exclusive mutable access to the
+    /// tasks `stage` field (ie the future or output).
     pub unsafe fn poll_inner(&self, mut cx: Context) -> Poll<()> {
         let _span = self.span().enter();
 
@@ -894,9 +910,9 @@ where
 
 // === impl Header ===
 
-// Safety: tasks are always treated as pinned in memory (a requirement for polling them)
-// and care has been taken below to ensure the underlying memory isn't freed as long as the
-// `TaskRef` is part of the owned tasks list.
+// Safety: tasks are always treated as pinned in memory (a requirement for
+// polling them) and care has been taken below to ensure the underlying memory
+// isn't freed as long as the `TaskRef` is part of the owned tasks list.
 unsafe impl cordyceps::Linked<mpsc_queue::Links<Self>> for Header {
     type Handle = TaskRef;
 

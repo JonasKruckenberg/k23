@@ -14,7 +14,8 @@ use mem_core::{PageSize, PhysicalAddress, VirtualAddress};
 
 use crate::machine::Machine;
 
-/// `[Arch`] implementation that emulates a given "real" architecture. For testing purposes.
+/// `[Arch`] implementation that emulates a given "real" architecture. For
+/// testing purposes.
 pub struct EmulateArch<A: Arch> {
     machine: Machine<A>,
     asid: u16,
@@ -75,15 +76,15 @@ impl<A: Arch> Arch for EmulateArch<A> {
     }
 
     unsafe fn read<T>(&self, address: VirtualAddress) -> T {
-        // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
-        // In which case we need to use `read_phys` instead of `read`, bypassing
-        // translation checks.
+        // NB: if there is no active page table on this CPU, we are in "bare"
+        // translation mode. In which case we need to use `read_phys` instead of
+        // `read`, bypassing translation checks.
         if self.active_table().is_some() {
             // Safety: ensured by caller.
             unsafe { self.machine.read(self.asid, address) }
         } else {
-            // Safety: We checked for the absence of an active translation table, meaning we're in
-            // "bare" mode and VirtualAddress==PhysicalAddress.
+            // Safety: We checked for the absence of an active translation table, meaning
+            // we're in "bare" mode and VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             // Safety: validity/alignment ensured by caller
             unsafe { self.machine.read_phys(address) }
@@ -91,15 +92,15 @@ impl<A: Arch> Arch for EmulateArch<A> {
     }
 
     unsafe fn write<T>(&self, address: VirtualAddress, value: T) {
-        // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
-        // In which case we need to use `write_phys` instead of `write`, bypassing
-        // translation checks.
+        // NB: if there is no active page table on this CPU, we are in "bare"
+        // translation mode. In which case we need to use `write_phys` instead
+        // of `write`, bypassing translation checks.
         if self.active_table().is_some() {
             // Safety: ensured by caller.
             unsafe { self.machine.write(self.asid, address, value) }
         } else {
-            // Safety: We checked for the absence of an active translation table, meaning we're in
-            // "bare" mode and VirtualAddress==PhysicalAddress.
+            // Safety: We checked for the absence of an active translation table, meaning
+            // we're in "bare" mode and VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             // Safety: validity/alignment ensured by caller
             unsafe { self.machine.write_phys(address, value) }
@@ -107,16 +108,16 @@ impl<A: Arch> Arch for EmulateArch<A> {
     }
 
     unsafe fn read_bytes(&self, address: VirtualAddress, count: usize) -> &[u8] {
-        // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
-        // In which case we need to use `write_bytes_phys` instead of `write_bytes`, bypassing
-        // translation checks.
+        // NB: if there is no active page table on this CPU, we are in "bare"
+        // translation mode. In which case we need to use `write_bytes_phys`
+        // instead of `write_bytes`, bypassing translation checks.
         if self.active_table().is_some() {
             // Safety: ensured by caller.
             unsafe { self.machine.read_bytes(self.asid, address, count) }
         } else {
-            // Safety: We checked for the absence of an active translation table, meaning we're in
-            // "bare" mode and VirtualAddress==PhysicalAddress. All other safety invariants are
-            // ensured by the caller.
+            // Safety: We checked for the absence of an active translation table, meaning
+            // we're in "bare" mode and VirtualAddress==PhysicalAddress. All
+            // other safety invariants are ensured by the caller.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             // Safety: validity ensured by caller
             self.machine.read_bytes_phys(address, count)
@@ -124,16 +125,16 @@ impl<A: Arch> Arch for EmulateArch<A> {
     }
 
     unsafe fn write_bytes(&self, address: VirtualAddress, value: u8, count: usize) {
-        // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
-        // In which case we need to use `write_bytes_phys` instead of `write_bytes`, bypassing
-        // translation checks.
+        // NB: if there is no active page table on this CPU, we are in "bare"
+        // translation mode. In which case we need to use `write_bytes_phys`
+        // instead of `write_bytes`, bypassing translation checks.
         if self.active_table().is_some() {
             // Safety: ensured by caller.
             unsafe { self.machine.write_bytes(self.asid, address, value, count) }
         } else {
-            // Safety: We checked for the absence of an active translation table, meaning we're in
-            // "bare" mode and VirtualAddress==PhysicalAddress. All other safety invariants are
-            // ensured by the caller.
+            // Safety: We checked for the absence of an active translation table, meaning
+            // we're in "bare" mode and VirtualAddress==PhysicalAddress. All
+            // other safety invariants are ensured by the caller.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             // Safety: validity ensured by caller
             self.machine.write_bytes_phys(address, value, count);
@@ -141,9 +142,9 @@ impl<A: Arch> Arch for EmulateArch<A> {
     }
 }
 
-/// Forward the emulated architecture's page-size capabilities: `EmulateArch<A>` maps a
-/// leaf of size `S` at exactly the depth `A` does, so tests exercise the real arch's
-/// [`MapsAt`] depths rather than a substitute.
+/// Forward the emulated architecture's page-size capabilities: `EmulateArch<A>`
+/// maps a leaf of size `S` at exactly the depth `A` does, so tests exercise the
+/// real arch's [`MapsAt`] depths rather than a substitute.
 impl<S: PageSize, A: MapsAt<S>> MapsAt<S> for EmulateArch<A> {
     const DEPTH: u8 = <A as MapsAt<S>>::DEPTH;
 }

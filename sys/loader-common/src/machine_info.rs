@@ -29,9 +29,11 @@ pub struct DiscoveredUart {
     pub regs: Range<PhysicalAddress>,
     /// Input clock to the baud-rate generator in Hz (`clock-frequency`).
     pub clock_frequency: u32,
-    /// Line speed in baud (`stdout-path` options / `current-speed`, else 115200).
+    /// Line speed in baud (`stdout-path` options / `current-speed`, else
+    /// 115200).
     pub baud_rate: u32,
-    /// `log2` of the byte stride between registers (`reg-shift`), 0 when absent.
+    /// `log2` of the byte stride between registers (`reg-shift`), 0 when
+    /// absent.
     pub reg_shift: u32,
     /// Width of each register access in bytes (`reg-io-width`), 1 when absent.
     pub reg_io_width: u32,

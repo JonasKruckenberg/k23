@@ -62,7 +62,7 @@ pub const WASM32_MAX_SIZE: u64 = 1 << 32;
 /// Maximum size, in bytes of WebAssembly stacks.
 pub const MAX_WASM_STACK: usize = 512 * 1024;
 
-/***************** Settings *******************************************/
+/***************** Settings ****************************************** */
 /// Whether lowerings for relaxed simd instructions are forced to
 /// be deterministic.
 pub const RELAXED_SIMD_DETERMINISTIC: bool = false;
@@ -74,7 +74,8 @@ pub const MEMORY_MAX: usize = 1 << 32;
 /// The absolute maximum size of a table in elements
 pub const TABLE_MAX: usize = 1 << 10;
 
-/// A WebAssembly external value which is just any type that can be imported or exported between modules.
+/// A WebAssembly external value which is just any type that can be imported or
+/// exported between modules.
 #[derive(Clone, Debug)]
 pub enum Extern {
     Func(Func),

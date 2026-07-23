@@ -7,8 +7,8 @@
 
 //! Very small, fast, non-cryptographic random number generator.
 //!
-//! This random number generator implements the `xorshift64+` algorithm, generating random numbers
-//! adding two 32-bit `xorshift` sequences together.
+//! This random number generator implements the `xorshift64+` algorithm,
+//! generating random numbers adding two 32-bit `xorshift` sequences together.
 
 #![cfg_attr(not(test), no_std)]
 
@@ -26,7 +26,8 @@ pub struct FastRand {
 }
 
 impl FastRand {
-    /// Initializes a new, thread-local, fast random number generator from the provided seed.
+    /// Initializes a new, thread-local, fast random number generator from the
+    /// provided seed.
     pub fn from_seed(seed: u64) -> FastRand {
         let one = (seed >> 32_u64) as u32;
         #[expect(

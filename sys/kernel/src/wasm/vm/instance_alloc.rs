@@ -38,7 +38,8 @@ pub trait InstanceAllocator {
     ///
     /// # Safety
     ///
-    /// The safety of the entire VM depends on the correct implementation of this method.
+    /// The safety of the entire VM depends on the correct implementation of
+    /// this method.
     unsafe fn allocate_memory(
         &self,
         memory: &translate::Memory,
@@ -62,7 +63,8 @@ pub trait InstanceAllocator {
     ///
     /// # Safety
     ///
-    /// The safety of the entire VM depends on the correct implementation of this method.
+    /// The safety of the entire VM depends on the correct implementation of
+    /// this method.
     unsafe fn allocate_table(
         &self,
         table_desc: &translate::Table,
@@ -80,7 +82,8 @@ pub trait InstanceAllocator {
 
     /// Allocate multiple memories at once.
     ///
-    /// By default, this will delegate the actual allocation to `Self::allocate_memory`.
+    /// By default, this will delegate the actual allocation to
+    /// `Self::allocate_memory`.
     ///
     /// # Errors
     ///
@@ -88,7 +91,8 @@ pub trait InstanceAllocator {
     ///
     /// # Safety
     ///
-    /// The safety of the entire VM depends on the correct implementation of this method.
+    /// The safety of the entire VM depends on the correct implementation of
+    /// this method.
     unsafe fn allocate_memories(
         &self,
         module: &TranslatedModule,
@@ -107,7 +111,8 @@ pub trait InstanceAllocator {
 
     /// Allocate multiple tables at once.
     ///
-    /// By default, this will delegate the actual allocation to `Self::allocate_table`.
+    /// By default, this will delegate the actual allocation to
+    /// `Self::allocate_table`.
     ///
     /// # Errors
     ///
@@ -115,7 +120,8 @@ pub trait InstanceAllocator {
     ///
     /// # Safety
     ///
-    /// The safety of the entire VM depends on the correct implementation of this method.
+    /// The safety of the entire VM depends on the correct implementation of
+    /// this method.
     unsafe fn allocate_tables(
         &self,
         module: &TranslatedModule,
@@ -134,12 +140,14 @@ pub trait InstanceAllocator {
 
     /// Deallocates multiple memories at once.
     ///
-    /// By default, this will delegate the actual deallocation to `Self::deallocate_memory`.
+    /// By default, this will delegate the actual deallocation to
+    /// `Self::deallocate_memory`.
     ///
     /// # Safety
     ///
-    /// Just like `Self::deallocate_memory` all memories must have been allocated by
-    /// `Self::allocate_memories`/`Self::allocate_memory` and must never be used again.
+    /// Just like `Self::deallocate_memory` all memories must have been
+    /// allocated by `Self::allocate_memories`/`Self::allocate_memory` and
+    /// must never be used again.
     unsafe fn deallocate_memories(
         &self,
         memories: &mut PrimaryMap<DefinedMemoryIndex, vm::Memory>,
@@ -158,12 +166,14 @@ pub trait InstanceAllocator {
 
     /// Deallocates multiple tables at once.
     ///
-    /// By default, this will delegate the actual deallocation to `Self::deallocate_table`.
+    /// By default, this will delegate the actual deallocation to
+    /// `Self::deallocate_table`.
     ///
     /// # Safety
     ///
-    /// Just like `Self::deallocate_table` all tables must have been allocated by
-    /// `Self::allocate_tables`/`Self::allocate_table` and must never be used again.
+    /// Just like `Self::deallocate_table` all tables must have been allocated
+    /// by `Self::allocate_tables`/`Self::allocate_table` and must never be
+    /// used again.
     unsafe fn deallocate_tables(&self, tables: &mut PrimaryMap<DefinedTableIndex, vm::Table>) {
         for (table_index, table) in mem::take(tables) {
             // Safety: ensured by caller
@@ -175,13 +185,14 @@ pub trait InstanceAllocator {
 
     /// Allocate all resources required to instantiate a module.
     ///
-    /// By default, this will in-turn call `Self::allocate_vmctx`, `Self::allocate_tables` and
-    /// `Self::allocate_memories` as well as perform necessary clean up.
+    /// By default, this will in-turn call `Self::allocate_vmctx`,
+    /// `Self::allocate_tables` and `Self::allocate_memories` as well as
+    /// perform necessary clean up.
     ///
     /// # Errors
     ///
-    /// Returns an error if any of the allocations fail. In this case, the resources are cleaned up
-    /// automatically.
+    /// Returns an error if any of the allocations fail. In this case, the
+    /// resources are cleaned up automatically.
     fn allocate_module(&self, module: Module) -> crate::Result<InstanceHandle> {
         let mut tables = PrimaryMap::with_capacity(
             usize::try_from(module.translated().num_defined_tables()).unwrap(),
@@ -196,7 +207,8 @@ pub trait InstanceAllocator {
             self.allocate_memories(module.translated(), &mut memories)?;
             self.allocate_instance_and_vmctx(module.vmshape())
         })() {
-            // Safety: we crated the instance handle and memories/tables from the same module description so should be fine
+            // Safety: we crated the instance handle and memories/tables from the same module
+            // description so should be fine
             Ok(instance) => Ok(unsafe { Instance::from_parts(module, instance, tables, memories) }),
             // Safety: memories and tables have just been allocated and will not be handed out
             Err(e) => unsafe {
@@ -229,7 +241,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
     }
 
     unsafe fn deallocate_instance_and_vmctx(&self, instance: NonNull<Instance>, vmshape: &VMShape) {
-        // Safety: `NonNull<Instance>` is only ever created above using the same global allocator
+        // Safety: `NonNull<Instance>` is only ever created above using the same global
+        // allocator
         unsafe {
             // FIXME this shouldn't allocate from the kernel heap
             let layout = Instance::alloc_layout(vmshape);
@@ -243,8 +256,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         _memory_index: DefinedMemoryIndex,
     ) -> crate::Result<vm::Memory> {
         // TODO we could call out to some resource management instance here to obtain
-        //  dynamic "minimum" and "maximum" values that reflect the state of the real systems
-        //  memory consumption
+        //  dynamic "minimum" and "maximum" values that reflect the state of the real
+        // systems  memory consumption
 
         // If the minimum memory size overflows the size of our own address
         // space, then we can't satisfy this request, but defer the error to
@@ -276,7 +289,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         let request_bytes = allocation_bytes + offset_guard_bytes;
 
         let mmap = crate::mem::with_kernel_aspace(|aspace| {
-            // attempt to use 2MiB alignment but if that's not available fallback to the largest
+            // attempt to use 2MiB alignment but if that's not available fallback to the
+            // largest
             let align = cmp::min(
                 2 * 1048576,
                 aspace.with_lock(|aspace| aspace.frame_alloc.max_alignment()),
@@ -304,8 +318,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         _table_index: DefinedTableIndex,
     ) -> crate::Result<vm::Table> {
         // TODO we could call out to some resource management instance here to obtain
-        //  dynamic "minimum" and "maximum" values that reflect the state of the real systems
-        //  memory consumption
+        //  dynamic "minimum" and "maximum" values that reflect the state of the real
+        // systems  memory consumption
         let maximum = table.limits.max.and_then(|m| usize::try_from(m).ok());
         let reserve_size = TABLE_MAX.min(maximum.unwrap_or(usize::MAX));
 

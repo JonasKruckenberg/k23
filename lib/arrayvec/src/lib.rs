@@ -33,12 +33,12 @@ impl<T> fmt::Debug for CapacityError<T> {
 
 /// A vector with a fixed capacity.
 ///
-/// The `ArrayVec` is a vector backed by a fixed size array. Elements are stored inline in the vector
-/// itself (rather than on the heap) making `ArrayVec` suitable to be allocated on the stack or
-/// used in `const` contexts.
+/// The `ArrayVec` is a vector backed by a fixed size array. Elements are stored
+/// inline in the vector itself (rather than on the heap) making `ArrayVec`
+/// suitable to be allocated on the stack or used in `const` contexts.
 ///
-/// The maximum capacity of the vector is determined by the `CAP` generic parameter, attempting to
-/// insert more elements than `CAP` will always fail.
+/// The maximum capacity of the vector is determined by the `CAP` generic
+/// parameter, attempting to insert more elements than `CAP` will always fail.
 pub struct ArrayVec<T, const CAP: usize> {
     len: usize,
     data: [MaybeUninit<T>; CAP],
@@ -86,7 +86,8 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         CAP
     }
 
-    /// Returns `true` if the `ArrayVec` is completely filled to its capacity, `false` otherwise.
+    /// Returns `true` if the `ArrayVec` is completely filled to its capacity,
+    /// `false` otherwise.
     pub const fn is_full(&self) -> bool {
         self.len() == self.capacity()
     }
@@ -109,13 +110,17 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
     /// Extracts a slice containing the entire vector.
     pub const fn as_slice(&self) -> &[T] {
         // SAFETY: `slice::from_raw_parts` requires
-        // 1. pointee is a contiguous, aligned buffer of size `len` containing properly-initialized `T`s.
+        // 1. pointee is a contiguous, aligned buffer of size `len` containing
+        //    properly-initialized `T`s.
         // 2. Data must not be mutated for the returned lifetime.
-        // 3. Further, `len * size_of::<T>` <= `isize::MAX`, and allocation does not "wrap" through overflowing memory addresses.
+        // 3. Further, `len * size_of::<T>` <= `isize::MAX`, and allocation does not
+        //    "wrap" through overflowing memory addresses.
         //
         // The ArrayVec API guarantees properly-initialized items within 0..len
-        // and the backing store being a Rust array guarantees correct alignment and contiguity.
-        // 3. Is also guaranteed by construction (can't express a type that's too large) and we
+        // and the backing store being a Rust array guarantees correct alignment and
+        // contiguity.
+        // 3. Is also guaranteed by construction (can't express a type that's too large)
+        //    and we
         // since we borrow self here 2. is upheld as well.
         unsafe { slice::from_raw_parts(self.as_ptr(), self.len) }
     }
@@ -123,13 +128,17 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
     /// Extracts a mutable slice of the entire vector.
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
         // SAFETY: `slice::from_raw_parts` requires
-        // 1. pointee is a contiguous, aligned buffer of size `len` containing properly-initialized `T`s.
+        // 1. pointee is a contiguous, aligned buffer of size `len` containing
+        //    properly-initialized `T`s.
         // 2. Data must not be mutated for the returned lifetime.
-        // 3. Further, `len * size_of::<T>` <= `isize::MAX`, and allocation does not "wrap" through overflowing memory addresses.
+        // 3. Further, `len * size_of::<T>` <= `isize::MAX`, and allocation does not
+        //    "wrap" through overflowing memory addresses.
         //
         // The ArrayVec API guarantees properly-initialized items within 0..len
-        // and the backing store being a Rust array guarantees correct alignment and contiguity.
-        // 3. Is also guaranteed by construction (can't express a type that's too large) and we
+        // and the backing store being a Rust array guarantees correct alignment and
+        // contiguity.
+        // 3. Is also guaranteed by construction (can't express a type that's too large)
+        //    and we
         // since we borrow self here 2. is upheld as well.
         unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len) }
     }
@@ -164,8 +173,9 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
     ///
     /// # Safety
     ///
-    /// Calling this method with on an already full vector is *[undefined behavior]*.
-    /// The caller has to ensure that `self.len() < self.capacity()`.
+    /// Calling this method with on an already full vector is *[undefined
+    /// behavior]*. The caller has to ensure that `self.len() <
+    /// self.capacity()`.
     #[track_caller]
     pub const unsafe fn push_unchecked(&mut self, element: T) {
         let len = self.len();
@@ -199,8 +209,9 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
     ///
     /// The removed element is replaced by the last element of the vector.
     ///
-    /// This does not preserve ordering of the remaining elements, but is *O*(1).
-    /// If you need to preserve the element order, use [`remove`] instead.
+    /// This does not preserve ordering of the remaining elements, but is
+    /// *O*(1). If you need to preserve the element order, use [`remove`]
+    /// instead.
     #[inline]
     pub fn swap_remove(&mut self, index: usize) -> T {
         #[cold]
@@ -295,8 +306,9 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
                 return false;
             }
             if DELETED {
-                // Safety: `deleted_cnt` > 0, so the hole slot must not overlap with current element.
-                // We use copy for move, and never touch this element again.
+                // Safety: `deleted_cnt` > 0, so the hole slot must not overlap with current
+                // element. We use copy for move, and never touch this element
+                // again.
                 unsafe {
                     let hole_slot = cur.sub(g.deleted_cnt);
                     ptr::copy_nonoverlapping(cur, hole_slot, 1);
@@ -369,7 +381,8 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         // set our length to start, to be safe in case Drain is leaked
         self.len = start;
         // Safety: ArrayVec API guarantees properly-initialized items within 0..len
-        // Note: we do this unsafe slicing here because we also need to mutably borrow self (for backshifting the tail)
+        // Note: we do this unsafe slicing here because we also need to mutably borrow
+        // self (for backshifting the tail)
         let range_slice = unsafe { slice::from_raw_parts(self.as_ptr().add(start), end - start) };
 
         Drain {
@@ -388,8 +401,8 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         let len = self.len();
         if new_len < len {
             // Safety: ArrayVec API guarantees properly-initialized items within 0..len
-            // we have checked that new_len is less than len so all elements within 0..new_len must be
-            // initialized
+            // we have checked that new_len is less than len so all elements within
+            // 0..new_len must be initialized
             unsafe {
                 self.len = new_len;
                 let tail = slice::from_raw_parts_mut(self.as_mut_ptr().add(new_len), len - new_len);
@@ -422,8 +435,8 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
     ///
     /// # Errors
     ///
-    /// Returns a `CapacityError` if the `ArrayVec` does not have enough capacity to accommodate
-    /// the elements.
+    /// Returns a `CapacityError` if the `ArrayVec` does not have enough
+    /// capacity to accommodate the elements.
     pub fn try_extend_from_slice(&mut self, other: &[T]) -> Result<(), CapacityError<()>>
     where
         T: Clone,
@@ -577,11 +590,13 @@ where
 
 /// Create an `ArrayVec` from an iterator.
 ///
-/// ***Panics*** if the number of elements in the iterator exceeds the arrayvec's capacity.
+/// ***Panics*** if the number of elements in the iterator exceeds the
+/// arrayvec's capacity.
 impl<T, const CAP: usize> FromIterator<T> for ArrayVec<T, CAP> {
     /// Create an `ArrayVec` from an iterator.
     ///
-    /// ***Panics*** if the number of elements in the iterator exceeds the arrayvec's capacity.
+    /// ***Panics*** if the number of elements in the iterator exceeds the
+    /// arrayvec's capacity.
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut array = ArrayVec::new();
         for element in iter {
@@ -716,10 +731,12 @@ impl<T, const CAP: usize> ExactSizeIterator for Drain<'_, T, CAP> {}
 
 impl<T, const CAP: usize> Drop for Drain<'_, T, CAP> {
     fn drop(&mut self) {
-        /// Fill the drained range by backshifting the "tail" (elements after the drained range).
+        /// Fill the drained range by backshifting the "tail" (elements after
+        /// the drained range).
         ///
-        /// We do this in a drop guard so that no matter what happens, even if T's drop panics
-        /// we leave an ArrayVec without uninitialized holes behind.
+        /// We do this in a drop guard so that no matter what happens, even if
+        /// T's drop panics we leave an ArrayVec without uninitialized
+        /// holes behind.
         struct DropGuard<'r, 'a, T, const CAP: usize>(&'r mut Drain<'a, T, CAP>);
 
         impl<'r, 'a, T, const CAP: usize> Drop for DropGuard<'r, 'a, T, CAP> {
@@ -1063,8 +1080,9 @@ mod tests {
         iter.next();
         let _ = std::panic::catch_unwind(|| drop(iter));
 
-        // Note we don't see enough drop counts, essentially every element after the panic is leaked
-        // but at least we don't access uninitialized elements and trigger UB
+        // Note we don't see enough drop counts, essentially every element after the
+        // panic is leaked but at least we don't access uninitialized elements
+        // and trigger UB
         assert_eq!(DROP_COUNT.load(Ordering::SeqCst), 1);
     }
 

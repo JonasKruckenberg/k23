@@ -23,11 +23,12 @@ use crate::wasm::vm::{CodeObject, MmapVec, VMArrayCallFunction, VMShape, VMWasmC
 
 /// A compiled WebAssembly module, ready to be instantiated.
 ///
-/// It holds all compiled code as well as the module's type information and other metadata (e.g. for
-/// trap handling and backtrace information).
+/// It holds all compiled code as well as the module's type information and
+/// other metadata (e.g. for trap handling and backtrace information).
 ///
-/// Currently, no form of dynamic tiering is implemented instead all functions are compiled synchronously
-/// when the module is created. This is expected to change though.
+/// Currently, no form of dynamic tiering is implemented instead all functions
+/// are compiled synchronously when the module is created. This is expected to
+/// change though.
 #[derive(Debug, Clone)]
 pub struct Module(Arc<ModuleInner>);
 
@@ -78,7 +79,8 @@ impl Module {
             Ok(Arc::new(code))
         })?;
 
-        // register this code memory with the trap handler, so we can correctly unwind from traps
+        // register this code memory with the trap handler, so we can correctly unwind
+        // from traps
         register_code(&code);
 
         Ok(Self(Arc::new(ModuleInner {

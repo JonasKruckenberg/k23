@@ -7,12 +7,14 @@
 
 //! SBI (RISC-V Supervisor Binary Interface).
 //!
-//! SBI is a standard interface for interacting with the "supervisor execution environment" on RISC-V.
-//! This environment provided by the previous stage bootloader (most commonly OpenSBI) is responsible for
-//! implementing the SBI functions.
+//! SBI is a standard interface for interacting with the "supervisor execution
+//! environment" on RISC-V. This environment provided by the previous stage
+//! bootloader (most commonly OpenSBI) is responsible for implementing the SBI
+//! functions.
 //!
-//! You can think of the "supervisor execution environment" as a minimal operating system,
-//! running in M-mode that provides services to the operating system running in S-mode.
+//! You can think of the "supervisor execution environment" as a minimal
+//! operating system, running in M-mode that provides services to the operating
+//! system running in S-mode.
 
 pub mod base;
 pub mod dbcn;

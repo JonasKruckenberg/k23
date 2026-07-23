@@ -9,27 +9,32 @@ use core::arch::naked_asm;
 
 pub const PAGE_SIZE: usize = 4096;
 
-/// 16-byte-aligned newtype so the stack top (`&BOOT_STACK as *const _ + STACK_SIZE`) is also
-/// 16-byte aligned, satisfying the RISC-V ABI stack-alignment requirement.
+/// 16-byte-aligned newtype so the stack top (`&BOOT_STACK as *const _ +
+/// STACK_SIZE`) is also 16-byte aligned, satisfying the RISC-V ABI
+/// stack-alignment requirement.
 #[repr(C, align(16))]
 struct BootStack([u8; crate::STACK_SIZE]);
 
-/// Boot-hart stack.  Zero-initialised so it lands in BSS, but placed in `.bss.uninit` — a
-/// section intentionally outside `__bss_start`/`__bss_end` — so the BSS-clear loop in `_start`
-/// cannot stomp on a stack that is already in use.
+/// Boot-hart stack.  Zero-initialised so it lands in BSS, but placed in
+/// `.bss.uninit` — a section intentionally outside `__bss_start`/`__bss_end` —
+/// so the BSS-clear loop in `_start` cannot stomp on a stack that is already in
+/// use.
 #[unsafe(link_section = ".bss.uninit")]
 static BOOT_STACK: BootStack = BootStack([0u8; crate::STACK_SIZE]);
 
-/// Image entry point, invoked by the prior boot stage (QEMU's `-kernel` loader / SBI
-/// firmware).
+/// Image entry point, invoked by the prior boot stage (QEMU's `-kernel` loader
+/// / SBI firmware).
 ///
 /// # Safety
 ///
 /// The RISC-V firmware must uphold the following boot contract:
 ///
-/// - executing in S-mode on the boot hart, with this function at the image entry PC,
-/// - `a0` = boot hart ID, `a1` = physical address of the DTB (Linux/SBI convention),
-/// - the `.bss` and boot stack this prologue initializes have not yet been used.
+/// - executing in S-mode on the boot hart, with this function at the image
+///   entry PC,
+/// - `a0` = boot hart ID, `a1` = physical address of the DTB (Linux/SBI
+///   convention),
+/// - the `.bss` and boot stack this prologue initializes have not yet been
+///   used.
 #[unsafe(link_section = ".text.start")]
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
@@ -95,9 +100,10 @@ unsafe extern "C" fn _start() -> ! {
     }
 }
 
-/// Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
-/// in dumps & calculate stack usage. This is also really great (don't ask my why I know this) to identify
-/// when we tried executing stack memory.
+/// Fill the stack with a canary pattern (0xACE0BACE) so that we can identify
+/// unused stack memory in dumps & calculate stack usage. This is also really
+/// great (don't ask my why I know this) to identify when we tried executing
+/// stack memory.
 ///
 /// # Safety
 ///

@@ -54,9 +54,9 @@ impl<'a> Parse<'a> for Memory<'a> {
 
         // Afterwards figure out which style this is, either:
         //
-        //  *   `(import "a" "b") limits`
-        //  *   `(data ...)`
-        //  *   `limits`
+        //  * `(import "a" "b") limits`
+        //  * `(data ...)`
+        //  * `limits`
         let mut l = parser.lookahead1();
         let kind = if let Some(import) = parser.parse()? {
             MemoryKind::Import {

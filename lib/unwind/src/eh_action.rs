@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! This module implements parsing of GCC-style Language-Specific Data Area (LSDA)
-//! and determining the appropriate `EhAction` for a given IP.
+//! This module implements parsing of GCC-style Language-Specific Data Area
+//! (LSDA) and determining the appropriate `EhAction` for a given IP.
 //!
 //! For details see:
 //!  * <https://refspecs.linuxfoundation.org/LSB_3.0.0/LSB-PDA/LSB-PDA/ehframechpt.html>

@@ -169,13 +169,15 @@ impl<'module_env> TranslationEnvironment<'module_env> {
         }
     }
 
-    /// Convert the target pointer-sized integer `val` into the memory/table's index type.
+    /// Convert the target pointer-sized integer `val` into the memory/table's
+    /// index type.
     ///
-    /// For memory, `val` is holding a memory length (or the `-1` `memory.grow`-failed sentinel).
-    /// For table, `val` is holding a table length.
+    /// For memory, `val` is holding a memory length (or the `-1`
+    /// `memory.grow`-failed sentinel). For table, `val` is holding a table
+    /// length.
     ///
-    /// This might involve extending or truncating it depending on the memory/table's
-    /// index type and the target's pointer type.
+    /// This might involve extending or truncating it depending on the
+    /// memory/table's index type and the target's pointer type.
     fn convert_pointer_to_index_type(
         &self,
         mut pos: FuncCursor<'_>,
@@ -220,8 +222,8 @@ impl<'module_env> TranslationEnvironment<'module_env> {
                 // set then this must be the `-1` sentinel, which we want to
                 // preserve through the extension.
                 //
-                // When it comes to table, `single_byte_pages` should have always been set to false.
-                // Then we simply do a signed extension.
+                // When it comes to table, `single_byte_pages` should have always been set to
+                // false. Then we simply do a signed extension.
                 pos.ins().sextend(desired_type, val)
             }
         }
@@ -419,7 +421,8 @@ impl TranslationEnvironment<'_> {
 
     /// Get the Cranelift integer type to use for native pointers.
     ///
-    /// This returns `I64` for 64-bit architectures and `I32` for 32-bit architectures.
+    /// This returns `I64` for 64-bit architectures and `I32` for 32-bit
+    /// architectures.
     pub fn pointer_type(&self) -> Type {
         self.target_isa().pointer_type()
     }
@@ -465,8 +468,8 @@ impl TranslationEnvironment<'_> {
     /// Is the given parameter of the given function a wasm parameter or
     /// an internal implementation-detail parameter?
     pub fn is_wasm_parameter(&self, index: usize) -> bool {
-        // The first two parameters are the function vmctx and caller vmctx. The rest are
-        // the wasm parameters.
+        // The first two parameters are the function vmctx and caller vmctx. The rest
+        // are the wasm parameters.
         index >= 2
     }
 
@@ -476,7 +479,8 @@ impl TranslationEnvironment<'_> {
         signature.returns[index].purpose == ir::ArgumentPurpose::Normal
     }
 
-    /// Is the given parameter a GC reference and needs to be included in the stack map?
+    /// Is the given parameter a GC reference and needs to be included in the
+    /// stack map?
     pub fn func_ref_result_needs_stack_map(
         &self,
         func: &mut Function,
@@ -487,14 +491,15 @@ impl TranslationEnvironment<'_> {
         false
     }
 
-    /// Is the given result a GC reference and needs to be included in the stack map?
+    /// Is the given result a GC reference and needs to be included in the stack
+    /// map?
     pub fn sig_ref_result_needs_stack_map(&self, sig_ref: SigRef, index: usize) -> bool {
         // TODO stack map
         false
     }
 
-    /// Translate a WASM `global.get` instruction at the builder's current position
-    /// for a global that is custom.
+    /// Translate a WASM `global.get` instruction at the builder's current
+    /// position for a global that is custom.
     pub fn translate_custom_global_get(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -503,8 +508,8 @@ impl TranslationEnvironment<'_> {
         todo!()
     }
 
-    /// Translate a WASM `global.set` instruction at the builder's current position
-    /// for a global that is custom.
+    /// Translate a WASM `global.set` instruction at the builder's current
+    /// position for a global that is custom.
     pub fn translate_custom_global_set(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -518,9 +523,11 @@ impl TranslationEnvironment<'_> {
     /// position.
     ///
     /// Insert instructions for a *direct call* to the function `callee_index`.
-    /// The function reference `callee` was previously created by `make_direct_func()`.
+    /// The function reference `callee` was previously created by
+    /// `make_direct_func()`.
     ///
-    /// Return the call instruction whose results are the WebAssembly return values.
+    /// Return the call instruction whose results are the WebAssembly return
+    /// values.
     pub fn translate_call(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -534,14 +541,14 @@ impl TranslationEnvironment<'_> {
     /// Translate a WASM `call_indirect` instruction at the builder's current
     /// position.
     ///
-    /// Insert instructions for an *indirect call* to the function `callee` in the table
-    /// `table_index` with WASM signature `sig_index`. The `callee` value will have type
-    /// `i32`.
+    /// Insert instructions for an *indirect call* to the function `callee` in
+    /// the table `table_index` with WASM signature `sig_index`. The
+    /// `callee` value will have type `i32`.
     /// The signature `sig_ref` was previously created by `make_indirect_sig()`.
     ///
-    /// Return the call instruction whose results are the WebAssembly return values.
-    /// Returns `None` if this statically trap_handling instead of creating a call
-    /// instruction.
+    /// Return the call instruction whose results are the WebAssembly return
+    /// values. Returns `None` if this statically trap_handling instead of
+    /// creating a call instruction.
     #[expect(clippy::too_many_arguments, reason = "")]
     pub fn translate_call_indirect(
         &mut self,
@@ -566,16 +573,18 @@ impl TranslationEnvironment<'_> {
     /// Translate a WASM `call_ref` instruction at the builder's current
     /// position.
     ///
-    /// Insert instructions at the builder's current position for an *indirect call*
-    /// to the function `callee`. The `callee` value will be a Wasm funcref
-    /// that needs to be translated to a native function address.
+    /// Insert instructions at the builder's current position for an *indirect
+    /// call* to the function `callee`. The `callee` value will be a Wasm
+    /// funcref that needs to be translated to a native function address.
     ///
-    /// `may_be_null` indicates whether a null check is necessary and is only false when
-    /// we can statically prove through validation that the funcref can never be null.
+    /// `may_be_null` indicates whether a null check is necessary and is only
+    /// false when we can statically prove through validation that the
+    /// funcref can never be null.
     ///
     /// The signature `sig_ref` was previously created by `make_indirect_sig()`.
     ///
-    /// Return the call instruction whose results are the WebAssembly return values.
+    /// Return the call instruction whose results are the WebAssembly return
+    /// values.
     pub fn translate_call_ref(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -590,12 +599,14 @@ impl TranslationEnvironment<'_> {
     /// Translate a WASM `return_call` instruction at the builder's
     /// current position.
     ///
-    /// Insert instructions at the builder's current position for a *direct tail call*
-    /// to the function `callee_index`.
+    /// Insert instructions at the builder's current position for a *direct tail
+    /// call* to the function `callee_index`.
     ///
-    /// The function reference `callee` was previously created by `make_direct_func()`.
+    /// The function reference `callee` was previously created by
+    /// `make_direct_func()`.
     ///
-    /// Return the call instruction whose results are the WebAssembly return values.
+    /// Return the call instruction whose results are the WebAssembly return
+    /// values.
     pub fn translate_return_call(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -609,9 +620,10 @@ impl TranslationEnvironment<'_> {
     /// Translate a WASM `return_call_indirect` instruction at the
     /// builder's current position.
     ///
-    /// Insert instructions at the builder's current position for an *indirect tail call*
-    /// to the function `callee` in the table `table_index` with WebAssembly signature
-    /// `sig_index`. The `callee` value will have type `i32`.
+    /// Insert instructions at the builder's current position for an *indirect
+    /// tail call* to the function `callee` in the table `table_index` with
+    /// WebAssembly signature `sig_index`. The `callee` value will have type
+    /// `i32`.
     ///
     /// The signature `sig_ref` was previously created by `make_indirect_sig()`.
     pub fn translate_return_call_indirect(
@@ -629,10 +641,10 @@ impl TranslationEnvironment<'_> {
     /// Translate a WASM `return_call_ref` instruction at the builder's
     /// current position.
     ///
-    /// Insert instructions at the builder's current position for an *indirect tail call*
-    /// to the function `callee`. The `callee` value will be a Wasm funcref that may need
-    /// to be translated to a native function address depending on your implementation of
-    /// this trait.
+    /// Insert instructions at the builder's current position for an *indirect
+    /// tail call* to the function `callee`. The `callee` value will be a
+    /// Wasm funcref that may need to be translated to a native function
+    /// address depending on your implementation of this trait.
     ///
     /// The signature `sig_ref` was previously created by `make_indirect_sig()`.
     pub fn translate_return_call_ref(
@@ -647,10 +659,11 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `memory.grow` instruction at `pos`.
     ///
-    /// The `memory_index` identifies the linear memory to grow and `delta` is the
-    /// requested memory size in WASM pages.
+    /// The `memory_index` identifies the linear memory to grow and `delta` is
+    /// the requested memory size in WASM pages.
     ///
-    /// Returns the old size (in WASM pages) of the memory or `-1` to indicate failure.
+    /// Returns the old size (in WASM pages) of the memory or `-1` to indicate
+    /// failure.
     pub fn translate_memory_grow(
         &mut self,
         mut pos: FuncCursor,
@@ -775,8 +788,10 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `memory.copy` instruction.
     ///
-    /// The `src_index` and `dst_index` identify the source and destination linear memories respectively,
-    /// `src_pos` and `dst_pos` are the source and destination offsets in bytes, and `len` is the number of bytes to copy.
+    /// The `src_index` and `dst_index` identify the source and destination
+    /// linear memories respectively, `src_pos` and `dst_pos` are the source
+    /// and destination offsets in bytes, and `len` is the number of bytes to
+    /// copy.
     pub fn translate_memory_copy(
         &mut self,
         mut pos: FuncCursor,
@@ -815,8 +830,9 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `memory.fill` instruction.
     ///
-    /// The `memory_index` identifies the linear memory, `dst` is the offset in bytes, `val` is the
-    /// value to fill the memory with and `len` is the number of bytes to fill.
+    /// The `memory_index` identifies the linear memory, `dst` is the offset in
+    /// bytes, `val` is the value to fill the memory with and `len` is the
+    /// number of bytes to fill.
     pub fn translate_memory_fill(
         &mut self,
         mut pos: FuncCursor,
@@ -838,8 +854,9 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `memory.init` instruction.
     ///
-    /// The `memory_index` identifies the linear memory amd `data_index` identifies the passive data segment.
-    /// The `dst` value is the destination offset into the linear memory, `_src` is the offset into the
+    /// The `memory_index` identifies the linear memory amd `data_index`
+    /// identifies the passive data segment. The `dst` value is the
+    /// destination offset into the linear memory, `_src` is the offset into the
     /// data segment and `len` is the number of bytes to copy.
     pub fn translate_memory_init(
         &mut self,
@@ -889,8 +906,9 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `table.grow` instruction.
     ///
-    /// The `table_index` identifies the table, `delta` is the number of elements to grow by
-    /// and `initial_value` the value to fill the newly created elements with.
+    /// The `table_index` identifies the table, `delta` is the number of
+    /// elements to grow by and `initial_value` the value to fill the newly
+    /// created elements with.
     ///
     /// Returns the old size of the table or `-1` to indicate failure.
     pub fn translate_table_grow(
@@ -905,7 +923,8 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `table.get` instruction.
     ///
-    /// The `table_index` identifies the table and `index` is the index of the element to retrieve.
+    /// The `table_index` identifies the table and `index` is the index of the
+    /// element to retrieve.
     ///
     /// Returns the element at the given index.
     pub fn translate_table_get(
@@ -919,7 +938,8 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `table.set` instruction.
     ///
-    /// The `table_index` identifies the table, `value` is the value to set and `index` is the index of the element to set.
+    /// The `table_index` identifies the table, `value` is the value to set and
+    /// `index` is the index of the element to set.
     pub fn translate_table_set(
         &mut self,
         pos: FuncCursor,
@@ -932,8 +952,9 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `table.copy` instruction.
     ///
-    /// The `src_index` and `dst_index` identify the source and destination tables respectively,
-    /// `dst` and `_src` are the destination and source offsets and `len` is the number of elements to copy.
+    /// The `src_index` and `dst_index` identify the source and destination
+    /// tables respectively, `dst` and `_src` are the destination and source
+    /// offsets and `len` is the number of elements to copy.
     pub fn translate_table_copy(
         &mut self,
         pos: FuncCursor,
@@ -948,7 +969,8 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `table.fill` instruction.
     ///
-    /// The `table_index` identifies the table, `dst` is the offset, `value` is the value to fill the range.
+    /// The `table_index` identifies the table, `dst` is the offset, `value` is
+    /// the value to fill the range.
     pub fn translate_table_fill(
         &mut self,
         pos: FuncCursor,
@@ -962,8 +984,9 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM `table.init` instruction.
     ///
-    /// The `table_index` identifies the table, `elem_index` identifies the passive element segment,
-    /// `dst` is the destination offset, `_src` is the source offset and `len` is the number of elements to copy.
+    /// The `table_index` identifies the table, `elem_index` identifies the
+    /// passive element segment, `dst` is the destination offset, `_src` is
+    /// the source offset and `len` is the number of elements to copy.
     pub fn translate_table_init(
         &mut self,
         pos: FuncCursor,
@@ -987,9 +1010,10 @@ impl TranslationEnvironment<'_> {
 
     /// Translate a WASM i32.atomic.wait` or `i64.atomic.wait` instruction.
     ///
-    /// The `memory_index` identifies the linear memory and `address` is the address to wait on.
-    /// Whether the waited-on value is 32- or 64-bit can be determined by examining the type of
-    /// `expected`, which must be only I32 or I64.
+    /// The `memory_index` identifies the linear memory and `address` is the
+    /// address to wait on. Whether the waited-on value is 32- or 64-bit can
+    /// be determined by examining the type of `expected`, which must be
+    /// only I32 or I64.
     ///
     /// TODO address?
     /// TODO timeout?
@@ -1347,7 +1371,8 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
         }
     }
 
-    /// Call to a regular function with a statically known address used by `call` and `return_call`.
+    /// Call to a regular function with a statically known address used by
+    /// `call` and `return_call`.
     ///
     /// Calls to locally-defined functions are translated into relocations while
     /// calls to imported functions do an indirect call through the `VMContext`s
@@ -1366,8 +1391,8 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             .unwrap();
 
         if !self.env.module.is_imported_func(callee_index) {
-            // First append the callee vmctx address, which is the same as the caller vmctx in
-            // this case.
+            // First append the callee vmctx address, which is the same as the caller vmctx
+            // in this case.
             real_call_args.push(caller_vmctx);
 
             // Then append the caller vmctx address.
@@ -1420,14 +1445,16 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
         }
     }
 
-    /// Indirect call through the given funcref table used by [`call_indirect`][call_indirect] and
+    /// Indirect call through the given funcref table used by
+    /// [`call_indirect`][call_indirect] and
     /// [`return_call_indirect`][return_call_indirect].
     ///
-    /// Indirect calls are translated to calls through the `VMContext` `func_ref` table, the spec
-    /// requires us to check a few invariants:
-    /// - That the table element `ty_index` exists (i.e. do a table bounds check).
-    /// - That the table type matches the expected function type (indirect calls only allow funcref
-    ///   table types).
+    /// Indirect calls are translated to calls through the `VMContext`
+    /// `func_ref` table, the spec requires us to check a few invariants:
+    /// - That the table element `ty_index` exists (i.e. do a table bounds
+    ///   check).
+    /// - That the table type matches the expected function type (indirect calls
+    ///   only allow funcref table types).
     /// - That the element is non-null
     ///
     /// [call_indirect]: https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-call-indirect-x-y
@@ -1495,9 +1522,10 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             "shared heap types not supported"
         );
 
-        // The function references and GC proposals complicate the typecheck here somewhat
-        // but essentially this all boils down to the "old" runtime signature check or a static
-        // signature check for typed function references.
+        // The function references and GC proposals complicate the typecheck here
+        // somewhat but essentially this all boils down to the "old" runtime
+        // signature check or a static signature check for typed function
+        // references.
         let expected_type = &self.env.module.tables[table_index].element_type;
         match expected_type.heap_type.inner {
             // This is the old "funcref" (ref null func) type. This means inserting code
@@ -1589,18 +1617,20 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
     }
 
     /// Loads the function address and vmctx from the given `callee` value.
-    /// `callee` has to be a function reference (i.e. a pointer into `VMContext`s `func_refs` array).
+    /// `callee` has to be a function reference (i.e. a pointer into
+    /// `VMContext`s `func_refs` array).
     fn load_func_and_vmctx(
         &mut self,
         callee: Value,
         callee_load_trap_code: Option<TrapCode>,
     ) -> (Value, Value) {
         let pointer_type = self.env.pointer_type();
-        // Dereference callee pointer (pointer to a `VMFuncRef`) to get the function address.
+        // Dereference callee pointer (pointer to a `VMFuncRef`) to get the function
+        // address.
         //
-        // Note that this trap if `callee` is null, and it is the callers responsibility to
-        // check whether `callee` is either already known to non-null or ay trap.
-        // Therefore the `Option<TrapCode>`.
+        // Note that this trap if `callee` is null, and it is the callers responsibility
+        // to check whether `callee` is either already known to non-null or ay
+        // trap. Therefore the `Option<TrapCode>`.
         let mem_flags = MemFlagsData::trusted().with_readonly();
         let func_addr = self.builder.ins().load(
             pointer_type,

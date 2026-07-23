@@ -42,8 +42,8 @@ where
         self
     }
 
-    /// Override the kind string of tasks spawned by this builder, this will only show up
-    /// in debug messages and spans.
+    /// Override the kind string of tasks spawned by this builder, this will
+    /// only show up in debug messages and spans.
     ///
     /// By default, tasks are of kind `"kind"`.
     pub fn kind(mut self, kind: &'a str) -> Self {
@@ -51,9 +51,11 @@ where
         self
     }
 
-    /// Override the source code location that will be associated with tasks spawned by this builder.
+    /// Override the source code location that will be associated with tasks
+    /// spawned by this builder.
     ///
-    /// By default, tasks will inherit the source code location of where they have been first spawned.
+    /// By default, tasks will inherit the source code location of where they
+    /// have been first spawned.
     pub fn location(mut self, location: Location<'a>) -> Self {
         self.location = Some(location);
         self
@@ -86,8 +88,9 @@ where
 
     /// Attempt spawn this [`Future`] onto the executor.
     ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an
+    /// [`crate::executor::Executor`] and a [`JoinHandle`] which can be used
+    /// to await the futures output as well as control some aspects
     /// of its runtime behaviour (such as cancelling it).
     ///
     /// # Errors
@@ -109,10 +112,12 @@ where
         Ok(join)
     }
 
-    /// Attempt spawn this [`Future`] with the provided metadata onto the executor.
+    /// Attempt spawn this [`Future`] with the provided metadata onto the
+    /// executor.
     ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an
+    /// [`crate::executor::Executor`] and a [`JoinHandle`] which can be used
+    /// to await the futures output as well as control some aspects
     /// of its runtime behaviour (such as cancelling it).
     ///
     /// # Errors

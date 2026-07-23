@@ -25,9 +25,11 @@ use crate::wasm::translate::{
 /// Types defined within a single WebAssembly module.
 #[derive(Debug, Default)]
 pub struct ModuleTypes {
-    /// WASM types (functions for MVP as well as arrays and structs when the GC proposal is enabled).
+    /// WASM types (functions for MVP as well as arrays and structs when the GC
+    /// proposal is enabled).
     wasm_types: PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
-    /// Recursion groups defined within this module (only used when the GC proposal is enabled).
+    /// Recursion groups defined within this module (only used when the GC
+    /// proposal is enabled).
     rec_groups: PrimaryMap<ModuleInternedRecGroupIndex, Range<ModuleInternedTypeIndex>>,
     /// Signatures of trampolines
     trampoline_types: SecondaryMap<ModuleInternedTypeIndex, PackedOption<ModuleInternedTypeIndex>>,
@@ -45,7 +47,8 @@ impl fmt::Display for ModuleTypes {
 }
 
 impl ModuleTypes {
-    /// Returns an iterator over all the WASM types (functions, arrays, and structs) defined in this module.
+    /// Returns an iterator over all the WASM types (functions, arrays, and
+    /// structs) defined in this module.
     pub fn wasm_types(
         &self,
     ) -> impl ExactSizeIterator<Item = (ModuleInternedTypeIndex, &WasmSubType)> {
@@ -104,8 +107,9 @@ struct RecGroupInProgress {
 }
 
 pub struct ModuleTypesBuilder {
-    /// The `wasmparser` validator ID this builder has been crated with. Mixing types from
-    /// different validators since defined IDs are only unique within a single validator.
+    /// The `wasmparser` validator ID this builder has been crated with. Mixing
+    /// types from different validators since defined IDs are only unique
+    /// within a single validator.
     validator_id: ValidatorId,
     /// The types being built.
     pub types: ModuleTypes,
@@ -249,7 +253,8 @@ impl ModuleTypesBuilder {
         );
     }
 
-    /// Define a new recursion group, or return the existing one's index if it's already been defined.
+    /// Define a new recursion group, or return the existing one's index if it's
+    /// already been defined.
     pub fn intern_rec_group(
         &mut self,
         module: &TranslatedModule,

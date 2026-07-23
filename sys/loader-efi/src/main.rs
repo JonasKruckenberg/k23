@@ -67,8 +67,9 @@ fn run() -> Result<!> {
     let finalize = |_frame_alloc: UefiFrameAlloc| -> loader_api::MemoryRegions {
         log::debug!("exiting boot services...");
 
-        // Safety: we're not holding references to miscellaneous boot service allocations
-        // and the allocations we do preserve are accounted for by `collect_memory_regions`
+        // Safety: we're not holding references to miscellaneous boot service
+        // allocations and the allocations we do preserve are accounted for by
+        // `collect_memory_regions`
         let memory_map = unsafe { uefi::boot::exit_boot_services(None) };
 
         collect_memory_regions(memory_map)
@@ -117,7 +118,8 @@ fn discover_physical_memory() -> Vec<MemoryRegion> {
                     MemoryRegionKind::Usable
                 }
 
-                // TODO handle MMIO, and other memory region types here instead of defaulting to unusable
+                // TODO handle MMIO, and other memory region types here instead of defaulting to
+                // unusable
                 _ => MemoryRegionKind::Unusable,
             };
 
@@ -146,7 +148,8 @@ fn collect_memory_regions(memory_map: MemoryMapOwned) -> loader_api::MemoryRegio
                 MemoryRegionKind::Usable
             }
 
-            // TODO handle MMIO, and other memory region types here instead of defaulting to unusable
+            // TODO handle MMIO, and other memory region types here instead of defaulting to
+            // unusable
             _ => MemoryRegionKind::Unusable,
         };
 
@@ -164,9 +167,9 @@ fn collect_memory_regions(memory_map: MemoryMapOwned) -> loader_api::MemoryRegio
         let start = PhysicalAddress::new(start);
         let len = page_count * uefi::boot::PAGE_SIZE;
 
-        // TODO preserve the reported memory region attributes (caechable, write through, write combine, write back, etc)
-        // /// Supports marking as uncacheable.
-        // const UNCACHEABLE = 0x1;
+        // TODO preserve the reported memory region attributes (caechable, write
+        // through, write combine, write back, etc) /// Supports marking as
+        // uncacheable. const UNCACHEABLE = 0x1;
         // /// Supports write-combining.
         // const WRITE_COMBINE = 0x2;
         // /// Supports write-through.
