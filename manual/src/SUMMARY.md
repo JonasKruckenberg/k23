@@ -23,6 +23,10 @@
 - [System Startup](startup.md)
 - [Address Space Layout Randomization (ASLR)](aslr.md)
 
+# Observability & Performance
+
+- [Whole-System Profiling & Benchmarking (Design)](profiling.md)
+
 # CPU Architectures
 
 - [RISC-V](arch/riscv.md)
