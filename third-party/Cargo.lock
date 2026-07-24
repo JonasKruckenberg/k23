@@ -294,7 +294,7 @@ version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "688d7fbb8092b8de775ef2536f36c8c31f2bc4006ece2e8d8ad2d17d00ce0a2a"
 dependencies = [
- "loom",
+ "loom 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
 
@@ -853,7 +853,7 @@ dependencies = [
  "libtest-mimic",
  "lock_api",
  "log",
- "loom",
+ "loom 0.7.2 (git+https://github.com/JonasKruckenberg/loom?rev=86a34aa91c547314145d7b566185337fb4dd15cb)",
  "maitake-sync",
  "memchr",
  "memmap2",
@@ -969,13 +969,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "loom"
+version = "0.7.2"
+source = "git+https://github.com/JonasKruckenberg/loom?rev=86a34aa91c547314145d7b566185337fb4dd15cb#86a34aa91c547314145d7b566185337fb4dd15cb"
+dependencies = [
+ "cfg-if",
+ "generator",
+ "scoped-tls",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "maitake-sync"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d77c365d697828821727b9bc09e6bc3c518b8c63804e79e1be5a5ae091a7c5f"
 dependencies = [
  "cordyceps",
- "loom",
+ "loom 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "mutex-traits",
  "mycelium-bitfield",
  "pin-project",
