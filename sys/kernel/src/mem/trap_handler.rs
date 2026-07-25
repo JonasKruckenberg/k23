@@ -27,15 +27,17 @@ pub fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
     with_kernel_aspace(|aspace| {
         // NB: the faulting code may already hold the aspace lock,
         // and re-taking this non-reentrant Mutex would deadlock the hart.
-        let Some(mut aspace) = aspace.try_lock() else {
-            return ControlFlow::Continue(());
-        };
-        if let Err(err) = aspace.page_fault(tval, flags) {
-            tracing::warn!("page fault handler couldn't correct fault {err}");
-            ControlFlow::Continue(())
-        } else {
-            tracing::trace!("page fault handler successfully corrected fault");
-            ControlFlow::Break(())
-        }
+        // `try_with` yields `None` in that case, leaving the fault uncorrected.
+        aspace
+            .try_with_lock(|aspace| {
+                if let Err(err) = aspace.page_fault(tval, flags) {
+                    tracing::warn!("page fault handler couldn't correct fault {err}");
+                    ControlFlow::Continue(())
+                } else {
+                    tracing::trace!("page fault handler successfully corrected fault");
+                    ControlFlow::Break(())
+                }
+            })
+            .unwrap_or(ControlFlow::Continue(()))
     })
 }

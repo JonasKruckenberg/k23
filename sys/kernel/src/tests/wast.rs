@@ -368,7 +368,7 @@ impl WastContext {
         //     .spawn(async move {
         let mut results = vec![Val::I32(0); ty.results().len()];
 
-        match func.call(&mut this.lock().store, &values, &mut results) {
+        match this.with_lock(|inner| func.call(&mut inner.store, &values, &mut results)) {
             Ok(()) => Ok(Outcome::Ok(results)),
             Err(e) => Ok(Outcome::Trap(e)),
         }

@@ -46,34 +46,33 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     // acknowledge the interrupt as fast as possible
     irq_ctl.irq_complete(claim);
 
-    let Some(queues) = QUEUES.try_read() else {
-        log::warn!("couldn't acquire QUEUES read lock!");
-        return;
-    };
+    let woken = QUEUES.try_with_read_lock(|queues| {
+        if let Some(queue) = queues.get(&claim.as_u32()) {
+            queue.wake_all();
+        }
+    });
 
-    if let Some(queue) = queues.get(&claim.as_u32()) {
-        queue.wake_all();
+    if woken.is_none() {
+        log::warn!("couldn't acquire QUEUES read lock!");
     }
 }
 
 pub async fn next_event(irq_num: u32) -> Result<(), maitake_sync::Closed> {
     // Register the wait entry *before* unmasking.  If we unmasked first, the
-    // interrupt could fire between irq_unmask and QUEUES.write(), and
-    // trigger_irq would find no queue entry and drop the wakeup.  Worse, if
-    // the interrupt arrived while we held QUEUES.write(), trigger_irq would
-    // spin on QUEUES.read() while we can't release the write guard — deadlock.
-    let wait = {
-        let mut queues = QUEUES.write();
-        let wait = queues
+    // interrupt could fire between irq_unmask and the write below, and
+    // trigger_irq would find no queue entry and drop the wakeup.
+    //
+    // The write lock is confined to `with_write`, so it is structurally
+    // impossible to still hold it at the `.await` below — which would deadlock
+    // against trigger_irq's read.
+    let wait = QUEUES.with_write_lock(|queues| {
+        queues
             .entry(irq_num)
             .or_insert_with(|| Arc::new(WaitQueue::new()))
-            .wait_owned();
-        // don't hold the RwLock guard across the await point
-        drop(queues);
-        wait
-    };
+            .wait_owned()
+    });
 
-    // Unmask only after the write guard is dropped.  Any interrupt that fires
+    // Unmask only after the write lock is released.  Any interrupt that fires
     // from here will find the queue entry and call wake_all(); the WaitQueue
     // stores the notification in its state so the .await below returns
     // immediately even if the wakeup races with the first poll.

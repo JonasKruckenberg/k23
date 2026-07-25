@@ -171,8 +171,7 @@ impl Drop for RuntimeTypeCollection {
             self.engine
                 .type_registry()
                 .0
-                .write()
-                .unregister_type_collection(self);
+                .with_write_lock(|inner| inner.unregister_type_collection(self));
         }
     }
 }
@@ -226,8 +225,7 @@ impl Drop for RegisteredType {
             self.engine
                 .type_registry()
                 .0
-                .write()
-                .unregister_entry(self.entry.clone());
+                .with_write_lock(|inner| inner.unregister_entry(self.entry.clone()));
         }
     }
 }
@@ -278,7 +276,8 @@ impl TypeRegistry {
     #[inline]
     pub fn debug_assert_contains(&self, index: VMSharedTypeIndex) {
         if cfg!(debug_assertions) {
-            self.0.read().debug_assert_registered(index);
+            self.0
+                .with_read_lock(|inner| inner.debug_assert_registered(index));
         }
     }
 
@@ -290,8 +289,8 @@ impl TypeRegistry {
     /// other mechanism already keeping the type registered.
     pub fn borrow(&self, index: VMSharedTypeIndex) -> Option<Arc<WasmSubType>> {
         let id = shared_type_index_to_slab_id(index);
-        let inner = self.0.read();
-        inner.types.get(id).and_then(Clone::clone)
+        self.0
+            .with_read_lock(|inner| inner.types.get(id).and_then(Clone::clone))
     }
 
     pub fn register_module_types(
@@ -299,7 +298,9 @@ impl TypeRegistry {
         engine: &Engine,
         module_types: ModuleTypes,
     ) -> RuntimeTypeCollection {
-        let (rec_groups, types) = self.0.write().register_module_types(&module_types);
+        let (rec_groups, types) = self
+            .0
+            .with_write_lock(|inner| inner.register_module_types(&module_types));
 
         tracing::trace!("Begin building module's shared-to-module-trampoline-types map");
         let mut trampolines = SecondaryMap::with_capacity(types.len());
@@ -322,7 +323,8 @@ impl TypeRegistry {
     }
 
     pub fn register_type(&self, engine: &Engine, ty: WasmSubType) -> RegisteredType {
-        self.0.write().register_type(engine, ty)
+        self.0
+            .with_write_lock(|inner| inner.register_type(engine, ty))
     }
 
     // pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
@@ -348,21 +350,23 @@ impl TypeRegistry {
     /// Panics for non-function type indices.
     pub fn get_trampoline_type(&self, index: VMSharedTypeIndex) -> VMSharedTypeIndex {
         let id = shared_type_index_to_slab_id(index);
-        let inner = self.0.read();
 
-        let ty = inner.types[id].as_ref().unwrap();
-        debug_assert!(
-            ty.is_func(),
-            "cannot get the trampoline type of a non-function type: {index:?} = {ty:?}"
-        );
+        let trampoline_ty = self.0.with_read_lock(|inner| {
+            let ty = inner.types[id].as_ref().unwrap();
+            debug_assert!(
+                ty.is_func(),
+                "cannot get the trampoline type of a non-function type: {index:?} = {ty:?}"
+            );
 
-        let trampoline_ty = match inner.type_to_trampoline.get(index).and_then(|x| x.expand()) {
-            Some(ty) => ty,
-            None => {
-                // The function type is its own trampoline type.
-                index
+            match inner.type_to_trampoline.get(index).and_then(|x| x.expand()) {
+                Some(ty) => ty,
+                None => {
+                    // The function type is its own trampoline type.
+                    index
+                }
             }
-        };
+        });
+
         tracing::trace!("TypeRegistry::trampoline_type({index:?}) -> {trampoline_ty:?}");
         trampoline_ty
     }
@@ -376,9 +380,8 @@ impl TypeRegistry {
     /// registry.
     pub fn root(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
         debug_assert!(!index.is_reserved_value());
-        let (entry, ty) = {
+        let (entry, ty) = self.0.with_read_lock(|inner| {
             let id = shared_type_index_to_slab_id(index);
-            let inner = self.0.read();
 
             let ty = inner.types.get(id)?.clone().unwrap();
             let entry = inner.type_to_rec_group[index].clone().unwrap();
@@ -392,8 +395,8 @@ impl TypeRegistry {
             // * This thread: increfs entry, but it isn't in the registry anymore
             entry.incr_ref_count("TypeRegistry::root");
 
-            (entry, ty)
-        };
+            Some((entry, ty))
+        })?;
 
         debug_assert!(entry.0.registrations.load(Ordering::Acquire) != 0);
         Some(RegisteredType {
@@ -408,8 +411,10 @@ impl TypeRegistry {
     #[inline]
     pub fn is_subtype(&self, sub: VMSharedTypeIndex, sup: VMSharedTypeIndex) -> bool {
         if cfg!(debug_assertions) {
-            self.0.read().debug_assert_registered(sub);
-            self.0.read().debug_assert_registered(sup);
+            self.0.with_read_lock(|inner| {
+                inner.debug_assert_registered(sub);
+                inner.debug_assert_registered(sup);
+            });
         }
 
         if sub == sup {
@@ -459,10 +464,11 @@ impl TypeRegistry {
         // Therefore, if we have the path to the root for each type (we do) then
         // we can simply check if `sup` is at index `supertypes(sup).len()`
         // within `supertypes(sub)`.
-        let inner = self.0.read();
-        let sub_supertypes = inner.supertypes(sub);
-        let sup_supertypes = inner.supertypes(sup);
-        sub_supertypes.get(sup_supertypes.len()) == Some(&sup)
+        self.0.with_read_lock(|inner| {
+            let sub_supertypes = inner.supertypes(sub);
+            let sup_supertypes = inner.supertypes(sup);
+            sub_supertypes.get(sup_supertypes.len()) == Some(&sup)
+        })
     }
 }
 

@@ -99,30 +99,16 @@ impl Write for HostStream {
 
 static STDOUT: Mutex<Option<HostStream>> = Mutex::new(None);
 fn with_hstdout(f: impl FnOnce(&mut HostStream)) {
-    let mut stream = STDOUT.lock();
-
-    if stream.is_none() {
-        stream.replace(HostStream::new_stdout());
-    }
-
-    match &mut *stream {
-        Some(stream) => f(stream),
-        None => unreachable!(),
-    }
+    STDOUT.with_lock(|slot| {
+        f(slot.get_or_insert_with(HostStream::new_stdout));
+    });
 }
 
 static STDERR: Mutex<Option<HostStream>> = Mutex::new(None);
 fn with_hstderr(f: impl FnOnce(&mut HostStream)) {
-    let mut stream = STDERR.lock();
-
-    if stream.is_none() {
-        stream.replace(HostStream::new_stderr());
-    }
-
-    match &mut *stream {
-        Some(stream) => f(stream),
-        None => unreachable!(),
-    }
+    STDERR.with_lock(|slot| {
+        f(slot.get_or_insert_with(HostStream::new_stderr));
+    });
 }
 
 /// # Panics

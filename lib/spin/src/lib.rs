@@ -8,7 +8,6 @@
 //! Synchronization primitives for use in k23.
 
 #![cfg_attr(not(test), no_std)]
-#![cfg_attr(feature = "thread-local", feature(thread_local))]
 #![feature(dropck_eyepatch)]
 #![feature(negative_impls)]
 
@@ -21,19 +20,15 @@ mod loom;
 mod mutex;
 mod once;
 mod once_lock;
-#[cfg(feature = "thread-local")]
-mod remutex;
 mod rw_lock;
 mod util;
 
 pub use backoff::Backoff;
 pub use barrier::{Barrier, BarrierWaitResult};
-pub use irq_mutex::{IrqMutex, IrqMutexGuard};
+pub use irq_mutex::IrqMutex;
 pub use irq_rw_lock::IrqRwLock;
 pub use lazy_lock::LazyLock;
-pub use mutex::{Mutex, MutexGuard, RawMutex};
+pub use mutex::{Mutex, RawMutex};
 pub use once::{ExclusiveState, Once};
 pub use once_lock::OnceLock;
-#[cfg(feature = "thread-local")]
-pub use remutex::{ReentrantMutex, ReentrantMutexGuard};
-pub use rw_lock::{RwLock, RwLockReadGuard, RwLockUpgradableGuard, RwLockWriteGuard};
+pub use rw_lock::{RwLock, Upgradeable};

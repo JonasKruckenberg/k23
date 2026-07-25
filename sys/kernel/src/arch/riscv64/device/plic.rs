@@ -117,24 +117,27 @@ impl Plic {
             let layout =
                 Layout::from_size_align(AddressRangeExt::len(&mmio_range), PAGE_SIZE).unwrap();
 
-            aspace
-                .lock()
-                .map(
-                    layout,
-                    Permissions::READ | Permissions::WRITE,
-                    |range, perms, batch| {
-                        let region = AddressSpaceRegion::new_phys(
-                            range,
-                            perms,
-                            mmio_range,
-                            Some("PLIC".to_string()),
-                        );
-                        region.commit(batch, range, true)?;
-                        Ok(region)
-                    },
-                )
-                .unwrap()
-                .range
+            // The mapped region borrows the address space, so pull the range
+            // out before the lock is released.
+            aspace.with_lock(|aspace| {
+                aspace
+                    .map(
+                        layout,
+                        Permissions::READ | Permissions::WRITE,
+                        |range, perms, batch| {
+                            let region = AddressSpaceRegion::new_phys(
+                                range,
+                                perms,
+                                mmio_range,
+                                Some("PLIC".to_string()),
+                            );
+                            region.commit(batch, range, true)?;
+                            Ok(region)
+                        },
+                    )
+                    .unwrap()
+                    .range
+            })
         });
 
         // Specifies how many external interrupts are supported by this controller.

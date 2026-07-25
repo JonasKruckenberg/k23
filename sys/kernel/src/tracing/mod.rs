@@ -20,7 +20,7 @@ use color::{Color, SetColor};
 use cpu_local::cpu_local;
 pub use filter::Filter;
 use registry::Registry;
-use spin::{OnceLock, ReentrantMutexGuard};
+use spin::OnceLock;
 use tracing::field;
 use tracing_core::span::{Attributes, Current, Id, Record};
 use tracing_core::{
@@ -47,7 +47,7 @@ pub fn per_cpu_init_early(cpuid: usize) {
 ///
 /// `tx` is the console's transmit half, used as the log sink. It lives in this
 /// `'static` subscriber because logging starts before the allocator is up; raw
-/// writers (e.g. shell echo) share it via [`console_tx`]. Pass `None` when the
+/// writers (e.g. shell echo) share it via [`with_console_tx`]. Pass `None` when the
 /// platform has no console — output is then discarded.
 ///
 /// This should be called as early in the boot process as possible.
@@ -61,13 +61,21 @@ pub fn init_early(tx: Sender) {
     ::log::set_max_level(::log::LevelFilter::Trace);
 }
 
-/// Locks the console's shared transmit half for raw output such as shell echo,
-/// or `None` if no console was configured.
+/// Calls `f` with the console's shared transmit half, for raw output such as
+/// shell echo.
 ///
-/// This is the same lock the log writer takes, so raw writes and log lines can't
-/// interleave. Don't hold the guard across an `.await`.
-pub fn console_tx() -> ReentrantMutexGuard<'static, Sender> {
-    SUBSCRIBER.get().unwrap().output.make_writer.0.lock()
+/// This claims the console the same way the log writer does, so raw writes and
+/// log lines can't interleave. Because the claim is confined to `f`, it cannot
+/// be held across an `.await`.
+///
+/// # Panics
+///
+/// Panics if no console was configured, i.e. before [`init_early`].
+pub fn with_console_tx<F, R>(f: F) -> R
+where
+    F: FnOnce(&Sender) -> R,
+{
+    SUBSCRIBER.get().unwrap().output.make_writer.with_tx(f)
 }
 
 /// Fully initialize the subsystem, after this point tracing [`Span`]s will be processed as well.
@@ -187,25 +195,23 @@ impl Collect for Subscriber {
         let id = registry.new_span(attrs);
         let meta = attrs.metadata();
 
-        let Some(mut writer) = self.output.writer(meta) else {
-            return id;
-        };
+        // `writer` flushes its trailing CRLF when the closure returns.
+        self.output.with_writer(meta, |writer| {
+            let _ = write_level(writer, *meta.level());
+            let _ = write_cpu(writer);
+            let _ = write_timestamp(writer);
 
-        let _ = write_level(&mut writer, *meta.level());
-        let _ = write_cpu(&mut writer);
-        let _ = write_timestamp(&mut writer);
+            let _ = write!(
+                writer.with_fg_color(Color::BrightBlack),
+                "{}: ",
+                meta.target()
+            );
+            let _ = writer.with_bold().write_str(meta.name());
+            let _ = writer.with_fg_color(Color::BrightBlack).write_str(": ");
 
-        let _ = write!(
-            writer.with_fg_color(Color::BrightBlack),
-            "{}: ",
-            meta.target()
-        );
-        let _ = writer.with_bold().write_str(meta.name());
-        let _ = writer.with_fg_color(Color::BrightBlack).write_str(": ");
+            attrs.record(&mut Visitor::new(180, writer));
+        });
 
-        attrs.record(&mut Visitor::new(180, &mut writer));
-
-        // `writer` flushes its trailing CRLF on drop.
         id
     }
 
@@ -220,20 +226,18 @@ impl Collect for Subscriber {
     fn event(&self, event: &Event<'_>) {
         let meta = event.metadata();
 
-        let Some(mut writer) = self.output.writer(meta) else {
-            return;
-        };
-
-        let _ = write_level(&mut writer, *meta.level());
-        let _ = write_cpu(&mut writer);
-        let _ = write_timestamp(&mut writer);
-        let _ = write!(
-            writer.with_fg_color(Color::BrightBlack),
-            "{}: ",
-            meta.target()
-        );
-        event.record(&mut Visitor::new(180, &mut writer));
-        // `writer` flushes its trailing CRLF on drop.
+        // `writer` flushes its trailing CRLF when the closure returns.
+        self.output.with_writer(meta, |writer| {
+            let _ = write_level(writer, *meta.level());
+            let _ = write_cpu(writer);
+            let _ = write_timestamp(writer);
+            let _ = write!(
+                writer.with_fg_color(Color::BrightBlack),
+                "{}: ",
+                meta.target()
+            );
+            event.record(&mut Visitor::new(180, writer));
+        });
     }
 
     fn enter(&self, id: &Id) {
@@ -289,13 +293,18 @@ impl<W> Output<W> {
         Self { make_writer }
     }
 
-    fn writer<'a>(&'a self, meta: &Metadata<'_>) -> Option<Writer<W::Writer>>
+    /// Calls `f` with a line writer, or returns `None` without running `f` if
+    /// this sink is not enabled for `meta`.
+    ///
+    /// The `Writer`'s `Drop` flushes the line's trailing CRLF, so that happens
+    /// inside `f`'s critical section rather than at some later point.
+    fn with_writer<F, R>(&self, meta: &Metadata<'_>, f: F) -> Option<R>
     where
-        W: MakeWriter<'a>,
+        W: MakeWriter,
+        F: FnOnce(&mut Writer<W::Writer<'_>>) -> R,
     {
-        Some(Writer {
-            writer: self.make_writer.make_writer_for(meta)?,
-        })
+        self.make_writer
+            .with_writer_for(meta, |writer| f(&mut Writer { writer }))
     }
 }
 

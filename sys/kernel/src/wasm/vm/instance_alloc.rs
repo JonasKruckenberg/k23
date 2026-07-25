@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Allocator;
-use core::ops::DerefMut;
 use core::ptr::NonNull;
 use core::{cmp, mem};
 
@@ -278,7 +277,10 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
 
         let mmap = crate::mem::with_kernel_aspace(|aspace| {
             // attempt to use 2MiB alignment but if that's not available fallback to the largest
-            let align = cmp::min(2 * 1048576, aspace.lock().frame_alloc.max_alignment());
+            let align = cmp::min(
+                2 * 1048576,
+                aspace.with_lock(|aspace| aspace.frame_alloc.max_alignment()),
+            );
 
             // TODO the align arg should be a named const not a weird number like this
             Mmap::new_zeroed(aspace.clone(), request_bytes, align, None)
@@ -312,11 +314,13 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         } else {
             crate::mem::with_kernel_aspace(|aspace| -> crate::Result<_> {
                 let mut elements = MmapVec::new_zeroed(aspace.clone(), reserve_size)?;
-                elements.extend_with(
-                    aspace.lock().deref_mut(),
-                    usize::try_from(table.limits.min).unwrap(),
-                    TableElement::FuncRef(None),
-                );
+                aspace.with_lock(|aspace| {
+                    elements.extend_with(
+                        aspace,
+                        usize::try_from(table.limits.min).unwrap(),
+                        TableElement::FuncRef(None),
+                    );
+                });
                 Ok(elements)
             })?
         };

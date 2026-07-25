@@ -56,7 +56,7 @@ impl<T> MmapVec<T> {
             Ok(Self::new_empty())
         } else {
             let mut this = Self::new_zeroed(aspace.clone(), slice.len())?;
-            this.extend_from_slice(&mut aspace.lock(), slice);
+            aspace.with_lock(|aspace| this.extend_from_slice(aspace, slice));
 
             Ok(this)
         }

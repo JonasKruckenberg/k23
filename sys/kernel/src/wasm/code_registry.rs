@@ -22,10 +22,11 @@ type GlobalRegistry = BTreeMap<usize, (usize, Arc<CodeObject>)>;
 /// Find which registered region of code contains the given program counter, and
 /// what offset that PC is within that module's code.
 pub fn lookup_code(pc: usize) -> Option<(Arc<CodeObject>, usize)> {
-    let all_modules = global_code().read();
-    let (_end, (start, module)) = all_modules.range(pc..).next()?;
-    let text_offset = pc.checked_sub(*start)?;
-    Some((module.clone(), text_offset))
+    global_code().with_read_lock(|all_modules| {
+        let (_end, (start, module)) = all_modules.range(pc..).next()?;
+        let text_offset = pc.checked_sub(*start)?;
+        Some((module.clone(), text_offset))
+    })
 }
 
 /// Registers a new region of code.
@@ -43,7 +44,8 @@ pub fn register_code(code: &Arc<CodeObject>) {
     }
     let start = text.as_ptr() as usize;
     let end = start + text.len() - 1;
-    let prev = global_code().write().insert(end, (start, code.clone()));
+    let prev =
+        global_code().with_write_lock(|all_modules| all_modules.insert(end, (start, code.clone())));
     assert!(prev.is_none());
 }
 
@@ -56,6 +58,6 @@ pub fn unregister_code(code: &Arc<CodeObject>) {
         return;
     }
     let end = (text.as_ptr() as usize) + text.len() - 1;
-    let code = global_code().write().remove(&end);
+    let code = global_code().with_write_lock(|all_modules| all_modules.remove(&end));
     assert!(code.is_some());
 }
