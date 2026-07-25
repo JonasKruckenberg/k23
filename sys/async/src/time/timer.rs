@@ -187,8 +187,7 @@ impl Timer {
     ///
     /// It is a good idea for the caller to wait until that deadline is reached.
     pub fn turn(&self) -> (usize, Option<Deadline>) {
-        let mut core = self.core.lock();
-        self.turn_locked(&mut core)
+        self.core.with_lock(|core| self.turn_locked(core))
     }
 
     /// Try to advance the timer to the current time, waking any ready tasks.
@@ -201,8 +200,7 @@ impl Timer {
     ///
     /// It is a good idea for the caller to wait until that deadline is reached.
     pub fn try_turn(&self) -> Option<(usize, Option<Deadline>)> {
-        let mut core = self.core.try_lock()?;
-        Some(self.turn_locked(&mut core))
+        self.core.try_with_lock(|core| self.turn_locked(core))
     }
 
     fn turn_locked(&self, core: &mut Core) -> (usize, Option<Deadline>) {
@@ -246,19 +244,21 @@ impl Timer {
     }
 
     pub(super) fn cancel(&self, entry: Pin<&mut Entry>) {
-        let mut core = self.core.lock();
-        core.cancel(entry);
+        self.core.with_lock(|core| {
+            core.cancel(entry);
 
-        self.schedule_wakeup(core.next_deadline());
+            self.schedule_wakeup(core.next_deadline());
+        });
     }
 
     pub(super) fn register(&self, entry: Pin<&mut Entry>) -> Poll<()> {
-        let mut core = self.core.lock();
-        let poll = core.register(entry);
+        self.core.with_lock(|core| {
+            let poll = core.register(entry);
 
-        self.schedule_wakeup(core.next_deadline());
+            self.schedule_wakeup(core.next_deadline());
 
-        poll
+            poll
+        })
     }
 }
 

@@ -62,22 +62,26 @@ impl Mmap {
 
         let layout = Layout::from_size_align(len, align).unwrap();
 
-        let mut aspace_ = aspace.lock();
-        let range = aspace_
-            .map(
-                layout,
-                Permissions::READ | Permissions::WRITE | Permissions::USER,
-                |range, perms, batch| {
-                    Ok(AddressSpaceRegion::new_zeroed(
-                        batch.frame_alloc,
-                        range,
-                        perms,
-                        name,
-                    ))
-                },
-            )?
-            .range;
-        drop(aspace_);
+        // The mapped region borrows the address space, so pull the range out
+        // before the lock is released.
+        let range = aspace.with_lock(|aspace| {
+            Ok::<_, anyhow::Error>(
+                aspace
+                    .map(
+                        layout,
+                        Permissions::READ | Permissions::WRITE | Permissions::USER,
+                        |range, perms, batch| {
+                            Ok(AddressSpaceRegion::new_zeroed(
+                                batch.frame_alloc,
+                                range,
+                                perms,
+                                name,
+                            ))
+                        },
+                    )?
+                    .range,
+            )
+        })?;
 
         tracing::trace!("new_zeroed: {len} {range:?}");
 
@@ -111,19 +115,23 @@ impl Mmap {
 
         let layout = Layout::from_size_align(len, align).unwrap();
 
-        let mut aspace_ = aspace.lock();
-        let range = aspace_
-            .map(
-                layout,
-                Permissions::READ | Permissions::WRITE,
-                |range_virt, perms, _batch| {
-                    Ok(AddressSpaceRegion::new_phys(
-                        range_virt, perms, range_phys, name,
-                    ))
-                },
-            )?
-            .range;
-        drop(aspace_);
+        // The mapped region borrows the address space, so pull the range out
+        // before the lock is released.
+        let range = aspace.with_lock(|aspace| {
+            Ok::<_, anyhow::Error>(
+                aspace
+                    .map(
+                        layout,
+                        Permissions::READ | Permissions::WRITE,
+                        |range_virt, perms, _batch| {
+                            Ok(AddressSpaceRegion::new_phys(
+                                range_virt, perms, range_phys, name,
+                            ))
+                        },
+                    )?
+                    .range,
+            )
+        })?;
 
         tracing::trace!("new_phys: {len} {range:?} => {range_phys:?}");
 
@@ -314,8 +322,7 @@ impl Drop for Mmap {
     fn drop(&mut self) {
         // A `None` means the Mmap got created through `Mmap::new_empty` so there is nothing to unmap
         if let Some(aspace) = &self.aspace {
-            let mut aspace = aspace.lock();
-            aspace.unmap(self.range).unwrap();
+            aspace.with_lock(|aspace| aspace.unmap(self.range).unwrap());
         }
     }
 }

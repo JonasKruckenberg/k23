@@ -65,7 +65,7 @@ impl CraneliftCompiler {
     }
 
     fn function_compiler(&self) -> FunctionCompiler<'_> {
-        let saved_context = self.contexts.lock().pop();
+        let saved_context = self.contexts.with_lock(Vec::pop);
         FunctionCompiler {
             compiler: self,
             ctx: saved_context
@@ -527,7 +527,9 @@ impl FunctionCompiler<'_> {
         }
 
         self.ctx.codegen_context.clear();
-        self.compiler.contexts.lock().push(self.ctx);
+        self.compiler
+            .contexts
+            .with_lock(|contexts| contexts.push(self.ctx));
 
         Ok(compiled_function)
     }

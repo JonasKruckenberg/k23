@@ -51,31 +51,36 @@ pub fn init(boot_info: &BootInfo, rx: Receiver, sched: &'static Executor, num_cp
                     let byte = rx.recv();
                     let ch = byte as char;
 
-                    // Echo shares the console TX lock with the log writer so output
-                    // can't interleave; the guard is dropped before the next await.
-                    let tx = crate::tracing::console_tx();
+                    // Echo claims the console the same way the log writer does,
+                    // so the two can't interleave. Scoping the claim to the
+                    // closure keeps it off both the `.await` above and `eval`
+                    // below — `eval` logs, and a nested claim would fail and
+                    // let its output interleave with the echoed line.
+                    let newline = crate::tracing::with_console_tx(|tx| {
+                        match ch {
+                            // Emit a full CRLF on Enter rather than echoing the
+                            // raw CR/LF, so the cursor returns to column 0 on
+                            // terminals that don't translate newlines
+                            // themselves (e.g. UTM).
+                            '\n' | '\r' => {
+                                tx.send(b'\r');
+                                tx.send(b'\n');
+                                return true;
+                            }
+                            // DEL: `Sender::send` expands this into the
+                            // backspace-space-backspace erase sequence.
+                            '\u{007F}' => {
+                                tx.send(byte);
+                                line.pop();
+                            }
+                            ch => {
+                                tx.send(byte);
+                                line.push(ch);
+                            }
+                        }
 
-                    let mut newline = false;
-                    match ch {
-                        // Emit a full CRLF on Enter rather than echoing the raw
-                        // CR/LF, so the cursor returns to column 0 on terminals
-                        // that don't translate newlines themselves (e.g. UTM).
-                        '\n' | '\r' => {
-                            newline = true;
-                            tx.send(b'\r');
-                            tx.send(b'\n');
-                        }
-                        // DEL: `Sender::send` expands this into the
-                        // backspace-space-backspace erase sequence.
-                        '\u{007F}' => {
-                            tx.send(byte);
-                            line.pop();
-                        }
-                        ch => {
-                            tx.send(byte);
-                            line.push(ch);
-                        }
-                    }
+                        false
+                    });
 
                     if newline {
                         eval(&line);

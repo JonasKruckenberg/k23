@@ -114,13 +114,13 @@ impl Registration {
 
     #[cold]
     fn register<C: cfg::Config>(&self) -> Tid<C> {
-        let mut free = REGISTRY.free.lock();
-
-        let id = if free.len() > 1 {
-            free.pop_front()
-        } else {
-            None
-        };
+        let id = REGISTRY.free.with_lock(|free| {
+            if free.len() > 1 {
+                free.pop_front()
+            } else {
+                None
+            }
+        });
 
         let id = id.unwrap_or_else(|| {
             let id = REGISTRY.next.fetch_add(1, Ordering::AcqRel);
@@ -146,8 +146,7 @@ impl Registration {
 impl Drop for Registration {
     fn drop(&mut self) {
         if let Some(id) = self.0.get() {
-            let mut free_list = REGISTRY.free.lock();
-            free_list.push_back(id);
+            REGISTRY.free.with_lock(|free_list| free_list.push_back(id));
         }
     }
 }

@@ -69,6 +69,6 @@ impl<T: Clear> Clear for spin::Mutex<T> {
 impl<T: Clear> Clear for spin::RwLock<T> {
     #[inline]
     fn clear(&mut self) {
-        self.write().clear();
+        self.get_mut().clear();
     }
 }

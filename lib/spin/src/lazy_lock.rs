@@ -197,12 +197,12 @@ mod tests {
 
             assert_eq!(CALLED.load(Ordering::SeqCst), 0);
 
-            assert_eq!(lazy.lock().0, 42);
+            assert_eq!(lazy.with_lock(|foo| foo.0), 42);
             assert_eq!(CALLED.load(Ordering::SeqCst), 1);
 
-            lazy.lock().0 = 21;
+            lazy.with_lock(|foo| foo.0 = 21);
 
-            assert_eq!(lazy.lock().0, 21);
+            assert_eq!(lazy.with_lock(|foo| foo.0), 21);
             assert_eq!(CALLED.load(Ordering::SeqCst), 1);
         })
     }
@@ -252,12 +252,12 @@ mod tests {
 
             assert_eq!(CALLED.load(Ordering::SeqCst), 0);
 
-            assert_eq!(lazy.lock().0, 42);
+            assert_eq!(lazy.with_lock(|foo| foo.0), 42);
             assert_eq!(CALLED.load(Ordering::SeqCst), 1);
 
-            lazy.lock().0 = 21;
+            lazy.with_lock(|foo| foo.0 = 21);
 
-            assert_eq!(lazy.lock().0, 21);
+            assert_eq!(lazy.with_lock(|foo| foo.0), 21);
             assert_eq!(CALLED.load(Ordering::SeqCst), 1);
         })
     }

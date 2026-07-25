@@ -36,29 +36,36 @@ impl Barrier {
     }
 
     pub fn wait(&self) -> BarrierWaitResult {
-        let mut lock = self.lock.lock();
-        lock.count += 1;
+        // `Some(generation)` for a follower, `None` for the leader.
+        let local_gen = self.lock.with_lock(|state| {
+            state.count += 1;
 
-        if lock.count < self.num_threads {
-            // not the leader
-            let local_gen = lock.generation_id;
-            let mut boff = Backoff::new();
-
-            while local_gen == lock.generation_id && lock.count < self.num_threads {
-                drop(lock);
-
-                boff.spin();
-
-                lock = self.lock.lock();
+            if state.count < self.num_threads {
+                Some(state.generation_id)
+            } else {
+                // this thread is the leader,
+                //   and is responsible for incrementing the generation
+                state.count = 0;
+                state.generation_id = state.generation_id.wrapping_add(1);
+                None
             }
-            BarrierWaitResult(false)
-        } else {
-            // this thread is the leader,
-            //   and is responsible for incrementing the generation
-            lock.count = 0;
-            lock.generation_id = lock.generation_id.wrapping_add(1);
-            BarrierWaitResult(true)
+        });
+
+        let Some(local_gen) = local_gen else {
+            return BarrierWaitResult(true);
+        };
+
+        // Not the leader: spin with the lock released between checks, so the
+        // threads we're waiting on can actually get in to arrive.
+        let mut boff = Backoff::new();
+        while self
+            .lock
+            .with_lock(|state| local_gen == state.generation_id && state.count < self.num_threads)
+        {
+            boff.spin();
         }
+
+        BarrierWaitResult(false)
     }
 }
 

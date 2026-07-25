@@ -109,11 +109,7 @@ impl FrameAllocator {
         let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();
         let frame = cpu_local_cache
             .allocate_one()
-            .or_else(|| {
-                let mut global_alloc = self.global.lock();
-
-                global_alloc.allocate_one()
-            })
+            .or_else(|| self.global.with_lock(GlobalFrameAllocator::allocate_one))
             .ok_or(AllocError)?;
 
         // Safety: we just allocated the frame
@@ -156,8 +152,7 @@ impl FrameAllocator {
         );
         let mut refill = self
             .global
-            .lock()
-            .allocate_contiguous(layout)
+            .with_lock(|global_alloc| global_alloc.allocate_contiguous(layout))
             .ok_or(AllocError)?;
 
         let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();

@@ -7,26 +7,38 @@
 
 use core::fmt;
 use core::fmt::Write;
+use core::sync::atomic::{AtomicBool, Ordering};
 
-use spin::{ReentrantMutex, ReentrantMutexGuard};
 use tracing_core::Metadata;
 use uart_16550::Sender;
 
 use crate::tracing::color::{AnsiEscapes, Color, SetColor};
 
-pub trait MakeWriter<'a> {
-    type Writer: fmt::Write;
-    fn make_writer(&'a self) -> Self::Writer;
+pub trait MakeWriter {
+    type Writer<'a>: fmt::Write
+    where
+        Self: 'a;
+
+    /// Calls `f` with a writer for this sink, serialising against other writers
+    /// for the duration of the call.
+    fn with_writer<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Self::Writer<'_>) -> R;
 
     fn enabled(&self, meta: &Metadata<'_>) -> bool {
         let _ = meta;
         true
     }
 
+    /// Like [`MakeWriter::with_writer`], but returns `None` without running `f`
+    /// if this sink is not enabled for `meta`.
     #[inline]
-    fn make_writer_for(&'a self, meta: &Metadata<'_>) -> Option<Self::Writer> {
+    fn with_writer_for<F, R>(&self, meta: &Metadata<'_>, f: F) -> Option<R>
+    where
+        F: FnOnce(Self::Writer<'_>) -> R,
+    {
         if self.enabled(meta) {
-            return Some(self.make_writer());
+            return Some(self.with_writer(f));
         }
 
         None
@@ -88,22 +100,71 @@ impl<W: Write> Drop for Writer<W> {
     }
 }
 
-/// The console output sink: the UART transmit half behind a reentrant lock so
-/// nested logging on one CPU can't deadlock. `None` when there is no console.
-pub struct Uart(pub(crate) ReentrantMutex<Sender>);
-pub struct UartWriter<'a>(ReentrantMutexGuard<'a, Sender>);
+/// The console output sink: the UART transmit half plus a claim flag that keeps
+/// whole log lines from interleaving.
+pub struct Uart {
+    tx: Sender,
+    /// Set while some writer owns the console, so concurrent writers don't
+    /// interleave mid-line.
+    ///
+    /// Deliberately *not* a lock over `tx`: [`Sender::send`] is safe to call
+    /// concurrently (it only touches atomics and volatile MMIO), so this flag
+    /// buys output legibility, not soundness. A writer that loses the race
+    /// therefore writes anyway rather than waiting — see [`Uart::with_tx`].
+    busy: AtomicBool,
+}
 
-impl Uart {
-    pub fn new(tx: Sender) -> Self {
-        Self(ReentrantMutex::new(tx))
+pub struct UartWriter<'a>(&'a Sender);
+
+/// Hands the console back when dropped, including on unwind.
+struct LineClaim<'a>(&'a AtomicBool);
+
+impl Drop for LineClaim<'_> {
+    #[inline]
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
     }
 }
 
-impl<'a> MakeWriter<'a> for Uart {
-    type Writer = AnsiEscapes<UartWriter<'a>>;
+impl Uart {
+    pub fn new(tx: Sender) -> Self {
+        Self {
+            tx,
+            busy: AtomicBool::new(false),
+        }
+    }
 
-    fn make_writer(&'a self) -> Self::Writer {
-        AnsiEscapes::new(UartWriter(self.0.lock()))
+    /// Calls `f` with the raw transmit half, claiming the console for the
+    /// duration of the call so log lines and raw writes don't interleave.
+    ///
+    /// The claim is best effort: if another writer already holds it, `f` runs
+    /// anyway. Waiting instead would hang the hart whenever a panic is thrown
+    /// from inside a log line, because `#[panic_handler]` logs and so re-enters
+    /// this function while the claim is still held further up the same stack.
+    /// The cost of not waiting is garbled output under contention, which beats
+    /// a deadlock in an already-fatal situation.
+    pub fn with_tx<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&Sender) -> R,
+    {
+        let _claim = self
+            .busy
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+            .then(|| LineClaim(&self.busy));
+
+        f(&self.tx)
+    }
+}
+
+impl MakeWriter for Uart {
+    type Writer<'a> = AnsiEscapes<UartWriter<'a>>;
+
+    fn with_writer<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Self::Writer<'_>) -> R,
+    {
+        self.with_tx(|tx| f(AnsiEscapes::new(UartWriter(tx))))
     }
 }
 

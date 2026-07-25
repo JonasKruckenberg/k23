@@ -11,7 +11,7 @@ use core::sync::atomic::AtomicU64;
 use cranelift_codegen::settings::{Configurable, Flags};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use spin::{Mutex, MutexGuard};
+use spin::Mutex;
 
 use crate::arch;
 use crate::wasm::compile::Compiler;
@@ -90,11 +90,16 @@ impl Engine {
     }
 
     pub fn allocate_asid(&self) -> u16 {
-        let mut alloc = self.0.asid_alloc.lock();
-        alloc.alloc().expect("out of address space identifiers")
+        self.0
+            .asid_alloc
+            .with_lock(|alloc| alloc.alloc().expect("out of address space identifiers"))
     }
-    pub fn rng(&self) -> Option<MutexGuard<'_, ChaCha20Rng>> {
-        Some(self.0.rng.as_ref()?.lock())
+    /// Calls `f` with this engine's RNG, or returns `None` if it has none.
+    pub fn with_rng<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ChaCha20Rng) -> R,
+    {
+        Some(self.0.rng.as_ref()?.with_lock(f))
     }
     pub fn epoch_counter(&self) -> &AtomicU64 {
         &self.0.epoch_counter

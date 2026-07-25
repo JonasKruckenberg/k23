@@ -19,33 +19,6 @@ pub(crate) struct HeldInterrupts(critical_section::RestoreState);
 // this type MUST NOT be `Send` because toggling interrupts is fundamentally a per-hart operation
 impl !Send for HeldInterrupts {}
 
-impl HeldInterrupts {
-    /// Restores the previous interrupt state for the duration of `f`, then
-    /// disables interrupts again.
-    #[inline]
-    pub(crate) fn with_released<F, U>(&mut self, f: F) -> U
-    where
-        F: FnOnce() -> U,
-    {
-        // Re-disable interrupts on the way out — including on unwind — refreshing
-        // the saved state so this guard's own `Drop` stays balanced.
-        struct Rearm<'a>(&'a mut critical_section::RestoreState);
-        impl Drop for Rearm<'_> {
-            fn drop(&mut self) {
-                // Safety: pairs with the `release` below; the refreshed state is
-                // released when the owning `HeldInterrupts` is dropped.
-                *self.0 = unsafe { critical_section::acquire() };
-            }
-        }
-
-        // Safety: paired with the re-acquire in `Rearm::drop`; restores the state
-        // saved at construction for the duration of `f`.
-        unsafe { critical_section::release(self.0) };
-        let _rearm = Rearm(&mut self.0);
-        f()
-    }
-}
-
 impl Drop for HeldInterrupts {
     #[inline]
     fn drop(&mut self) {

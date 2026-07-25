@@ -148,33 +148,37 @@ impl AddressSpaceRegion {
             }
             Vmo::Paged(vmo) => {
                 if will_write {
-                    let mut vmo = vmo.write();
+                    vmo.with_write_lock(|vmo| {
+                        for addr in range.into_iter().step_by(arch::PAGE_SIZE) {
+                            debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
+                            let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
+                            let frame = vmo.require_owned_frame(vmo_relative_offset)?;
+                            batch.queue_map(
+                                addr,
+                                frame.addr(),
+                                NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                                self.permissions.into(),
+                            )?;
+                        }
 
-                    for addr in range.into_iter().step_by(arch::PAGE_SIZE) {
-                        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
-                        let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
-                        let frame = vmo.require_owned_frame(vmo_relative_offset)?;
-                        batch.queue_map(
-                            addr,
-                            frame.addr(),
-                            NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
-                            self.permissions.into(),
-                        )?;
-                    }
+                        Ok::<_, anyhow::Error>(())
+                    })?;
                 } else {
-                    let mut vmo = vmo.write();
+                    vmo.with_write_lock(|vmo| {
+                        for addr in range.into_iter().step_by(arch::PAGE_SIZE) {
+                            debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
+                            let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
+                            let frame = vmo.require_read_frame(vmo_relative_offset)?;
+                            batch.queue_map(
+                                addr,
+                                frame.addr(),
+                                NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                                self.permissions.difference(Permissions::WRITE).into(),
+                            )?;
+                        }
 
-                    for addr in range.into_iter().step_by(arch::PAGE_SIZE) {
-                        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
-                        let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
-                        let frame = vmo.require_read_frame(vmo_relative_offset)?;
-                        batch.queue_map(
-                            addr,
-                            frame.addr(),
-                            NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
-                            self.permissions.difference(Permissions::WRITE).into(),
-                        )?;
-                    }
+                        Ok::<_, anyhow::Error>(())
+                    })?;
                 }
             }
         }
@@ -198,8 +202,7 @@ impl AddressSpaceRegion {
                     end: range.end.offset_from_unsigned(self.range.start) + self.vmo_offset,
                 };
 
-                let mut vmo = vmo.write();
-                vmo.free_frames(vmo_relative_range);
+                vmo.with_write_lock(|vmo| vmo.free_frames(vmo_relative_range));
             }
         }
 
@@ -272,25 +275,25 @@ impl AddressSpaceRegion {
             }
             Vmo::Paged(vmo) => {
                 if flags.cause_is_write() {
-                    let mut vmo = vmo.write();
-
-                    let frame = vmo.require_owned_frame(vmo_relative_offset)?;
-                    batch.queue_map(
-                        addr,
-                        frame.addr(),
-                        NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
-                        self.permissions.into(),
-                    )?;
+                    vmo.with_write_lock(|vmo| {
+                        let frame = vmo.require_owned_frame(vmo_relative_offset)?;
+                        batch.queue_map(
+                            addr,
+                            frame.addr(),
+                            NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                            self.permissions.into(),
+                        )
+                    })?;
                 } else {
-                    let mut vmo = vmo.write();
-
-                    let frame = vmo.require_read_frame(vmo_relative_offset)?;
-                    batch.queue_map(
-                        addr,
-                        frame.addr(),
-                        NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
-                        self.permissions.difference(Permissions::WRITE).into(),
-                    )?;
+                    vmo.with_write_lock(|vmo| {
+                        let frame = vmo.require_read_frame(vmo_relative_offset)?;
+                        batch.queue_map(
+                            addr,
+                            frame.addr(),
+                            NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                            self.permissions.difference(Permissions::WRITE).into(),
+                        )
+                    })?;
                 }
 
                 // TODO fault-ahead or fault-behind here

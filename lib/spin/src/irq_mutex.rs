@@ -6,36 +6,19 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::fmt;
-use core::ops::{Deref, DerefMut};
 
 use util::loom_const_fn;
 
-use crate::util::{HeldInterrupts, hold_interrupts};
-use crate::{Mutex, MutexGuard};
+use crate::Mutex;
+use crate::util::hold_interrupts;
 
-/// A mutual exclusion primitive useful for protecting shared data.
+/// A mutual exclusion primitive that additionally masks interrupts for the
+/// duration of the critical section.
 ///
-/// This IrqMutex will spin waiting for the lock to become available. Each IrqMutex
-/// has a type parameter which represents the data it is protecting. The data
-/// can only be accessed through the RAII guards returned from `lock` and
-/// `try_lock`.
+/// Use this instead of [`Mutex`] whenever the protected data is also touched
+/// from an interrupt handler.
 pub struct IrqMutex<T: ?Sized> {
     inner: Mutex<T>,
-}
-
-/// An RAII implementation of a "scoped lock" of a [`IrqMutex`]. When this
-/// structure is dropped (falls out of scope), the lock will be unlocked.
-///
-/// The data protected by the IrqMutex can be accessed through this guard via its
-/// `Deref` and `DerefMut` implementations.
-#[clippy::has_significant_drop]
-#[must_use = "if unused the IrqMutex will immediately unlock"]
-pub struct IrqMutexGuard<'a, T: ?Sized> {
-    guard: MutexGuard<'a, T>,
-    // Declared after `guard` so it is dropped *after* it: the spinlock is
-    // released first, then IRQs are restored (Rust drops fields in declaration
-    // order). Reversing this would restore IRQs while still holding the lock.
-    _held_irq: HeldInterrupts,
 }
 
 // Safety: IrqMutex provides mutual exclusion over T.
@@ -61,37 +44,44 @@ impl<T> IrqMutex<T> {
 }
 
 impl<T: ?Sized> IrqMutex<T> {
-    /// Acquires the IrqMutex, spinning until it is available.
+    /// Masks interrupts, acquires the IrqMutex spinning until it is available,
+    /// and calls `f` with exclusive access to the protected data.
+    ///
+    /// The lock is released and the previous interrupt state restored once `f`
+    /// returns, including when `f` unwinds.
     #[inline]
-    pub fn lock(&self) -> IrqMutexGuard<'_, T> {
+    pub fn with_lock<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut T) -> R,
+    {
         // Disable IRQs first, THEN acquire the spinlock.
         // Reversing the order would leave a window where the ISR fires after
         // the spinlock is acquired but before IRQs are masked — same deadlock.
+        //
+        // Unwinding happens in the same order: `Mutex::with` releases the
+        // spinlock, then `_held_irq` drops and restores IRQs. Restoring IRQs
+        // while still holding the lock would reopen that window.
         let _held_irq = hold_interrupts();
 
-        IrqMutexGuard {
-            guard: self.inner.lock(),
-            _held_irq,
-        }
+        self.inner.with_lock(f)
     }
 
-    /// Attempts to acquire the IrqMutex without spinning.
+    /// Masks interrupts and attempts to acquire the IrqMutex without spinning;
+    /// on success calls `f` with exclusive access to the protected data.
     ///
-    /// Returns `None` if the IrqMutex is currently locked.
+    /// Returns `None` without running `f` if the IrqMutex is currently locked,
+    /// restoring the previous interrupt state immediately.
     #[inline]
-    pub fn try_lock(&self) -> Option<IrqMutexGuard<'_, T>> {
+    pub fn try_with_lock<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut T) -> R,
+    {
         let _held_irq = hold_interrupts();
 
-        // If the lock is taken, `_held_irq` is dropped here, restoring IRQs;
-        // otherwise it moves into the guard and restores them on unlock.
-        self.inner
-            .try_lock()
-            .map(|guard| IrqMutexGuard { guard, _held_irq })
+        self.inner.try_with_lock(f)
     }
 
     /// Returns a mutable reference to the underlying data.
-    ///
-    /// Since this call borrows the IrqMutex mutably, no locking is needed.
     #[inline]
     pub fn get_mut(&mut self) -> &mut T {
         self.inner.get_mut()
@@ -120,55 +110,19 @@ impl<T> From<T> for IrqMutex<T> {
 
 impl<T: ?Sized + fmt::Debug> fmt::Debug for IrqMutex<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.try_lock() {
-            Some(guard) => f.debug_struct("IrqMutex").field("data", &&*guard).finish(),
+        // Bind the result before matching: the closure borrows `f` mutably, and
+        // a match scrutinee's temporaries would keep that borrow alive across
+        // the arms.
+        let locked =
+            self.try_with_lock(|data| f.debug_struct("IrqMutex").field("data", &&*data).finish());
+
+        match locked {
+            Some(res) => res,
             None => f
                 .debug_struct("IrqMutex")
                 .field("data", &format_args!("<locked>"))
                 .finish(),
         }
-    }
-}
-
-impl<'a, T: ?Sized + 'a> IrqMutexGuard<'a, T> {
-    /// Temporarily unlocks the IrqMutex to execute the given closure.
-    ///
-    /// The IrqMutex is re-acquired before this method returns.
-    pub fn unlocked<F, U>(s: &mut Self, f: F) -> U
-    where
-        F: FnOnce() -> U,
-    {
-        // Fully release for the duration of `f`: the inner guard unlocks (and
-        // re-locks) the spinlock, and we restore the prior IRQ state around it so
-        // the closure runs with the lock free and interrupts as they were before.
-        MutexGuard::unlocked(&mut s.guard, || s._held_irq.with_released(f))
-    }
-}
-
-impl<'a, T: ?Sized + 'a> Deref for IrqMutexGuard<'a, T> {
-    type Target = T;
-    #[inline]
-    fn deref(&self) -> &T {
-        self.guard.deref()
-    }
-}
-
-impl<'a, T: ?Sized + 'a> DerefMut for IrqMutexGuard<'a, T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut T {
-        self.guard.deref_mut()
-    }
-}
-
-impl<T: fmt::Debug + ?Sized> fmt::Debug for IrqMutexGuard<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&**self, f)
-    }
-}
-
-impl<T: fmt::Display + ?Sized> fmt::Display for IrqMutexGuard<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (**self).fmt(f)
     }
 }
 
@@ -213,13 +167,12 @@ mod tests {
                 threads.push(thread::spawn(move || {
                     let mut rng = FastRand::from_seed(i as u64 + 1);
                     for _ in 0..CYCLES {
-                        let mut guard = M.lock();
+                        M.with_lock(|buf| {
+                            assert!(buf.iter().all(|b| *b == buf[0]));
 
-                        assert!(guard.iter().all(|b| *b == guard[0]));
+                            buf.fill(rng.fastrand().to_le_bytes()[0]);
+                        });
 
-                        guard.fill(rng.fastrand().to_le_bytes()[0]);
-
-                        drop(guard);
                         #[cfg(loom)]
                         thread::yield_now();
                     }
@@ -244,10 +197,10 @@ mod tests {
             for _ in 0..THREADS {
                 threads.push(thread::spawn(|| {
                     for _ in 0..CYCLES {
-                        let guard = M.lock();
-                        assert_eq!(DATA.fetch_add(1, Ordering::Relaxed), 0);
-                        assert_eq!(DATA.fetch_sub(1, Ordering::Relaxed), 1);
-                        drop(guard);
+                        M.with_lock(|_| {
+                            assert_eq!(DATA.fetch_add(1, Ordering::Relaxed), 0);
+                            assert_eq!(DATA.fetch_sub(1, Ordering::Relaxed), 1);
+                        });
 
                         #[cfg(loom)]
                         thread::yield_now();
@@ -274,16 +227,16 @@ mod tests {
                 threads.push(thread::spawn(|| {
                     for _ in 0..CYCLES {
                         let mut boff = Backoff::new();
-                        let guard = loop {
-                            if let Some(g) = M.try_lock() {
-                                break g;
+                        loop {
+                            let acquired = M.try_with_lock(|_| {
+                                assert_eq!(DATA.fetch_add(1, Ordering::Relaxed), 0);
+                                assert_eq!(DATA.fetch_sub(1, Ordering::Relaxed), 1);
+                            });
+                            if acquired.is_some() {
+                                break;
                             }
                             boff.spin();
-                        };
-
-                        assert_eq!(DATA.fetch_add(1, Ordering::Relaxed), 0);
-                        assert_eq!(DATA.fetch_sub(1, Ordering::Relaxed), 1);
-                        drop(guard);
+                        }
 
                         #[cfg(loom)]
                         thread::yield_now();
@@ -301,8 +254,8 @@ mod tests {
     #[cfg_attr(loom, ignore = "not concurrency-relevant")]
     fn smoke() {
         let m = IrqMutex::new(());
-        drop(m.lock());
-        drop(m.lock());
+        m.with_lock(|_| ());
+        m.with_lock(|_| ());
     }
 
     #[test]
@@ -310,15 +263,14 @@ mod tests {
     fn try_lock() {
         let m = IrqMutex::new(42);
 
-        let a = m.try_lock();
-        assert_eq!(a.as_ref().map(|r| **r), Some(42));
+        assert_eq!(m.try_with_lock(|v| *v), Some(42));
 
-        let b = m.try_lock();
-        assert!(b.is_none());
+        // A nested `try_with` sees the lock held by the outer critical section.
+        let nested = m.try_with_lock(|_| m.try_with_lock(|v| *v));
+        assert_eq!(nested, Some(None));
 
-        drop(a);
-        let c = m.try_lock();
-        assert_eq!(c.as_ref().map(|r| **r), Some(42));
+        // ... and the lock is free again afterwards.
+        assert_eq!(m.try_with_lock(|v| *v), Some(42));
     }
 
     #[test]
@@ -334,22 +286,5 @@ mod tests {
         let mut m = IrqMutex::new(10);
         *m.get_mut() = 20;
         assert_eq!(m.into_inner(), 20);
-    }
-
-    #[test]
-    #[cfg_attr(loom, ignore = "not concurrency-relevant")]
-    fn unlocked_smoke() {
-        let m = IrqMutex::new(0);
-        let mut g = m.lock();
-        *g = 1;
-
-        let side_effect = IrqMutexGuard::unlocked(&mut g, || {
-            // Because the guard released the lock, another try_lock would succeed.
-            assert!(m.try_lock().is_some());
-            42
-        });
-
-        assert_eq!(side_effect, 42);
-        assert_eq!(*g, 1);
     }
 }

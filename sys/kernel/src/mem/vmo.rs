@@ -45,7 +45,7 @@ impl Vmo {
         match self {
             Vmo::Wired => unreachable!(),
             Vmo::Phys(vmo) => vmo.is_valid_offset(offset),
-            Vmo::Paged(vmo) => vmo.read().is_valid_offset(offset),
+            Vmo::Paged(vmo) => vmo.with_read_lock(|vmo| vmo.is_valid_offset(offset)),
         }
     }
 }

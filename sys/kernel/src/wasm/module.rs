@@ -8,7 +8,6 @@
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use core::mem;
-use core::ops::DerefMut;
 use core::ptr::NonNull;
 
 use wasmparser::{Validator, WasmFeatures};
@@ -75,7 +74,7 @@ impl Module {
                     MmapVec::from_slice(aspace.clone(), &code)
                 })?;
 
-            code.publish(aspace.lock().deref_mut())?;
+            aspace.with_lock(|aspace| code.publish(aspace))?;
             Ok(Arc::new(code))
         })?;
 
