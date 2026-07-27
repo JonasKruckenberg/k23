@@ -1432,44 +1432,6 @@ cargo.rust_library(
     ],
 )
 
-alias(
-    name = "critical-section",
-    actual = ":critical-section-1",
-    visibility = ["PUBLIC"],
-)
-
-http_archive(
-    name = "critical-section-1.2.0.crate",
-    sha256 = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b",
-    strip_prefix = "critical-section-1.2.0",
-    urls = ["https://static.crates.io/crates/critical-section/1.2.0/download"],
-    visibility = [],
-)
-
-cargo.rust_library(
-    name = "critical-section-1",
-    srcs = [":critical-section-1.2.0.crate"],
-    crate = "critical_section",
-    crate_root = "critical-section-1.2.0.crate/src/lib.rs",
-    edition = "2018",
-    features = ["restore-state-bool"],
-    platform = {
-        "linux-arm64": dict(
-            features = ["std"],
-        ),
-        "linux-x86_64": dict(
-            features = ["std"],
-        ),
-        "macos-arm64": dict(
-            features = ["std"],
-        ),
-        "macos-x86_64": dict(
-            features = ["std"],
-        ),
-    },
-    visibility = [],
-)
-
 http_archive(
     name = "crossbeam-deque-0.8.6.crate",
     sha256 = "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51",
