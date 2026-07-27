@@ -1,9 +1,19 @@
 load("//build:split_debuginfo.bzl", "split_debuginfo")
+load(":kcfg.bzl", "LOG_LEVEL")
+
+# config_setting targets — use these in select() anywhere in the build graph.
+
+LOG_LEVEL.config_setting(name = "log_level-error", value = "error")
+LOG_LEVEL.config_setting(name = "log_level-warn",  value = "warn")
+LOG_LEVEL.config_setting(name = "log_level-info",  value = "info")
+LOG_LEVEL.config_setting(name = "log_level-debug", value = "debug")
+LOG_LEVEL.config_setting(name = "log_level-trace", value = "trace")
 
 _DEPS = [
     # internal libraries
     "//sys/loader-api:loader-api",
     "//sys/async:kasync",
+    "//sys/cpus:cpus",
     "//lib/cpu-local:cpu-local",
     "//lib/trap:trap",
     "//lib/spin:spin",

@@ -67,7 +67,7 @@ pub fn per_cpu_init_early() {
 ///
 /// This function will be called after all global initialization is done.
 #[cold]
-pub fn per_cpu_init_late(devtree: &DeviceTree, cpuid: usize) -> crate::Result<state::CpuLocal> {
+pub fn per_cpu_init_late(devtree: &DeviceTree, hartid: usize) -> crate::Result<state::CpuLocal> {
     // Safety: register access
     unsafe {
         // Initialize the trap handler
@@ -82,7 +82,7 @@ pub fn per_cpu_init_late(devtree: &DeviceTree, cpuid: usize) -> crate::Result<st
         sie::set_seie();
     }
 
-    let cpu = Cpu::new(devtree, cpuid)?;
+    let cpu = Cpu::new(devtree, hartid)?;
 
     Ok(state::CpuLocal { cpu })
 }

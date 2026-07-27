@@ -1,0 +1,35 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load("//build:kcfg.bzl", "kcfg_rust")
+load(":kcfg.bzl", "MAX_CPUS")
+
+# `MAX_CPUS` reaches Rust as a generated `const`, so it can size arrays and bit
+# sets. Everything else in `kcfg.bzl` stays a `select()` on a `config_setting`.
+kcfg_rust(
+    name = "kcfg_rs",
+    consts = [("MAX_CPUS", MAX_CPUS)],
+    out = "kcfg.rs",
+)
+
+_SRCS = glob(["src/**/*.rs"])
+
+_MAPPED_SRCS = {":kcfg_rs": "src/kcfg.rs"}
+
+rust_library(
+    name = "cpus",
+    srcs = _SRCS,
+    mapped_srcs = _MAPPED_SRCS,
+    # Flips `symlinked_srcs` to `copied_dir` so rust-analyzer resolves the
+    # generated module.
+    labels = ["generated"],
+    visibility = ["PUBLIC"],
+    tests = [":cpus_unittests"],
+)
+
+rust_test(
+    name = "cpus_unittests",
+    srcs = _SRCS,
+    mapped_srcs = _MAPPED_SRCS,
+    labels = ["generated"],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
