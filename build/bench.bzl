@@ -1,12 +1,5 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 
-_DEFAULT_MODIFIERS = [
-    "constraints//:opt-level[3]",
-    "constraints//:debuginfo[line-tables-only]",
-    "constraints//:strip[debuginfo]",
-    "constraints//:lto[thin]"
-]
-
 def _rust_benchmark_runner_impl(ctx: AnalysisContext) -> list[Provider]:
     bin_run = ctx.attrs.binary[RunInfo]
 
@@ -39,12 +32,12 @@ _rust_benchmark_runner = rule(
     },
 )
 
-def rust_benchmark(name, modifiers = [], visibility = None, **kwargs):
+def rust_benchmark(name, visibility = None, **kwargs):
     bin_name = name + "_bin"
     native.rust_binary(
         name = bin_name,
         target_compatible_with = [host_configuration.os, host_configuration.cpu],
-        modifiers = _DEFAULT_MODIFIERS + modifiers,
+        incoming_transition = "root//build:bench",
         visibility = visibility,
         **kwargs
     )

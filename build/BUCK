@@ -51,10 +51,26 @@ configuration_transition(
     visibility = ["PUBLIC"],
 )
 
-# Sanitizer / opt / debuginfo overlay for fuzz binaries. Applied via
-# incoming_transition (not the rule's `modifiers` attr) so the toolchain's
-# `select(constraints//:sanitizer[address])` actually picks up the link flag
-# that pulls libstdc++/libc++ in on Linux.
+configuration_transition(
+    name = "loom",
+    constraint_values = [
+        "constraints//:loom[enabled]",
+        "constraints//:opt-level[3]", # loom is really slow unoptimized
+    ],
+    visibility = ["PUBLIC"],
+)
+
+configuration_transition(
+    name = "bench",
+    constraint_values = [
+        "constraints//:opt-level[3]",
+        "constraints//:debuginfo[line-tables-only]",
+        "constraints//:strip[debuginfo]",
+        "constraints//:lto[thin]",
+    ],
+    visibility = ["PUBLIC"],
+)
+
 configuration_transition(
     name = "fuzz",
     constraint_values = [
