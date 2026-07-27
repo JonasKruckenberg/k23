@@ -11,7 +11,6 @@
 #![feature(dropck_eyepatch)]
 #![feature(negative_impls)]
 
-mod backoff;
 mod barrier;
 mod irq_mutex;
 mod irq_rw_lock;
@@ -23,7 +22,6 @@ mod once_lock;
 mod rw_lock;
 mod util;
 
-pub use backoff::Backoff;
 pub use barrier::{Barrier, BarrierWaitResult};
 pub use irq_mutex::IrqMutex;
 pub use irq_rw_lock::IrqRwLock;

@@ -5,9 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use util::loom_const_fn;
+use util::{Backoff, loom_const_fn};
 
-use crate::{Backoff, Mutex};
+use crate::Mutex;
 
 pub struct Barrier {
     lock: Mutex<BarrierState>,
