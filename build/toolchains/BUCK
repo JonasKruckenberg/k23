@@ -184,7 +184,7 @@ rust_toolchain(
                 "prelude//cpu:x86_64": "x86_64-unknown-none",
             }),
             "DEFAULT": select({
-                "prelude//cpu:riscv64": "riscv64gc-unknown-none-elf",
+                "prelude//cpu:riscv64": "riscv64imac-unknown-none-elf",
                 "prelude//cpu:arm64": "aarch64-unknown-none",
                 "prelude//cpu:x86_64": "x86_64-unknown-none",
             }),

@@ -14,9 +14,7 @@ use cpu_local::cpu_local;
 use gimli::RiscV;
 use mem_core::VirtualAddress;
 use riscv::scause::{Exception, Interrupt};
-use riscv::{
-    load_fp, load_gp, save_fp, save_gp, scause, sepc, sip, sscratch, sstatus, stval, stvec,
-};
+use riscv::{load_gp, save_gp, scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 use crate::arch::PAGE_SIZE;
 use crate::arch::trap::Trap;
@@ -142,40 +140,6 @@ unsafe extern "C" fn default_trap_entry() {
         save_gp!(x30 => sp[30]),
         save_gp!(x31 => sp[31]),
 
-        // save fp regs
-        save_fp!(f0 => sp[32]),
-        save_fp!(f1 => sp[33]),
-        save_fp!(f2 => sp[34]),
-        save_fp!(f3 => sp[35]),
-        save_fp!(f4 => sp[36]),
-        save_fp!(f5 => sp[37]),
-        save_fp!(f6 => sp[38]),
-        save_fp!(f7 => sp[39]),
-        save_fp!(f8 => sp[40]),
-        save_fp!(f9 => sp[41]),
-        save_fp!(f10 => sp[42]),
-        save_fp!(f11 => sp[43]),
-        save_fp!(f12 => sp[44]),
-        save_fp!(f13 => sp[45]),
-        save_fp!(f14 => sp[46]),
-        save_fp!(f15 => sp[47]),
-        save_fp!(f16 => sp[48]),
-        save_fp!(f17 => sp[49]),
-        save_fp!(f18 => sp[50]),
-        save_fp!(f19 => sp[51]),
-        save_fp!(f20 => sp[52]),
-        save_fp!(f21 => sp[53]),
-        save_fp!(f22 => sp[54]),
-        save_fp!(f23 => sp[55]),
-        save_fp!(f24 => sp[56]),
-        save_fp!(f25 => sp[57]),
-        save_fp!(f26 => sp[58]),
-        save_fp!(f27 => sp[59]),
-        save_fp!(f28 => sp[60]),
-        save_fp!(f29 => sp[61]),
-        save_fp!(f30 => sp[62]),
-        save_fp!(f31 => sp[63]),
-
         "mv a0, sp",
         "call {trap_handler}",
 
@@ -212,40 +176,6 @@ unsafe extern "C" fn default_trap_entry() {
         load_gp!(sp[29] => x29),
         load_gp!(sp[30] => x30),
         load_gp!(sp[31] => x31),
-
-        // restore fp regs
-        load_fp!(sp[32] => f0),
-        load_fp!(sp[33] => f1),
-        load_fp!(sp[34] => f2),
-        load_fp!(sp[35] => f3),
-        load_fp!(sp[36] => f4),
-        load_fp!(sp[37] => f5),
-        load_fp!(sp[38] => f6),
-        load_fp!(sp[39] => f7),
-        load_fp!(sp[40] => f8),
-        load_fp!(sp[41] => f9),
-        load_fp!(sp[42] => f10),
-        load_fp!(sp[43] => f11),
-        load_fp!(sp[44] => f12),
-        load_fp!(sp[45] => f13),
-        load_fp!(sp[46] => f14),
-        load_fp!(sp[47] => f15),
-        load_fp!(sp[48] => f16),
-        load_fp!(sp[49] => f17),
-        load_fp!(sp[50] => f18),
-        load_fp!(sp[51] => f19),
-        load_fp!(sp[52] => f20),
-        load_fp!(sp[53] => f21),
-        load_fp!(sp[54] => f22),
-        load_fp!(sp[55] => f23),
-        load_fp!(sp[56] => f24),
-        load_fp!(sp[57] => f25),
-        load_fp!(sp[58] => f26),
-        load_fp!(sp[59] => f27),
-        load_fp!(sp[60] => f28),
-        load_fp!(sp[61] => f29),
-        load_fp!(sp[62] => f30),
-        load_fp!(sp[63] => f31),
 
         "add sp, sp, 0x200",
         ".cfi_def_cfa_offset 0",
@@ -368,10 +298,7 @@ fn handle_kernel_exception(
 
     tracing::error!("KERNEL TRAP {cause:?} epc={epc};tval={tval}");
 
-    let mut regs = unwind::Registers {
-        gp: frame.gp,
-        fp: frame.fp,
-    };
+    let mut regs = unwind::Registers { gp: frame.gp };
     regs.gp[2] = sscratch::read();
 
     match Backtrace::<32>::from_registers(regs.clone(), epc) {
@@ -398,10 +325,7 @@ fn handle_kernel_exception(
 }
 
 fn handle_recursive_fault(frame: &unwind::Registers, epc: VirtualAddress) -> ! {
-    let mut regs = unwind::Registers {
-        gp: frame.gp,
-        fp: frame.fp,
-    };
+    let mut regs = unwind::Registers { gp: frame.gp };
     regs.gp[2] = sscratch::read();
 
     tracing::error!("RECURSIVE TRAP epc={epc}");
