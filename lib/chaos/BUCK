@@ -1,0 +1,66 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load("//build:bench.bzl", "rust_benchmark")
+
+_DEPS = [
+    "//lib/arrayvec:arrayvec",
+    "//lib/fastrand:fastrand",
+    "//third-party:cfg-if",
+    "//third-party:rand",
+]
+
+rust_library(
+    name = "chaos",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    features = select({
+        "constraints//:chaos[enabled]": ["chaos"],
+        "constraints//:chaos[disabled]": [],
+    }),
+    deps = _DEPS,
+    tests = [":chaos_unittests", ":chaos_shim_unittests"],
+    visibility = ["PUBLIC"],
+)
+
+# Pinned on, for the benchmark and anything that needs the real thing
+# regardless of how the global constraint is set.
+rust_library(
+    name = "chaos-enabled",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    crate = "chaos",
+    features = ["chaos", "__test-impl"],
+    deps = _DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "chaos_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    crate = "chaos",
+    features = ["chaos", "__test-impl"],
+    deps = _DEPS,
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "chaos_shim_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    crate = "chaos",
+    deps = _DEPS,
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+rust_benchmark(
+    name = "chaos_benchmarks",
+    srcs = ["./benches/bench.rs"],
+    crate_root = "./benches/bench.rs",
+    deps = [
+        ":chaos-enabled",
+        "//third-party:criterion",
+    ],
+    visibility = ["PUBLIC"],
+)

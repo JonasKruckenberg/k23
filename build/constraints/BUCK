@@ -87,3 +87,23 @@ constraint(
     default = "off",
     visibility = ["PUBLIC"],
 )
+
+constraint(
+    name = "loom",
+    values = [
+        "enabled",
+        "disabled",
+    ],
+    default = "disabled",
+    visibility = ["PUBLIC"],
+)
+
+constraint(
+    name = "chaos",
+    values = [
+        "enabled",
+        "disabled",
+    ],
+    default = "disabled",
+    visibility = ["PUBLIC"],
+)

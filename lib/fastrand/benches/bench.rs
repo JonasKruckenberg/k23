@@ -8,11 +8,11 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use fastrand::FastRand;
+use fastrand::Xorshift64;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let mut rng = FastRand::from_seed(42);
-    c.bench_function("fastrand", |b| b.iter(|| black_box(rng.fastrand())));
+    let mut rng = Xorshift64::from_seed(42);
+    c.bench_function("fastrand", |b| b.iter(|| black_box(rng.next_u32())));
 }
 
 criterion_group!(benches, criterion_benchmark);

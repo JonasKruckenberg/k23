@@ -40,7 +40,7 @@ use core::time::Duration;
 use abort::abort;
 use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
-use fastrand::FastRand;
+use fastrand::Xorshift64;
 use kasync::executor::{Executor, Worker};
 use kasync::time::{Instant, Timer};
 use loader_api::{BootInfo, LoaderConfig};
@@ -223,7 +223,11 @@ fn kmain(boot_info: &'static BootInfo) {
         now.duration_since(global.time_origin)
     );
 
-    let mut worker2 = Worker::new(&global.executor, FastRand::from_seed(rng.next_u64())).unwrap();
+    let mut worker2 = Worker::new(
+        &global.executor,
+        Xorshift64::from_state([rng.next_u32(), rng.next_u32()]),
+    )
+    .unwrap();
 
     cfg_if! {
         if #[cfg(test)] {
