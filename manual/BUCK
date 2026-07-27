@@ -1,9 +1,20 @@
+load("//build:kcfg.bzl", "kcfg_docs")
+load("//sys/cpus:kcfg.bzl", "MAX_CPUS")
+load("//sys/kernel:kcfg.bzl", "LOG_LEVEL", "STACK_SIZE")
 load(":defs.bzl", "mdbook")
+
+# Options are declared by the component they configure; the manual is where
+# they are collected, so a new knob is documented by adding it here.
+kcfg_docs(
+    name = "config-docs",
+    entries = [LOG_LEVEL, STACK_SIZE, MAX_CPUS],
+    out = "config.md",
+)
 
 mdbook(
     name = "manual",
     srcs = glob(["src/**/*"]) + ["book.toml"],
     extra_srcs = {
-        "src/configuration/config.md": "//build:config_docs",
+        "src/configuration/config.md": ":config-docs",
     },
 )

@@ -20,6 +20,7 @@ extern crate panic_unwind;
 mod allocator;
 mod arch;
 mod bootargs;
+mod cpu;
 mod device_tree;
 mod irq;
 mod mem;
@@ -48,6 +49,7 @@ use mem_core::PhysicalAddress;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
+use crate::cpu::Cpus;
 use crate::device_tree::DeviceTree;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::state::{CpuLocal, Global};
@@ -102,12 +104,16 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
 }
 
 fn kmain(boot_info: &'static BootInfo) {
-    let cpuid = boot_info.boot_cpu_id;
+    let boot_hartid = boot_info.boot_cpu_id;
+
+    // The boot CPU is `cpu::BOOT` by definition, so claim the id here rather
+    // than waiting for the device tree — every line logged below is tagged with
+    // it, and the panic handler can name the CPU it died on.
+    cpu::make_current(cpu::BOOT);
 
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
     arch::per_cpu_init_early();
-    tracing::per_cpu_init_early(cpuid);
 
     let fdt_phys = boot_info
         .firmware_tables
@@ -179,7 +185,12 @@ fn kmain(boot_info: &'static BootInfo) {
     // initialize the virtual memory subsystem
     mem::init(boot_info, &mut rng, frame_alloc).unwrap();
 
-    let cpu = arch::device::cpu::Cpu::new(&device_tree, cpuid).unwrap();
+    // Give every hart a dense `LogicalCpuId`. Must precede anything sized by, or
+    // indexed by, the CPU count.
+    let cpus = Cpus::from_device_tree(&device_tree, boot_hartid).unwrap();
+    tracing::debug!("{} CPUs, booted on hart {boot_hartid}", cpus.len());
+
+    let cpu = arch::device::cpu::Cpu::new(&device_tree, boot_hartid).unwrap();
 
     // single-CPU at handoff is the current contract.
     let executor = Executor::with_capacity(1).unwrap();
@@ -190,6 +201,7 @@ fn kmain(boot_info: &'static BootInfo) {
             timer,
             executor,
             device_tree,
+            cpus,
             boot_info,
             arch,
         })
@@ -198,12 +210,9 @@ fn kmain(boot_info: &'static BootInfo) {
 
     // perform LATE per-cpu, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
-    let arch_state = arch::per_cpu_init_late(&global.device_tree, cpuid).unwrap();
+    let arch_state = arch::per_cpu_init_late(&global.device_tree, boot_hartid).unwrap();
 
-    state::init_cpu_local(CpuLocal {
-        id: cpuid,
-        arch: arch_state,
-    });
+    state::init_cpu_local(CpuLocal { arch: arch_state });
 
     let now = Instant::now(&global.timer);
     tracing::info!(

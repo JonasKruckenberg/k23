@@ -14,6 +14,7 @@ use loader_api::BootInfo;
 use spin::OnceLock;
 
 use crate::arch;
+use crate::cpu::Cpus;
 use crate::device_tree::DeviceTree;
 
 static GLOBAL: OnceLock<Global> = OnceLock::new();
@@ -27,6 +28,7 @@ pub struct Global {
     pub executor: Executor,
     pub timer: Timer,
     pub device_tree: DeviceTree,
+    pub cpus: Cpus,
     pub boot_info: &'static BootInfo,
     pub time_origin: Instant,
     pub arch: arch::state::Global,
@@ -34,7 +36,6 @@ pub struct Global {
 
 #[derive(Debug)]
 pub struct CpuLocal {
-    pub id: usize,
     pub arch: arch::state::CpuLocal,
 }
 

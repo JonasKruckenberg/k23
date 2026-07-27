@@ -117,8 +117,6 @@ impl Plic {
             let layout =
                 Layout::from_size_align(AddressRangeExt::len(&mmio_range), PAGE_SIZE).unwrap();
 
-            // The mapped region borrows the address space, so pull the range
-            // out before the lock is released.
             aspace.with_lock(|aspace| {
                 aspace
                     .map(

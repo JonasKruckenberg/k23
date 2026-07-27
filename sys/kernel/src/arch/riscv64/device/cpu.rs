@@ -5,10 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::format;
 use core::cell::RefCell;
 use core::fmt;
 use core::str::FromStr;
 
+use anyhow::Context;
 use riscv::extensions::RiscvExtensions;
 
 use crate::arch::device;
@@ -45,22 +47,16 @@ impl Cpu {
         })
     }
 
-    pub fn new(devtree: &DeviceTree, cpuid: usize) -> crate::Result<Self> {
+    pub fn new(devtree: &DeviceTree, hartid: usize) -> crate::Result<Self> {
         let cpus = devtree
             .find_by_path("/cpus")
-            .expect("required /cpus node not in device tree");
+            .context("device tree has no /cpus node")?;
 
         let cpu = cpus
             .children(devtree)
-            .find(|dev| {
-                let name = dev.name.name;
-                let unit_addr =
-                    usize::from_str(dev.name.unit_address.expect("CPU is missing unit address"))
-                        .expect("CPU unit address is not an integer");
-
-                name == "cpu" && unit_addr == cpuid
-            })
-            .expect("CPU node not found in device tree");
+            .filter(|dev| dev.name.name == "cpu")
+            .find(|dev| crate::cpu::hartid_of(devtree, *dev).is_ok_and(|id| id == hartid))
+            .with_context(|| format!("device tree has no cpu node for hart {hartid}"))?;
 
         let cbop_block_size = cpu
             .property(devtree, "riscv,cbop-block-size")

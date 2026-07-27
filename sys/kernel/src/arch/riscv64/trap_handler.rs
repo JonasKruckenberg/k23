@@ -25,11 +25,8 @@ use crate::{TRAP_STACK_SIZE_PAGES, irq};
 
 cpu_local! {
     static IN_TRAP: Cell<bool> = Cell::new(false);
-    static TRAP_STACK: Stack = const { Stack([0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE]) };
+    static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
 }
-
-#[repr(C, align(16))]
-struct Stack([u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE]);
 
 pub fn init() {
     let trap_stack_top = trap_stack_top();
@@ -58,7 +55,6 @@ fn trap_stack_top() -> usize {
     // Safety: TRAP_STACK is a valid CPU-local static of the queried size.
     unsafe {
         TRAP_STACK
-            .0
             .as_ptr()
             .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE) as usize
     }

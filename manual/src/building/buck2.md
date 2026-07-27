@@ -46,17 +46,20 @@ Everything that defines *how* k23 is built (as opposed to *what* gets built) liv
 
 ```text
 build/
-├── BUCK               declares kcfg options, target JSON, and the named
-│                      transitions (loader, kernel, kernel-tests,
-│                      loader-tests, rust_bootstrap)
+├── BUCK               declares target JSON and the named transitions
+│                      (loader, kernel, kernel-tests, loader-tests,
+│                      rust_bootstrap)
 ├── constraints/       constraint enums (opt-level, debuginfo, strip,
 │                      rust-std, env, sanitizer)
 ├── toolchains/        toolchain rules (rust, cxx, qemu, mdbook, python, …)
 │                      plus flake.bzl, which exposes nix-flake packages
 ├── targets/           Rust target-spec JSON files
 ├── transitions.bzl    the generic configuration-transition rule
-├── kcfg.bzl           typed buckconfig wrapper + kcfg_docs rule that
-│                      auto-generates the config reference in this manual
+├── kcfg.bzl           typed buckconfig wrapper. Options are declared by
+│                      the component they configure (`sys/cpus/kcfg.bzl`,
+│                      `sys/kernel/kcfg.bzl`, `build/toolchains/qemu.bzl`) and
+│                      collected into the config reference by
+│                      `//manual:config-docs`
 ├── qemu.bzl           qemu_binary — wraps a kernel ELF into a QEMU command
 ├── split_debuginfo.bzl  rule that splits a rust_binary into stripped binary
 │                        + debuginfo artifact
