@@ -1,15 +1,28 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 load("//build:loom.bzl", "rust_loom_test")
 
+# Interrupt masking is per-architecture. On a host build there are no interrupts
+# to mask, so `hold_interrupts` degrades to a no-op and no arch crate is needed.
+_ARCH_DEPS = select({
+    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+    "DEFAULT": [],
+})
+
+_DEPS = [
+    "//lib/util:util",
+    "//third-party:cfg-if",
+    "//third-party:lock_api",
+]
+
+_TEST_DEPS = _DEPS + [
+    "//third-party:lazy_static",
+    "//lib/fastrand:fastrand",
+]
+
 rust_library(
     name = "spin",
     srcs = glob(["src/**/*.rs"]),
-    deps = [
-        "//lib/util:util",
-        "//third-party:cfg-if",
-        "//third-party:lock_api",
-        "//third-party:critical-section"
-    ],
+    deps = _DEPS + _ARCH_DEPS,
     visibility = ["PUBLIC"],
     tests = [":spin_unittests", ":spin_loom_tests"]
 )
@@ -17,14 +30,7 @@ rust_library(
 rust_test(
     name = "spin_unittests",
     srcs = glob(["src/**/*.rs"]),
-    deps = [
-        "//lib/util:util",
-        "//third-party:cfg-if",
-        "//third-party:lock_api",
-        "//third-party:lazy_static",
-        "//third-party:critical-section",
-        "//lib/fastrand:fastrand",
-    ],
+    deps = _TEST_DEPS,
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )
@@ -33,13 +39,5 @@ rust_loom_test(
     name = "spin_loom_tests",
     srcs = glob(["src/**/*.rs"]),
     crate = "spin",
-    deps = [
-        "//lib/util:util",
-        "//third-party:cfg-if",
-        "//third-party:lock_api",
-        "//third-party:lazy_static",
-        "//third-party:critical-section",
-        "//lib/fastrand:fastrand",
-        "//third-party:loom",
-    ],
+    deps = _TEST_DEPS + ["//third-party:loom"],
 )

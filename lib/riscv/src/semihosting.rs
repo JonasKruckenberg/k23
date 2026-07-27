@@ -68,8 +68,6 @@ pub(crate) unsafe fn syscall_inner(_nr: usize, _arg: usize) -> usize {
     }
 }
 
-pub(crate) use syscall;
-
 /// [SYS_EXIT (0x18)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit-0x18)
 pub(crate) const SYS_EXIT: usize = 0x18;
 

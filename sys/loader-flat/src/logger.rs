@@ -5,6 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::fmt;
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+use core::fmt::Write;
+
 use log::{Level, Metadata, Record};
 
 pub fn init() {
@@ -31,7 +35,8 @@ impl log::Log for Logger {
                 Level::Error => "\x1b[31;1m",
             };
 
-            print(format_args!(
+            #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+            let _ = DebugConsole.write_fmt(format_args!(
                 "[{color}{:<5}\x1b[0m {}] {}\n",
                 record.level(),
                 record.module_path_static().unwrap_or_default(),
@@ -43,12 +48,30 @@ impl log::Log for Logger {
     fn flush(&self) {}
 }
 
-fn print(args: core::fmt::Arguments) {
-    cfg_if::cfg_if! {
-        if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-            riscv::hio::_print(args);
-        } else {
-            compile_error!("unsupported target architecture");
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+struct DebugConsole;
+
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+impl fmt::Write for DebugConsole {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let mut bytes = s.as_bytes();
+
+        // firmware is free accept fewer bytes that we're trying to write.
+        // instead of discarding unwritten bytes we simply try again until the buffer is drained.
+        while !bytes.is_empty() {
+            let written =
+                riscv::sbi::dbcn::debug_console_write(bytes.len(), bytes.as_ptr().addr(), 0)
+                    .map_err(|_| fmt::Error)?;
+
+            // if no bytes were written _at all_ we can assume the firmware DBCN is not accepting
+            // any writes. Lets not keep trying.
+            if written == 0 {
+                return Err(core::fmt::Error);
+            }
+
+            bytes = &bytes[written..];
         }
+
+        Ok(())
     }
 }
