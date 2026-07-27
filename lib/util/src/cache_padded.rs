@@ -41,7 +41,7 @@ pub const CACHE_LINE_SIZE: usize = align_of::<CachePadded<()>>();
         target_arch = "aarch64",
         target_arch = "powerpc64",
     ),
-    repr(align(128))
+    repr(align(128), C)
 )]
 ///
 /// arm, mips, mips64, sparc, and hexagon have 32-byte cache line size.
@@ -61,21 +61,21 @@ pub const CACHE_LINE_SIZE: usize = align_of::<CachePadded<()>>();
         target_arch = "sparc",
         target_arch = "hexagon",
     ),
-    repr(align(32))
+    repr(align(32), C)
 )]
 ///
 /// m68k has 16-byte cache line size.
 ///
 /// Sources:
 /// - <https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/m68k/include/asm/cache.h#L9>
-#[cfg_attr(target_arch = "m68k", repr(align(16)))]
+#[cfg_attr(target_arch = "m68k", repr(align(16), C))]
 ///
 /// s390x has 256-byte cache line size.
 ///
 /// Sources:
 /// - <https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_s390x.go#L7>
 /// - <https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/s390/include/asm/cache.h#L13>
-#[cfg_attr(target_arch = "s390x", repr(align(256)))]
+#[cfg_attr(target_arch = "s390x", repr(align(256), C))]
 ///
 /// x86, riscv, wasm, and sparc64 have 64-byte cache line size.
 ///
@@ -102,7 +102,7 @@ pub const CACHE_LINE_SIZE: usize = align_of::<CachePadded<()>>();
         target_arch = "m68k",
         target_arch = "s390x",
     )),
-    repr(align(64))
+    repr(align(64), C)
 )]
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CachePadded<T>(pub T);
