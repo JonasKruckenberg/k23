@@ -26,6 +26,10 @@ jobs:
   changed-targets:
     name: Determine changed targets
     runs-on: ubuntu-latest
+    # The whole job is normally well under two minutes. The cap exists so a wedged
+    # buck2/nix invocation fails fast instead of sitting on a runner until the
+    # six-hour GitHub default, blocking every downstream job that `needs` it.
+    timeout-minutes: 20
     outputs:
       impacted: ${{ steps.compute.outputs.impacted }}
       skip: ${{ steps.compute.outputs.skip }}
@@ -62,6 +66,7 @@ jobs:
 
       - name: Build base.jsonl (cache miss)
         if: steps.cache-base.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: |
           REPO=$PWD
           git worktree add --detach /tmp/base-tree "${{ steps.base.outputs.sha }}"
@@ -75,26 +80,42 @@ jobs:
 
       - name: Compute impacted targets
         id: compute
+        timeout-minutes: 15
         # Run the `just changed-targets-diff` command to establish the diff, then runs `just changed-targets`
         # to produce the list of impacted buck2 targets from that.
         #
         # Emits the two outputs (`impacted` and `skip`) at the end depending on outcome.
+        #
+        # Both invocations redirect to a file instead of being captured with `$(...)`.
+        # A command substitution reads until the *pipe* reaches EOF, which requires
+        # every process holding the write end to close it — not merely the direct
+        # child to exit. `just changed-targets` shells out to buck2, which leaves a
+        # `buck2d` daemon plus helper processes behind that inherit stdout, so the
+        # substitution can block indefinitely after the work has already finished.
+        # Redirecting to a regular file removes the pipe entirely; `timeout` bounds
+        # any remaining way these can wedge, and its non-zero exit trips the
+        # full-suite fallback below. `< /dev/null` keeps a stray child from parking
+        # on the step's stdin.
         run: |
           full_run() { echo "impacted=" >> "$GITHUB_OUTPUT"; echo "skip=false" >> "$GITHUB_OUTPUT"; }
           if [ ! -s base.jsonl ]; then
             echo "No base.jsonl available — falling back to full suite"
             full_run; exit 0
           fi
-          nix develop .#ci --command just changed-targets-diff "${{ steps.base.outputs.sha }}" > changes.txt
+          timeout --kill-after=30s 5m \
+            nix develop .#ci --command just changed-targets-diff "${{ steps.base.outputs.sha }}" \
+            > changes.txt < /dev/null
           set +e
-          IMPACTED=$(nix develop .#ci --command just changed-targets changes.txt base.jsonl)
+          timeout --kill-after=30s 10m \
+            nix develop .#ci --command just changed-targets changes.txt base.jsonl \
+            > impacted.txt < /dev/null
           rc=$?
           set -e
           if [ "$rc" -ne 0 ]; then
             echo "::error::changed-targets failed (exit $rc) — falling back to full suite"
             full_run; exit 0
           fi
-          IMPACTED=$(printf '%s' "$IMPACTED" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
+          IMPACTED=$(tr -s '[:space:]' ' ' < impacted.txt | sed 's/^ *//;s/ *$//')
           if [ "$IMPACTED" = "__ALL__" ]; then
             echo "Pessimistic fallback: a high-level file changed — full suite"
             full_run

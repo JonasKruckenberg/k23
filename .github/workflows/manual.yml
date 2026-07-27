@@ -12,6 +12,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write # To push a branch
       pages: write # To push to a GitHub Pages site
@@ -28,9 +29,18 @@ jobs:
         # //manual:manual is the source of truth — the genrule includes the
         # auto-generated kcfg reference (//build:config_docs) that a plain
         # `mdbook build` would miss.
+        #
+        # buck2 is deliberately not run inside a `$(...)`: it leaves a `buck2d`
+        # daemon behind that inherits stdout, and a command substitution blocks
+        # until every writer closes the pipe rather than until the client exits.
+        # Redirect to a file and read that back instead.
         id: book
+        timeout-minutes: 20
         run: |
-          OUT=$(nix develop --command buck2 build --show-output //manual:manual | awk '{print $2}')
+          timeout --kill-after=30s 15m \
+            nix develop --command buck2 build --show-output //manual:manual \
+            > build.out < /dev/null
+          OUT=$(awk '{print $2}' build.out)
           echo "path=$OUT" >> "$GITHUB_OUTPUT"
       - name: Setup Pages
         uses: actions/configure-pages@v6

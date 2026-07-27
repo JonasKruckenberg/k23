@@ -14,9 +14,15 @@ permissions:
   contents: read
   id-token: write
 
+# Every job carries an explicit `timeout-minutes`. GitHub's default is six hours,
+# which turns any wedged step (a buck2 daemon holding a pipe open, a QEMU guest
+# that never halts) into a runner sitting idle for the rest of the day. The values
+# below are several times the observed runtimes — they exist to bound hangs, not
+# to police slow builds.
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -52,6 +58,7 @@ jobs:
             platform: "//platforms:x86_64"
     name: check (${{ matrix.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
@@ -88,6 +95,7 @@ jobs:
             platform: "//platforms:x86_64"
     name: clippy (${{ matrix.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
@@ -113,6 +121,7 @@ jobs:
 
   unittests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
@@ -137,6 +146,7 @@ jobs:
 
   miri:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
@@ -161,6 +171,7 @@ jobs:
 
   loom:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [changed-targets]
     if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
@@ -194,6 +205,7 @@ jobs:
             test_targets: "//sys:k23-flat-qemu-tests"
     name: selftests (${{ matrix.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [changed-targets]
     # selftest filtering:
     # - IF `changed-targets` failed, was cancelled, or produced `skip = true` => skip
@@ -233,6 +245,7 @@ jobs:
   cargo-deny:
     name: Cargo deny
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
@@ -269,6 +282,7 @@ jobs:
   ci-status:
     name: ci-status
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: ${{ always() }}
     needs:
       - lint
