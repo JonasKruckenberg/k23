@@ -31,3 +31,7 @@
 # WASM Runtime
 
 - [Supported WASM Features & Proposals](wasm/supported_features_and_proposals.md)
+
+# Research & Design Notes
+
+- [Watchdogs](research/watchdogs.md)
