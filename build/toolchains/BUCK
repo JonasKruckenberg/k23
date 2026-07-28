@@ -217,6 +217,9 @@ rust_toolchain(
         "constraints//:lto[off]": [],
         "constraints//:lto[thin]": ["-Clto=thin"],
     }) + select({
+        "constraints//:loom[enabled]": ["--cfg=loom"],
+        "constraints//:loom[disabled]": [],
+    }) + select({
         "constraints//:sanitizer[address]": [
             "-Zsanitizer=address",
             "-Cpasses=sancov-module",

@@ -88,7 +88,7 @@ build/
 | `--target=…` | constraints (`prelude//cpu:riscv64`, …) bundled into a *platform* under `platforms/` |
 | `RUSTFLAGS=-Cfoo` | `rustc_flags = ["-Cfoo"]` attribute of a `rust_library`/`rust_binary` rule |
 | `cfg(test)` | a dedicated `rust_test` target; can carry its own deps |
-| `cfg(loom)` | `rust_test` with `rustc_flags = ["--cfg=loom"]` and `labels = ["loom"]` |
+| `cfg(loom)` | `rust_loom_test`, which transitions the whole graph into `constraints//:loom[enabled]` passing `--cfg=loom` to all crates |
 
 [buck2]: https://buck2.build/
 [Cargo]: https://doc.rust-lang.org/cargo/
