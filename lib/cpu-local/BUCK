@@ -1,11 +1,17 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 
+_DEPS = [
+    "//lib/util:util",
+    "//third-party:cfg-if"
+] + select({
+    "constraints//:loom[enabled]": ["//third-party:loom"],
+    "constraints//:loom[disabled]": [],
+})
+
 rust_library(
     name = "cpu-local",
     srcs = glob(["src/**/*.rs"]),
-    deps = [
-        "//lib/util:util",
-    ],
+    deps = _DEPS,
     visibility = ["PUBLIC"],
     tests = [":cpu-local_unittests"],
 )
@@ -13,9 +19,7 @@ rust_library(
 rust_test(
     name = "cpu-local_unittests",
     srcs = glob(["src/**/*.rs"]),
-    deps = [
-        "//lib/util:util",
-    ],
+    deps = _DEPS,
     target_compatible_with = [host_configuration.os, host_configuration.cpu],
     visibility = ["PUBLIC"],
 )

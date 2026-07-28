@@ -5,37 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use cfg_if::cfg_if;
-
-cfg_if! {
+cfg_if::cfg_if! {
     if #[cfg(loom)] {
-        pub(crate) use loom::{sync, cell, lazy_static, thread_local, hint};
-        #[cfg(test)]
-        pub(crate) use loom::{thread, model};
+        pub(crate) use loom::{cell, lazy_static, sync, thread_local};
     } else {
-        pub(crate) use core::hint;
-        #[cfg(any(test, feature = "__bench"))]
-        pub(crate) use std::thread;
-        #[cfg(any(test, feature = "__bench"))]
-        pub(crate) use std::thread_local;
-        #[cfg(test)]
-        pub(crate) use lazy_static::lazy_static;
-
-        #[cfg(test)]
-        #[inline(always)]
-        pub(crate) fn model<R>(f: impl FnOnce() -> R) -> R {
-            f()
-        }
-
-        pub(crate) mod sync {
-            pub use core::sync::*;
-            #[cfg(test)]
-            #[allow(unused_imports, reason = "they are actually used by tests")]
-            pub(crate) use std::sync::*;
-        }
+        pub(crate) use core::sync;
 
         pub(crate) mod cell {
-            #[derive(Debug)]
+            #[repr(transparent)]
             pub(crate) struct UnsafeCell<T>(core::cell::UnsafeCell<T>);
 
             impl<T> UnsafeCell<T> {

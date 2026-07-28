@@ -28,7 +28,7 @@ jobs:
   changed-targets:
     name: Determine changed targets
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     outputs:
       targets: ${{ steps.compute.outputs.targets }}
     steps:

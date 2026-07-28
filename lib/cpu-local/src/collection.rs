@@ -6,15 +6,15 @@
 // copied, modified, or distributed except according to those terms.
 
 use alloc::boxed::Box;
-use core::cell::UnsafeCell;
 use core::iter::FusedIterator;
 use core::panic::UnwindSafe;
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
-use core::{fmt, mem, ptr};
+use core::{array, fmt, mem, ptr};
 
-use util::CheckedMaybeUninit;
+use cfg_if::cfg_if;
+use util::{CheckedMaybeUninit, loom_const_fn};
 
-use crate::cpu_local;
+use crate::loom::cell::UnsafeCell;
+use crate::loom::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 
 /// The total number of buckets stored in each cpu-local storage.
 /// All buckets combined can hold up to `usize::MAX - 1` entries.
@@ -38,11 +38,10 @@ struct Entry<T> {
 
 impl<T> Drop for Entry<T> {
     fn drop(&mut self) {
-        // Safety: the API ensures we cannot access the TLS value after drop
-        unsafe {
-            if *self.present.get_mut() {
-                ptr::drop_in_place((*self.value.get()).as_mut_ptr());
-            }
+        if self.present.load(Ordering::Relaxed) {
+            // Safety: the API ensures we cannot access the TLS value after drop
+            self.value
+                .with_mut(|ptr| unsafe { (*ptr).assume_init_drop() });
         }
     }
 }
@@ -60,7 +59,7 @@ impl<T: Send> Drop for CpuLocal<T> {
     fn drop(&mut self) {
         // Free each non-null bucket
         for (i, bucket) in self.buckets.iter_mut().enumerate() {
-            let bucket_ptr = *bucket.get_mut();
+            let bucket_ptr = bucket.load(Ordering::Relaxed);
 
             let this_bucket_size = 1 << i;
 
@@ -75,16 +74,16 @@ impl<T: Send> Drop for CpuLocal<T> {
 }
 
 impl<T: Send> CpuLocal<T> {
-    /// Creates a new empty `CpuLocal`.
-    pub const fn new() -> CpuLocal<T> {
-        let buckets = [ptr::null_mut::<Entry<T>>(); BUCKETS];
-        Self {
-            // Safety: AtomicPtr has the same representation as a pointer and arrays have the same
-            // representation as a sequence of their inner type.
-            buckets: unsafe {
-                mem::transmute::<[*mut Entry<T>; BUCKETS], [AtomicPtr<Entry<T>>; BUCKETS]>(buckets)
-            },
-            values: AtomicUsize::new(0),
+    loom_const_fn! {
+        /// Creates a new empty `CpuLocal`.
+        pub const fn new() -> Self {
+            Self {
+                #[cfg(not(loom))]
+                buckets: [const { AtomicPtr::new(ptr::null_mut()) }; BUCKETS],
+                #[cfg(loom)]
+                buckets: array::from_fn(|_| AtomicPtr::new(ptr::null_mut())),
+                values: AtomicUsize::new(0),
+            }
         }
     }
 
@@ -99,17 +98,14 @@ impl<T: Send> CpuLocal<T> {
         let allocated_buckets =
             usize::try_from(usize::BITS).unwrap() - (capacity.leading_zeros() as usize);
 
-        let mut buckets = [ptr::null_mut(); BUCKETS];
-        for (i, bucket) in buckets[..allocated_buckets].iter_mut().enumerate() {
-            *bucket = allocate_bucket::<T>(1 << i);
-        }
-
         Self {
-            // Safety: AtomicPtr has the same representation as a pointer and arrays have the same
-            // representation as a sequence of their inner type.
-            buckets: unsafe {
-                mem::transmute::<[*mut Entry<T>; BUCKETS], [AtomicPtr<Entry<T>>; BUCKETS]>(buckets)
-            },
+            buckets: array::from_fn(|i| {
+                AtomicPtr::new(if i < allocated_buckets {
+                    allocate_bucket::<T>(1 << i)
+                } else {
+                    ptr::null_mut()
+                })
+            }),
             values: AtomicUsize::new(0),
         }
     }
@@ -159,8 +155,8 @@ impl<T: Send> CpuLocal<T> {
         // Safety: bucket ptr is always valid
         unsafe {
             let entry = &*bucket_ptr.add(cpu.index);
-            if entry.present.load(Ordering::Relaxed) {
-                Some(&*(*entry.value.get()).as_ptr())
+            if entry.present.load(Ordering::Acquire) {
+                Some(entry.value.with(|ptr| (*ptr).assume_init_ref()))
             } else {
                 None
             }
@@ -170,14 +166,14 @@ impl<T: Send> CpuLocal<T> {
     #[cold]
     fn insert(&self, cpu: Cpu, data: T) -> &T {
         // Safety: `Cpu` constructors ensure correct bucket index
-        let bucket_atomic_ptr = unsafe { self.buckets.get_unchecked(cpu.bucket) };
-        let bucket_ptr: *const _ = bucket_atomic_ptr.load(Ordering::Acquire);
+        let bucket = unsafe { self.buckets.get_unchecked(cpu.bucket) };
 
         // If the bucket doesn't already exist, we need to allocate it
-        let bucket_ptr = if bucket_ptr.is_null() {
+        let mut bucket_ptr = bucket.load(Ordering::Acquire);
+        if bucket_ptr.is_null() {
             let new_bucket = allocate_bucket(cpu.bucket_size);
 
-            match bucket_atomic_ptr.compare_exchange(
+            bucket_ptr = match bucket.compare_exchange(
                 ptr::null_mut(),
                 new_bucket,
                 Ordering::AcqRel,
@@ -192,23 +188,23 @@ impl<T: Send> CpuLocal<T> {
                     unsafe { deallocate_bucket(new_bucket, cpu.bucket_size) }
                     bucket_ptr
                 }
-            }
-        } else {
-            bucket_ptr
-        };
+            };
+        }
 
         // Insert the new element into the bucket
         // Safety: `Cpu` constructors ensure correct index
         let entry = unsafe { &*bucket_ptr.add(cpu.index) };
-        let value_ptr = entry.value.get();
+
         // Safety: we just initialized the bucket
-        unsafe { value_ptr.write(CheckedMaybeUninit::new(data)) };
+        entry
+            .value
+            .with_mut(|ptr| unsafe { ptr.write(CheckedMaybeUninit::new(data)) });
         entry.present.store(true, Ordering::Release);
 
         self.values.fetch_add(1, Ordering::Release);
 
         // Safety: we just initialized the value
-        unsafe { &*(*value_ptr).as_ptr() }
+        entry.value.with(|ptr| unsafe { (*ptr).assume_init_ref() })
     }
 
     /// Returns an iterator over the local values of all cpus in unspecified
@@ -254,45 +250,7 @@ impl<T: Send> CpuLocal<T> {
     /// be done safely---the mutable borrow statically guarantees no other
     /// cpus are currently accessing their associated values.
     pub fn insert_for(&mut self, cpuid: usize, data: T) {
-        let cpu = Cpu::new(cpuid);
-
-        // Safety: `Cpu` constructors ensure correct bucket index
-        let bucket_atomic_ptr = unsafe { self.buckets.get_unchecked(cpu.bucket) };
-        let bucket_ptr: *const _ = bucket_atomic_ptr.load(Ordering::Acquire);
-
-        // If the bucket doesn't already exist, we need to allocate it
-        let bucket_ptr = if bucket_ptr.is_null() {
-            let new_bucket = allocate_bucket(cpu.bucket_size);
-
-            match bucket_atomic_ptr.compare_exchange(
-                ptr::null_mut(),
-                new_bucket,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => new_bucket,
-                // If the bucket value changed (from null), that means
-                // another cpu stored a new bucket before we could,
-                // and we can free our bucket and use that one instead
-                Err(bucket_ptr) => {
-                    // Safety: bucket will not be read from
-                    unsafe { deallocate_bucket(new_bucket, cpu.bucket_size) }
-                    bucket_ptr
-                }
-            }
-        } else {
-            bucket_ptr
-        };
-
-        // Insert the new element into the bucket
-        // Safety: `Cpu` constructors ensure correct index
-        let entry = unsafe { &*bucket_ptr.add(cpu.index) };
-        let value_ptr = entry.value.get();
-        // Safety: we just initialized the bucket
-        unsafe { value_ptr.write(CheckedMaybeUninit::new(data)) };
-        entry.present.store(true, Ordering::Release);
-
-        self.values.fetch_add(1, Ordering::Release);
+        self.insert(Cpu::new(cpuid), data);
     }
 
     pub fn len(&self) -> usize {
@@ -382,7 +340,7 @@ impl RawIter {
                     if entry.present.load(Ordering::Acquire) {
                         self.yielded += 1;
                         // Safety: we just ensured the value is valid
-                        return Some(unsafe { &*(*entry.value.get()).as_ptr() });
+                        return Some(entry.value.with(|ptr| unsafe { (*ptr).assume_init_ref() }));
                     }
                 }
             }
@@ -395,21 +353,21 @@ impl RawIter {
         &mut self,
         cpu_local: &'a mut CpuLocal<T>,
     ) -> Option<&'a mut Entry<T>> {
-        if *cpu_local.values.get_mut() == self.yielded {
+        if cpu_local.values.load(Ordering::Relaxed) == self.yielded {
             return None;
         }
 
         loop {
             // Safety: `Cpu` constructors ensure correct bucket index
             let bucket = unsafe { cpu_local.buckets.get_unchecked_mut(self.bucket) };
-            let bucket = *bucket.get_mut();
+            let bucket = bucket.load(Ordering::Relaxed);
 
             if !bucket.is_null() {
                 while self.index < self.bucket_size {
                     // Safety: `Cpu` constructors ensure correct index
                     let entry = unsafe { &mut *bucket.add(self.index) };
                     self.index += 1;
-                    if *entry.present.get_mut() {
+                    if entry.present.load(Ordering::Relaxed) {
                         self.yielded += 1;
                         return Some(entry);
                     }
@@ -432,8 +390,7 @@ impl RawIter {
         (total - self.yielded, None)
     }
     fn size_hint_frozen<T: Send>(&self, cpu_local: &CpuLocal<T>) -> (usize, Option<usize>) {
-        // Safety: used as a hint, so racily reading the value is fine
-        let total = unsafe { *ptr::from_ref::<AtomicUsize>(&cpu_local.values).cast::<usize>() };
+        let total = cpu_local.values.load(Ordering::Relaxed);
         let remaining = total - self.yielded;
         (remaining, Some(remaining))
     }
@@ -466,10 +423,12 @@ pub struct IterMut<'a, T: Send> {
 impl<'a, T: Send> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
     fn next(&mut self) -> Option<&'a mut T> {
-        self.raw
-            .next_mut(self.cpu_local)
-            // Safety: constructor ensures all ptrs are valid
-            .map(|entry| unsafe { &mut *(*entry.value.get()).as_mut_ptr() })
+        self.raw.next_mut(self.cpu_local).map(|entry| {
+            entry.value.with_mut(|ptr| {
+                // Safety: constructor ensures all ptrs are valid
+                unsafe { (*ptr).assume_init_mut() }
+            })
+        })
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.raw.size_hint_frozen(self.cpu_local)
@@ -499,11 +458,11 @@ impl<T: Send> Iterator for IntoIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<T> {
         self.raw.next_mut(&mut self.cpu_local).map(|entry| {
-            *entry.present.get_mut() = false;
+            entry.present.store(false, Ordering::Relaxed);
             // Safety: constructor ensures all ptrs are valid
-            unsafe {
-                mem::replace(&mut *entry.value.get(), CheckedMaybeUninit::uninit()).assume_init()
-            }
+            entry.value.with_mut(|ptr| unsafe {
+                mem::replace(&mut *ptr, CheckedMaybeUninit::uninit()).assume_init()
+            })
         })
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -559,14 +518,30 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
     let _ = unsafe { Box::from_raw(ptr::slice_from_raw_parts_mut(bucket, size)) };
 }
 
-static NEXT_CPUID: AtomicUsize = const { AtomicUsize::new(0) };
+cfg_if! {
+    if #[cfg(loom)] {
+        crate::loom::lazy_static! {
+            static ref NEXT_CPUID: AtomicUsize = AtomicUsize::new(0);
+        }
 
-cpu_local! {
-    static CPUID: usize = NEXT_CPUID.fetch_add(1, Ordering::SeqCst)
-}
+        crate::loom::thread_local! {
+            static CPUID: usize = NEXT_CPUID.fetch_add(1, Ordering::SeqCst)
+        }
 
-fn cpuid() -> usize {
-    *CPUID
+        fn cpuid() -> usize {
+            CPUID.with(|id| *id)
+        }
+    } else {
+        static NEXT_CPUID: AtomicUsize = const { AtomicUsize::new(0) };
+
+        crate::cpu_local! {
+            static CPUID: usize = NEXT_CPUID.fetch_add(1, Ordering::SeqCst)
+        }
+
+        fn cpuid() -> usize {
+            *CPUID
+        }
+    }
 }
 
 #[cfg(test)]
