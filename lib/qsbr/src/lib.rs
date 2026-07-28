@@ -71,7 +71,7 @@ use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 
 use cordyceps::{Stack, TransferStack, stack};
-use util::CachePadded;
+use util::{CachePadded, loom_const_fn};
 
 pub use crate::atomic::{Atomic, Shared};
 use crate::loom::sync::atomic::{AtomicU64, AtomicUsize, Ordering, fence};
@@ -376,10 +376,12 @@ pub struct Links {
 
 impl Links {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            links: stack::Links::new(),
-            reclaim: MaybeUninit::uninit(),
+    loom_const_fn! {
+        pub const fn new() -> Self {
+            Self {
+                links: stack::Links::new(),
+                reclaim: MaybeUninit::uninit(),
+            }
         }
     }
 }

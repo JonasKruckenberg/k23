@@ -164,13 +164,27 @@
               '';
             };
 
-          # Upstream reindeer's rlimit test fails on Darwin sandboxes
-          # where the soft RLIMIT_NOFILE starts above the hard limit.
-          reindeer = pkgs.reindeer.overrideAttrs (old: {
-            checkFlags = (old.checkFlags or [ ]) ++ [
-              "--skip=rlimit::tests::raise_does_not_lower_limit"
-            ];
-          });
+          reindeer =
+            let
+              src = pkgs.fetchFromGitHub {
+                owner = "JonasKruckenberg";
+                repo = "reindeer";
+                rev = "86a2896136faf1582b9acf45c0b0be38b74a3ca8";
+                hash = "sha256-lbS5OPZZLP7eP8IuwVFUQtJ5wkF3UeZYR15vXy/hxTU=";
+              };
+            in
+            pkgs.reindeer.overrideAttrs (old: {
+              inherit src;
+
+              cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+                inherit src;
+                hash = "sha256-MB/TQnOB96x86uAQJNt6IiTUmy74Dom4xtqWGga6GkA=";
+              };
+
+              checkFlags = (old.checkFlags or [ ]) ++ [
+                "--skip=rlimit::tests::raise_does_not_lower_limit"
+              ];
+            });
 
           # Tools every current CI job needs. Anything outside this list
           # is interactive-only; keeping it small shrinks the closure that

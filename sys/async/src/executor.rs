@@ -429,7 +429,7 @@ impl Scheduler {
                 // If inconsistent, just try again.
                 Err(TryDequeueError::Inconsistent) => {
                     tracing::trace!("scheduler queue {:?} inconsistent", self.run_queue);
-                    core::hint::spin_loop();
+                    crate::loom::hint::spin_loop();
                     continue;
                 }
                 // Queue is empty or busy (in use by something else), bail out.
@@ -564,6 +564,7 @@ mod tests {
         })
     }
 
+    #[cfg(not(loom))]
     #[test]
     fn multi_threaded() {
         let _trace = tracing_subscriber::fmt()

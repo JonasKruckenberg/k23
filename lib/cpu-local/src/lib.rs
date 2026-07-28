@@ -90,12 +90,13 @@
 //! [`Cell`]: core::cell::Cell
 //! [`RefCell`]: core::cell::RefCell
 
-#![cfg_attr(not(test), no_std)]
-#![feature(thread_local)]
+#![cfg_attr(not(any(test, loom)), no_std)]
+#![cfg_attr(not(loom), feature(thread_local))]
 
 extern crate alloc;
 
 pub mod collection;
+mod loom;
 
 use core::ops::Deref;
 use core::ptr::NonNull;

@@ -9,7 +9,10 @@ rust_library(
         "//third-party:cfg-if",
         "//third-party:lock_api",
         "//third-party:critical-section"
-    ],
+    ] + select({
+        "constraints//:loom[enabled]": ["//third-party:loom"],
+        "constraints//:loom[disabled]": [],
+    }),
     visibility = ["PUBLIC"],
     tests = [":spin_unittests", ":spin_loom_tests"]
 )
