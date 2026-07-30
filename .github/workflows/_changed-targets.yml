@@ -26,6 +26,7 @@ jobs:
   changed-targets:
     name: Determine changed targets
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       impacted: ${{ steps.compute.outputs.impacted }}
       skip: ${{ steps.compute.outputs.skip }}
@@ -62,6 +63,7 @@ jobs:
 
       - name: Build base.jsonl (cache miss)
         if: steps.cache-base.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: |
           REPO=$PWD
           git worktree add --detach /tmp/base-tree "${{ steps.base.outputs.sha }}"
@@ -75,6 +77,7 @@ jobs:
 
       - name: Compute impacted targets
         id: compute
+        timeout-minutes: 10
         # Run the `just changed-targets-diff` command to establish the diff, then runs `just changed-targets`
         # to produce the list of impacted buck2 targets from that.
         #
@@ -85,16 +88,16 @@ jobs:
             echo "No base.jsonl available — falling back to full suite"
             full_run; exit 0
           fi
-          nix develop .#ci --command just changed-targets-diff "${{ steps.base.outputs.sha }}" > changes.txt
+          nix develop .#ci --command just changed-targets-diff "${{ steps.base.outputs.sha }}" > changes.txt < /dev/null
           set +e
-          IMPACTED=$(nix develop .#ci --command just changed-targets changes.txt base.jsonl)
+          nix develop .#ci --command just changed-targets changes.txt base.jsonl > impacted.txt < /dev/null
           rc=$?
           set -e
           if [ "$rc" -ne 0 ]; then
             echo "::error::changed-targets failed (exit $rc) — falling back to full suite"
             full_run; exit 0
           fi
-          IMPACTED=$(printf '%s' "$IMPACTED" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
+          IMPACTED=$(tr -s '[:space:]' ' ' < impacted.txt | sed 's/^ *//;s/ *$//')
           if [ "$IMPACTED" = "__ALL__" ]; then
             echo "Pessimistic fallback: a high-level file changed — full suite"
             full_run
