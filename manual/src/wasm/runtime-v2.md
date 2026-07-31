@@ -167,15 +167,31 @@ The fork: **guard pages or explicit bounds checks?**
   handling; wasmtime itself ships this as `signals_based_traps=off` for its no_std
   embeddings).
 
-Recommendation: explicit bounds checks, everywhere, from day one. It deletes the most
-code, it is the only option that scales past the VA wall, and the performance gap is
-recoverable in the optimizing tier (bounds-check hoisting/dedup, and the pitch's
-fixed-edge fusion deletes boundary crossings entirely). The MMU remains for W^X code
-publishing, the direct map, and *optional hardening* (isolate placement) — not for
-sandbox correctness. This is also the honest response to the Spectre record (see §6):
-the MMU was never going to be the isolation story here anyway.
+Recommendation (revised after review): **guard-page slots by default, explicit checks
+as a per-memory mode — both, because memory64 forces the second to exist anyway.**
+A 12–20% flat tax on every memory access in every component, drivers included, is not
+acceptable when the whole system is components, and unlike boundary costs it cannot
+be fused away. The VA math for guard slots works out once the kernel owns the whole
+space: at ~6 GiB per slot (4 GiB reservation + 2 GiB guard; rare static offsets
+beyond the guard get explicit checks, as in wasmtime), an Sv48 kernel half
+(128 TiB) holds ~20k concurrent memories and Sv57 ~11M — and tasks outnumber
+instances by orders of magnitude, so "1M tasks" never meant 1M linear memories.
+Sv39 (256 GiB half, ~40 full-size slots) is the constrained case: there the planner
+packs small-max memories into proportionally small slots or falls back to checked
+mode. Checked mode must exist regardless because 64-bit memories cannot elide checks
+via guards (Titzer's >1 TiB secondary guard region and similar schemes are later
+optimizations), and it is also the deterministic, signal-free mode the hosted
+backend wants for fuzzing. Cranelift already parameterizes heap lowering per memory,
+so dual-mode is configuration, not a second compiler.
 
-With bounds checks chosen, "pooling" becomes almost embarrassingly simple: fixed slot
+The honest cost of keeping guards: the wasm fault path stays — trap-handler
+integration, PC→code lookup, non-local register restore — simplified but not
+deleted, and hosted guard-mode parity needs SIGSEGV handling (or guard-path coverage
+stays with the in-kernel selftests while host-side fuzzing runs checked mode).
+Guards are not a Spectre answer either way — speculative OOB needs masking
+regardless (Swivel) — so the hardening story is orthogonal to this choice.
+
+Either way, the pool itself stays simple: fixed slot
 arrays for instance state/vmctx/tables (sized by kernel config), linear memories as
 VA reservations sized to declared max with frames committed on grow, teardown = zap
 PTEs + targeted `sfence.vma` + return frames. No wavltree, no region trees, no demand
@@ -187,15 +203,50 @@ layout should permit but v1 should not implement.
 ### 2.5 Extraction + hosted backend — **correct; bounds checks make it much stronger**
 
 The runtime becomes a `//sys` crate with a small platform trait (reserve/commit/
-protect-RX/icache-sync/time/spawn). Kernel backend implements it over the frame
-allocator and kasync; hosted backend over mmap and std — *with no signal handling
-needed* because all traps are explicit control flow. That enables, on the host:
+protect-RX/icache-sync/trap-hook/time/spawn). Kernel backend implements it over the
+frame allocator and kasync; hosted backend over mmap and std, running checked-memory
+mode (§2.4) for deterministic, signal-free fuzzing, with optional SIGSEGV handling
+for guard-mode parity. That enables, on the host:
 upstream spec-testsuite runs, wasmtime's component-async conformance tests,
 differential fuzzing against wasmtime (wasm-smith), proptest on canonical-ABI
 lift/lower round-trips, loom on the task/waitable tables, and criterion benchmarks
 (compile MB/s, call-boundary ns, instantiation µs, task churn) — none of which can
 run under QEMU today. The in-kernel `.wast` selftests remain as the integration
 layer.
+
+### 2.6 Speculation at component boundaries — guard-and-fallback yes, deopt no
+
+Review question: should inter-component calls be optimized speculatively (same-hart
+vs cross-hart, co-resident vs remote), and does that pull deoptimization back in?
+The useful distinction is between **guards at call boundaries** (cheap, no metadata,
+fallback is an ordinary call) and **speculation whose invalidation must interrupt a
+live frame** (requires deopt/OSR machinery: side tables mapping machine state back
+to abstract frames). Everything the component model invites falls in the first
+bucket:
+
+1. **Eager completion.** The async ABI's status codes explicitly allow a call to
+   report "returned" without ever suspending — so the fast path is: run the callee
+   synchronously on the caller's hart and only materialize a subtask/enqueue if it
+   actually suspends or hits backpressure (lazy task creation, Cilk-style). This is
+   the single biggest boundary optimization, and it is spec-blessed rather than
+   speculative in the deopt sense.
+2. **Handle devirtualization.** Calls on resource handles are interface-typed but
+   implementation-varying — the polymorphic call sites of this system. Inline
+   caches / feedback-guided guarded inlining ("this handle is almost always the
+   uart-driver instance") work as in SpiderMonkey's wasm call inlining: a failed
+   guard falls back to the indirect call *within* optimized code. No frame
+   invalidation, no deopt metadata.
+3. **Placement.** Same-hart vs cross-hart execution is a scheduler decision that the
+   CM's confined nondeterminism already permits; it needs no compiler support.
+4. **Edge lifetime.** Fixed/stable edges are static fusion, not speculation.
+   Removable edges stay behind patchable dispatch slots; re-linking takes effect at
+   call boundaries after an executor epoch — and since unlink must quiesce anyway
+   (handle teardown), a stale inlined target cannot outlive its subgraph.
+
+Deopt/OSR would only become necessary for speculation that must be undone *mid-loop,
+before the next call boundary* — e.g. inlining a removable edge into a hot loop.
+Nothing in the model requires that; keeping removable-edge calls out-of-line is the
+one discipline that keeps deopt out of the system permanently.
 
 ## 3. The design, condensed
 
@@ -216,32 +267,55 @@ compiler.**
    after one executor epoch (QSBR). Backedge epoch checks in all generated code.
    Optimizing tier owns fused adapters and cross-component inlining ("fixed edges
    fuse into plain calls").
-4. **Memory**: explicit bounds checks; slot-pooled instances/tables/memories; no
-   signals anywhere in the wasm path; traps are explicit branches to a libcall that
-   unwinds synchronously to the activation entry. A trap kills the instance
+4. **Memory**: slot-pooled instances/tables/memories; guard-page elision for wasm32
+   by default, per-memory checked mode for memory64/Sv39/dense packing (§2.4).
+   Non-memory traps (unreachable, div, casts) are explicit branches to a libcall
+   that unwinds synchronously to the activation entry. A trap kills the instance
    (Midori-style abandonment); the parent that linked it decides restart policy.
-5. **Host boundary**: no generic linker, no `IntoFunc` machinery, no runtime type
-   registry for host functions. The kernel presents the `k23:*` family as a
-   **component implemented natively**: WIT → build-time codegen → static export
-   tables, type-checked at build. There is exactly one call path in the system
-   (component→component); the kernel is just a component whose exports are hardware
-   handles. This answers the "do we need a wasmtime-style host interface" question:
-   no — and it is a deletion, not a constraint.
+5. **Host boundary**: no string-keyed runtime linker, no `IntoFunc` machinery, no
+   runtime type registration for host functions. The kernel presents the `k23:*`
+   family as a **component implemented natively**: WIT → build-time codegen → static
+   export tables, type-checked at build. There is exactly one call path in the
+   system (component→component); the kernel is just a component whose exports are
+   hardware handles. A linker *of some sort* remains, but it is **graph
+   instantiation**: walk the resolved edge table in dependency order and fill each
+   instance's import vector with concrete funcrefs/adapters. Names exist only in
+   WIT tooling at build time; at runtime, `linker.start` (per the system pitch)
+   takes handles, never names. One slim engine-level type interner stays —
+   `call_indirect` needs canonical func types on day one, and GC casts will need
+   the same table later.
 
-## 4. Feature set
+## 4. Feature roadmap
 
-Core wasm: exactly LLVM's `lime1` contract (what default clang/rustc output needs) —
-mutable-globals, sign-ext, multivalue, bulk-memory, nontrapping-fptoint,
-extended-const, call-indirect-overlong — plus funcref tables.
+**Day-1 floor.** Core wasm: LLVM's `lime1` contract (what default clang/rustc output
+needs) — mutable-globals, sign-ext, multivalue, bulk-memory, nontrapping-fptoint,
+extended-const, call-indirect-overlong — plus funcref tables. Component model:
+callback-ABI async lift/lower, `stream`/`future`, waitable-sets, backpressure,
+`context.get/set`, resources/handles, utf8.
 
-Component model: callback-ABI async lift/lower, `stream`/`future`, waitable-sets,
-backpressure, `context.get/set`, resources/handles, utf8 only.
+**Adopted proposals are a commitment, not a corner to cut.** Wasm 3.0 (Sept 2025)
+standardized GC, memory64, tail calls, multi-memory, and exception handling, and
+toolchains will progressively assume them. None are architecturally excluded here,
+but each leaves a hook to respect now:
 
-Explicitly cut (all precedented by embedded runtimes and/or gated proposals): SIMD,
-threads/atomics, GC proposal, exception handling (guests build with `panic=abort`),
-memory64, multi-memory, tail calls, stackful lifts, non-utf8 transcoding, code
-serialization, and every tunable that wasmtime exposes as `Config` — k23 has exactly
-one configuration.
+- *Tail calls, SIMD*: compiler-tier features — another reason to lead with
+  lazy-Cranelift (which has both) and let the hand-written baseline catch up later.
+- *memory64*: requires the checked-memory mode (§2.4) — which is why that mode is
+  kept even though guards are the default.
+- *Exception handling*: needs unwind/trap metadata in the `Compiler` contract from
+  the start, even while guests build with `panic=abort`.
+- *GC*: needs the type interner (kept anyway for `call_indirect`) and precise roots —
+  where stackless helps enormously: at quiescent points **no wasm frames exist**, so
+  the root set is heap task state + tables + globals, and "GC at yield points only"
+  falls out of the execution model instead of requiring stack maps for every pc.
+- *Multi-memory*: falls out of per-memory heap configuration.
+
+**Deferred while in flux**: shared-everything threads (the one item that could force
+a real redesign — it breaks the instance-lock cooperative model; CM's cooperative
+threads come first in the spec pipeline anyway), stackful lifts, non-utf8
+transcoding, stream splicing, code serialization.
+
+**Cut on principle**: wasmtime's `Config` space. k23 has exactly one configuration.
 
 Non-negotiable debt to pay in the rewrite: wire the upstream spec testsuite for every
 feature we claim. The current runtime claims features it does not test.
