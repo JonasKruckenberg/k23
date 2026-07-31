@@ -46,18 +46,29 @@ unsafe fn main(boot_hart_id: usize, dtb: PhysicalAddress, _boot_ticks: u64) -> !
 
     let (kernel, debug_info) = kernel::locate();
 
-    let frame_alloc =
-        BumpAllocator::new::<mem_core::arch::riscv64::Riscv64Sv39>(memory_regions.clone());
+    let frame_alloc = BumpAllocator::new::<mem_core::arch::riscv64::Riscv64Sv39>(
+        memory_regions
+            .iter()
+            .filter_map(|region| region.kind.is_usable().then_some(region.range)),
+    );
 
     let finalize = |frame_alloc: BumpAllocator<
         spin::RawMutex,
         { loader_api::MAX_MEMORY_REGIONS },
     >|
      -> loader_api::MemoryRegions {
-        let mut regions: loader_api::MemoryRegions = frame_alloc
+        let alloc_regions = frame_alloc
             .used_regions()
             .into_iter()
-            .chain(frame_alloc.free_regions())
+            .chain(frame_alloc.free_regions());
+
+        let other_regions = memory_regions
+            .iter()
+            .cloned()
+            .filter(|region| !region.kind.is_usable());
+
+        let mut regions: loader_api::MemoryRegions = alloc_regions
+            .chain(other_regions)
             .filter(|r| !r.range.is_empty())
             .collect();
 

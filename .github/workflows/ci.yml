@@ -40,43 +40,6 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/_changed-targets.yml
 
-  # check:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       include:
-  #         - name: riscv64
-  #           platform: "//platforms:riscv64"
-  #         - name: aarch64
-  #           platform: "//platforms:aarch64"
-  #         - name: x86_64
-  #           platform: "//platforms:x86_64"
-  #   name: check (${{ matrix.name }})
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 20
-  #   needs: [changed-targets]
-  #   if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: DeterminateSystems/determinate-nix-action@v3
-  #     - uses: nix-community/cache-nix-action@v7
-  #       with:
-  #         primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
-  #         restore-prefixes-first-match: nix-${{ runner.os }}-
-  #         gc-max-store-size-linux: 5G
-  #         purge: true
-  #         purge-prefixes: nix-${{ runner.os }}-
-  #         purge-last-accessed: P7D
-  #     - uses: actions/cache@v5
-  #       with:
-  #         path: buck-out
-  #         key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
-  #         restore-keys: |
-  #           buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
-  #           buck2-${{ runner.os }}-${{ github.job }}-
-  #           buck2-${{ runner.os }}-
-  #     - run: nix develop .#ci --command just platform=${{ matrix.platform }} check '${{ needs.changed-targets.outputs.impacted }}'
-
   clippy:
     strategy:
       fail-fast: false

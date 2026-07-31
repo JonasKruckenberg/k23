@@ -312,7 +312,7 @@ qemu_toolchain(
 
         # machine configuration
         "-m",
-        "256M",
+        "512M",
         "-smp",
         "cpus=8",
         "-object",

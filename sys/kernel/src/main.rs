@@ -109,8 +109,6 @@ fn kmain(boot_info: &'static BootInfo) {
     arch::per_cpu_init_early();
     tracing::per_cpu_init_early(cpuid);
 
-    log::info!("{boot_info}");
-
     let fdt_phys = boot_info
         .firmware_tables
         .raw_fdt
@@ -133,6 +131,7 @@ fn kmain(boot_info: &'static BootInfo) {
 
     // set up the basic functionality of the tracing subsystem as early as possible
     tracing::init_early(console_tx);
+    log::info!("{boot_info}");
 
     // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
     // is available

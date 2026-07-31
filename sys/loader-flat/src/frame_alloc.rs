@@ -59,15 +59,17 @@ where
     /// # Panics
     ///
     /// Panics if given regions overlap.
-    pub fn new<A: Arch>(mut regions: loader_api::MemoryRegions) -> Self {
+    pub fn new<A: Arch>(regions: impl Iterator<Item = Range<PhysicalAddress>>) -> Self {
+        let mut regions: ArrayVec<_, MAX_REGIONS> = regions.collect();
+
         if regions.len() > 1 {
-            regions.sort_unstable_by_key(|region| region.range.start);
+            regions.sort_unstable_by_key(|region| region.start);
 
             let mut iter = regions.as_mut_slice().windows(2);
 
             while let Some([cur, next]) = iter.next() {
                 assert!(
-                    !cur.range.overlaps(&next.range),
+                    !cur.overlaps(next),
                     "regions {cur:#x?} and {next:#x?} overlap"
                 );
             }
@@ -79,16 +81,16 @@ where
             .into_iter()
             .enumerate()
             .map(|(i, mut region)| {
-                region.range = region.range.align_in(A::GRANULE_SIZE);
+                region = region.align_in(A::GRANULE_SIZE);
 
-                if region.range.len() > largest_region_size {
-                    largest_region_size = region.range.len();
+                if region.len() > largest_region_size {
+                    largest_region_size = region.len();
                     largest_region_idx = i;
                 }
 
                 Arena {
                     // we allocate from the top of each region downward
-                    ptr: region.range.end,
+                    ptr: region.end,
                     region,
                 }
             })
@@ -318,7 +320,7 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
             let Some(region) = self
                 .arenas
                 .iter_mut()
-                .find(|region| region.region.range.overlaps(&block))
+                .find(|region| region.region.overlaps(&block))
             else {
                 // every block was just allocated from one of these arenas, so this is unreachable
                 debug_assert!(
@@ -338,7 +340,7 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
 
 /// Manages a contiguous region of physical memory.
 struct Arena {
-    region: MemoryRegion,
+    region: Range<PhysicalAddress>,
     ptr: PhysicalAddress,
 }
 
@@ -357,7 +359,7 @@ impl Arena {
     /// Returns the number of bytes left to allocate
     #[inline]
     pub fn capacity(&self) -> usize {
-        self.ptr.offset_from_unsigned(self.region.range.start)
+        self.ptr.offset_from_unsigned(self.region.start)
     }
 
     /// Returns true if this arena has any capacity left
@@ -369,19 +371,19 @@ impl Arena {
     /// Returns the number of bytes allocated from this arena
     #[inline]
     pub fn usage(&self) -> usize {
-        self.region.range.end.offset_from_unsigned(self.ptr)
+        self.region.end.offset_from_unsigned(self.ptr)
     }
 
     /// Returns the used (allocated) slice of the physical memory region managed by this arena
     #[inline]
     pub fn used(&self) -> Range<PhysicalAddress> {
-        Range::from(self.ptr..self.region.range.end)
+        Range::from(self.ptr..self.region.end)
     }
 
     /// Returns the free (not allocated) slice of the physical memory region managed by this arena
     #[inline]
     pub fn free(&self) -> Range<PhysicalAddress> {
-        Range::from(self.region.range.start..self.ptr)
+        Range::from(self.region.start..self.ptr)
     }
 
     /// Deallocates a given memory block IF it is the last block that was allocated from this arena.
@@ -400,10 +402,6 @@ impl Arena {
     /// Attempt to allocate enough memory to satisfy the size and alignment requirements of `layout`.
     #[inline]
     fn allocate(&mut self, min_align: NonZeroUsize, layout: Layout) -> Option<PhysicalAddress> {
-        if !self.region.kind.is_usable() {
-            return None;
-        }
-
         debug_assert!(
             self.ptr.is_aligned_to(min_align.get()),
             "bump pointer {:?} should be aligned to the minimum alignment of {min_align:#x}",
@@ -446,9 +444,9 @@ impl Arena {
 
                 // NB: we're not using .capacity() here because we actually care about the capacity
                 // that's left *after* aligning the bump pointer down
-                let capacity = aligned_ptr.offset_from_unsigned(self.region.range.start);
+                let capacity = aligned_ptr.offset_from_unsigned(self.region.start);
 
-                if aligned_ptr < self.region.range.start || capacity < aligned_size {
+                if aligned_ptr < self.region.start || capacity < aligned_size {
                     return None;
                 }
 
@@ -466,9 +464,9 @@ impl Arena {
             "pointer {aligned_ptr:?} should be aligned to minimum alignment of {min_align}",
         );
         debug_assert!(
-            self.region.range.contains(&aligned_ptr),
+            self.region.contains(&aligned_ptr),
             "pointer {aligned_ptr:?} should be in range {:?}..{:?}",
-            self.region.range.start,
+            self.region.start,
             self.ptr
         );
 
@@ -537,7 +535,6 @@ impl<const MAX: usize> ExactSizeIterator for Blocks<MAX> {}
 #[cfg(test)]
 mod tests {
     use human_bytes::GIB;
-    use loader_api::MemoryRegions;
     use mem_core::{PhysMap, Size4KiB};
     use mem_testkit::{EmulateArch, Machine, MachineBuilder, archtest};
 
@@ -545,18 +542,6 @@ mod tests {
     // (`Arch`, `Layout`, `FrameAllocator`, `MemoryRegion`, `PhysicalAddress`, …) come in through
     // this glob, so only the test-harness-specific names are imported explicitly above.
     use super::*;
-
-    /// Tags the machine's physical memory regions as `Usable` so they can feed
-    /// [`BumpAllocator::new`], which takes loader-api [`MemoryRegions`].
-    pub(crate) fn usable_regions<A: Arch>(machine: &Machine<A>) -> MemoryRegions {
-        machine
-            .memory_regions()
-            .map(|range| MemoryRegion {
-                range,
-                kind: MemoryRegionKind::Usable,
-            })
-            .collect()
-    }
 
     fn assert_zeroed(frame: PhysicalAddress, bytes: usize, physmap: &PhysMap, arch: &impl Arch) {
         let frame = unsafe { arch.read_bytes(physmap.phys_to_virt(frame), bytes) };
@@ -580,7 +565,7 @@ mod tests {
                 .finish();
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             // Based on the memory of the machine we set up above, we expect the allocator to
             // yield 3 pages.
@@ -619,7 +604,7 @@ mod tests {
                 .finish();
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             let physmap = PhysMap::new_identity::<Size4KiB>(machine.memory_regions());
             let arch = EmulateArch::new(machine);
@@ -662,7 +647,7 @@ mod tests {
                 .finish();
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             let blocks: Vec<_> = frame_allocator
                 .allocate(Layout::from_size_align(4 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap())
@@ -693,7 +678,7 @@ mod tests {
             let physmap = PhysMap::new_identity::<Size4KiB>(machine.memory_regions());
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             let blocks: Vec<_> = frame_allocator
                 .allocate_zeroed(
@@ -732,7 +717,7 @@ mod tests {
             let arch = EmulateArch::new(machine.clone());
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             let zero = Layout::from_size_align(0, A::GRANULE_SIZE).unwrap();
 
@@ -759,7 +744,7 @@ mod tests {
                 .finish();
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             let frame = frame_allocator
                 .allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, 1).unwrap())
@@ -779,7 +764,7 @@ mod tests {
                 .finish();
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             let blocks = frame_allocator
                 .allocate(Layout::from_size_align(A::GRANULE_SIZE, 1).unwrap())
@@ -805,7 +790,7 @@ mod tests {
                 .finish();
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             let frame = frame_allocator
                 .allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, 1 * GIB).unwrap())
@@ -828,7 +813,7 @@ mod tests {
                 .finish();
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                BumpAllocator::new::<A>(usable_regions(&machine));
+                BumpAllocator::new::<A>(machine.memory_regions());
 
             let blocks = frame_allocator
                 .allocate(Layout::from_size_align(A::GRANULE_SIZE, 1 * GIB).unwrap())
@@ -854,7 +839,6 @@ mod proptests {
     use mem_testkit::{Machine, MachineBuilder, for_arch};
     use proptest::prelude::*;
 
-    use super::tests::usable_regions;
     use super::{BumpAllocator, DEFAULT_MAX_REGIONS};
 
     // The enclosing `mod proptests` is already `#[cfg(not(miri))]`, so all three
@@ -868,7 +852,7 @@ mod proptests {
                     .finish();
 
                 let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                    BumpAllocator::new::<A>(usable_regions(&machine));
+                    BumpAllocator::new::<A>(machine.memory_regions());
 
                 let total_size = region_layouts.iter().map(|layout| layout.size()).sum();
 
@@ -902,7 +886,7 @@ mod proptests {
                     .finish();
 
                 let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                    BumpAllocator::new::<A>(usable_regions(&machine));
+                    BumpAllocator::new::<A>(machine.memory_regions());
 
                 let total_size = region_layouts.iter().map(|layout| layout.size()).sum();
 
@@ -922,7 +906,7 @@ mod proptests {
                     .finish();
 
                 let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                    BumpAllocator::new::<A>(usable_regions(&machine));
+                    BumpAllocator::new::<A>(machine.memory_regions());
 
                 let alignment = 1usize << alignment_pot;
 
@@ -941,7 +925,7 @@ mod proptests {
                     .finish();
 
                 let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
-                    BumpAllocator::new::<A>(usable_regions(&machine));
+                    BumpAllocator::new::<A>(machine.memory_regions());
 
                 let alignment = 1usize << alignment_pot;
 
