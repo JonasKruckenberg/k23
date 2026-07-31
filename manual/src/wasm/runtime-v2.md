@@ -335,7 +335,184 @@ generic-embedder surface area (Store<T> generics, typed-func machinery, dynamic
 linker, config space, signal handling) is where wasmtime spends its complexity, and
 a kernel needs none of it.
 
-## 6. Risks
+## 6. Cross-cutting optimizations: what owning the whole stack buys
+
+Added after review. The question: kernel, scheduler, virtmem, QSBR, runtime, and DMA
+allocator are one codebase — what can be optimized *out* of the system that layered
+stacks must keep, and what do we have over other wasm runtimes specifically?
+
+### 6.1 The pattern in the published data
+
+Every multi-x systems win of the last decade is the same move — deleting a boundary
+crossing that a general-purpose stack must keep: IX's run-to-completion dataplane
+(memcached 3.6–6.4x vs Linux, RTT halved), Arrakis's kernel-off-the-data-path
+(Redis 2–9x), XDP vs the full network stack (24 vs 4.8 Mpps/core), ScyllaDB's
+shard-per-core vs threads+locks (3–10x, vendor numbers), Unikraft's whole-image LTO
+(nginx/Redis 1.7–2.7x vs Linux guests), Singularity's software isolation (<5%
+overhead vs 25–33% for hardware domains). k23's design already deletes the two
+biggest crossings — the syscall boundary and the protection-domain switch. The
+second-generation dataplane papers (Shenango, Caladan, Shinjuku) carry the equally
+important inverse lesson: after deleting the layers you must rebuild scheduling and
+interference control at ~5 µs granularity, which is only possible when one system
+owns cores, queues, and interrupts together. That is kasync's job description, not
+an accident.
+
+### 6.2 Versus other kernels
+
+1. **Interrupts are wakeups; tickless by construction.** Top half = wake the
+   driver's task; bottom half is the task. Linux's threaded IRQs and Intel UINTR
+   (notification in 0.73 µs vs 15.3 µs via signals) measure how much generic
+   delivery layers cost; `nohz_full` shows Linux fighting to get *down to* one
+   residual tick per second. A cooperative kernel has no tick to remove: the timer
+   wheel programs the hardware comparator to the next actual deadline. Top halves
+   stay native kernel code — running wasm in IRQ context is a category error
+   (invariants 4/8). *Verdict: real, nearly free, day one.*
+2. **Shard-per-core runtime state.** Pin instances to harts: task tables, vmctx,
+   waitable-sets become hart-local plain data — no atomics or locks on the poll
+   path (thread-per-core restructuring measured up to −71% p99 in ANCS'19; the CM
+   instance lock already serializes intra-instance execution, so parallelism was
+   never intra-instance anyway). Cross-hart rebalancing steals *instances*, rarely,
+   behind an epoch fence — not tasks, constantly. *Verdict: real, but it is a
+   deliberate kasync design decision against pervasive work-stealing; decide it
+   explicitly.*
+3. **Run-to-completion + eager completion + placement.** The planner co-locates
+   chatty components on one hart so the eager-completion fast path (§2.6) makes a
+   cross-component async call an ordinary call in the common case; IX's adaptive
+   batching applies at the waitable-set level under load. *Verdict: real; mostly
+   falls out of §2.6 plus edge labels.*
+4. **DMA-stable guest memory, zero-copy I/O.** Linear memories never move in the
+   slot design, so guest memory is DMA-safe *by construction*: the IOMMU maps a
+   slot once at instantiation; there is no `get_user_pages`, no pinning API, no
+   registered-buffer machinery — io_uring's registered buffers (worth 3–11% in
+   published measurements) exist to emulate this from userspace. `k23:*` device
+   interfaces should pass DMA buffers as *resources* (handles), so payload copies
+   happen only when a guest actually reads the bytes into its memory — or never,
+   for forwarding topologies. *Verdict: real and differentiating. Boundary: the
+   CM's shared-nothing model makes one copy the floor for `stream<u8>` payloads
+   between components — accept it until the CM's caller-supplied-buffer/lazy-handle
+   work lands; do not invent bespoke shared memory (see 6.4).*
+5. **Hugepages deterministically.** Hot JIT code packed into 2 MiB text pages
+   (Meta measured −50% iTLB misses, −5–10% CPU fleet-wide; Intel's large-code-pages
+   blueprint −30% iTLB misses), 1 GiB direct map, 2 MiB-backed large guest
+   memories (TCMalloc's hugepage-aware allocator: +7.7% RPS). Linux gets these
+   probabilistically via THP/khugepaged; we get them by construction — the frame
+   allocator and the code region are the same subsystem. *Verdict: real, cheap,
+   bake into the allocator/code-region layout now.*
+6. **TLB economics.** Single address space → zero context-switch flushes, global
+   mappings; teardown PTE zaps batched at epoch boundaries → `sfence.vma` per
+   epoch, not per unmap, scoped to the harts that ran the instance. *Verdict:
+   real; falls out of QSBR + SAS.*
+7. **One grace period for everything.** QSBR serves RCU data structures, JIT code
+   unload, slot recycling, and subgraph unlink — one mechanism where Linux carries
+   RCU + RCU-tasks + deferred work queues, and V8 carries a code-GC with stack
+   scanning. *Verdict: real, but see 6.4: epochs must not become the system clock.*
+8. **Handle tables are kernel tables.** A canonical-ABI handle index dereferences
+   to a slot the kernel owns directly — no fd-translation layer, no refcount churn
+   (lifetime = ownership transfer + QSBR). Singularity's exchange-heap numbers
+   (803 cycles ping-pong, but O(1) for any payload size) bound this from below;
+   with checks compiled into JIT'd code, a sandbox crossing approaches a plain
+   call. *Verdict: this is just the §3 design, stated as an optimization.*
+9. **vDSO for free.** Clock/entropy imports lower to loads from a host-updated
+   page and inline through fixed-edge fusion — the vDSO trick with no ABI to
+   maintain. *Verdict: tiny, real, do it.*
+10. **Mitigation by label.** Spectre fences/masking/core-exclusion applied only on
+    trust-crossing edges, because only we know where those are; conventional
+    systems mitigate globally. *Verdict: real in principle, unproven in practice;
+    design the label plumbing, defer the mitigations themselves.*
+11. **Prebaked instantiation.** The graph is known at build: vmctx layouts, import
+    vectors, and data-segment images can be precomputed so boot instantiation is
+    memcpy-plus-patch (wasmtime's 5 µs per instance is the userspace ceiling;
+    build-time preparation goes below it). Tension with ASLR aspirations —
+    relocation at image-bake or loader time, decided deliberately. *Verdict: real
+    but later; measure instantiation first.*
+12. **A JIT-aware scheduler.** No mainstream OS scheduler consumes JIT-queue
+    information (the JVM's compiler threads fighting container CPU limits is the
+    canonical pathology). Tier-up jobs as idle-priority kasync tasks with
+    backpressure is novel, nearly free here, and structurally impossible for a
+    userspace runtime that can't see system idleness. *Verdict: real novelty,
+    cheap.*
+
+### 6.3 Versus other wasm runtimes and JIT compilers
+
+1. **Closed-world-per-graph compilation.** Wasmtime and V8 must assume an open
+   world — any module may link at any time, against any embedder. Our component
+   graph is explicit data: devirtualization and inlining driven by edge *labels*
+   rather than heuristics, and export tree-shaking falls out of lazy compilation
+   (an export no edge reaches is simply never compiled). The discipline that keeps
+   this sound: the world is closed per graph but **open across time**
+   (`store.add`/`linker.start` admit new components), so no closed-world assumption
+   may be baked into code without a patch point — which is the removable-edge rule
+   (§2.6) again.
+2. **No embedder-generality tax.** No `Store<T>` generics, no runtime `Config`, no
+   fuel (epochs only), no `.cwasm` serialization-stability contract, no
+   SEH/DWARF/frame-pointer interop for foreign profilers and debuggers, no
+   public-API semver. This is where a large share of wasmtime's complexity
+   (and our deleted 24.5k lines) actually lives.
+3. **Scheduler-native async.** Wasmtime bridges three worlds — CM event loop,
+   tokio, and fibers — paying Send/Sync/Pin impedance, pooled-fiber hops, and a
+   host-intrinsic call per boundary crossing (their measured ~3.5x sync-call
+   regression is this tax made visible). Here the CM task *is* the kasync task;
+   with shard-per-core there are no Send bounds and task state for fused sync
+   paths lives on the native stack.
+4. **`-march=native`, always.** We compile on the machine we run on, every time —
+   full ISA-extension use (vector when SIMD lands) with no baseline-CPU shipping
+   compromise and no multi-variant artifacts. Amend the pitch's "recompile after
+   boot" with a content-addressed cache keyed `(component hash, cpu, tier)` —
+   treated as cache, not source of truth — so weak hardware doesn't recompile the
+   world every boot.
+5. **Snapshot by construction.** A quiescent instance is a heap value: no stacks,
+   no fibers, no register state. Checkpoint, clone (CoW), migrate, and
+   pre-initialize (live Wizer) become runtime primitives rather than external
+   tools — wasmtime cannot snapshot mid-async at all (suspended fibers are
+   machine stacks). This is the pitch's migration story earned structurally.
+6. **Profile infrastructure for free.** Baseline counters + inline-cache feedback
+   give the optimizing tier real PGO on every run (wasmtime AOT compiles blind);
+   owning the timer additionally allows sampling-based hotness with zero
+   instrumentation — but counters are needed for call-site feedback anyway, so:
+   counters first, sampling as a later augment, not a replacement.
+7. **Code layout and code GC owned end-to-end.** Call-graph-ordered packing of hot
+   functions *across components* into shared hugepage text (BOLT/AsmDB-class wins,
+   ~5–10% CPU, deterministic here); dead-tier reclamation is one QSBR epoch versus
+   V8's refcounting-plus-stack-scan code GC. Compilation runs on idle harts with
+   global knowledge (6.2.12) instead of competing blindly with the workload.
+8. **Validate and translate once, ever.** Content-addressed store → validation and
+   translation artifacts persist per hash across boots and instances; other
+   engines re-validate per process or carry serialization-compat machinery.
+9. **No cohabitation taxes.** No JS VM (V8/JSC pay handle scopes and boundary
+   conversions), no POSIX emulation, no signal-safety contortions in trap
+   dispatch — the trap frame is simply in hand.
+
+### 6.4 Pushback ledger
+
+Ideas considered and rejected, or bounded — kept here so they don't return by
+osmosis:
+
+- **"1M concurrent tasks" as a design driver.** Stackless callback tasks make 1M
+  structurally cheap (heap state only), and that's where its influence should end.
+  Name the workload before any *further* contortion is justified by this number.
+- **Bespoke shared memory between components** to beat the one-copy stream floor:
+  breaks the shared-nothing model that the whole handle/isolation story rests on.
+  Wait for CM caller-supplied buffers / lazy value handles; pass host-owned DMA
+  buffers as resources meanwhile.
+- **Wasm interrupt top-halves.** Entry cost isn't the issue; epoch semantics,
+  backpressure, and the no-alloc/no-panic trap context are. Native top half, task
+  bottom half, permanently.
+- **Page coloring for LLC isolation.** Dead on modern hashed/sliced LLCs (~2
+  usable color bits); RISC-V's Ssqosid/CBQRI has no public silicon numbers yet.
+  Rely on the placement labels (don't share cores across sensitive pairs); revisit
+  when CBQRI hardware exists.
+- **Per-guest address spaces for defense-in-depth.** Re-pays the 25–33% hardware
+  isolation tax the whole design exists to avoid. The MMU hardens code (W^X) and
+  backs slots; it is not the sandbox.
+- **Epochs as the universal clock.** QSBR reclaims; it must not *pace*. Nothing
+  latency-sensitive may wait on a grace period (allocation paths stay
+  epoch-independent), and backedge checks bound laggard harts.
+- **Over-coupling compiler and scheduler.** The full contract between them stays
+  exactly two items: backedge epoch checks and placement/edge labels. A compiler
+  that knows more about the scheduler (or vice versa) welds shut the seams that
+  make the rest of this document's deletions possible.
+
+## 7. Risks
 
 - **Spec flux.** Stackful lifts, threads, stream splicing, caller-supplied buffers,
   and the CM-1.0 "lazy value handle" ABI redesign are all in motion. Mitigation:
@@ -358,7 +535,7 @@ a kernel needs none of it.
   regression on sync calls is the cautionary tale; task-state layout must let fused
   sync paths keep task state on the native stack.
 
-## 7. Selected sources
+## 8. Selected sources
 
 - WASI 0.3 launch, Bytecode Alliance (2026): <https://bytecodealliance.org/articles/WASI-0.3>
 - Component-model Concurrency explainer: <https://github.com/WebAssembly/component-model/blob/main/design/mvp/Concurrency.md>
@@ -378,3 +555,16 @@ a kernel needs none of it.
 - Nebulet retrospective: <https://lsneff.me/why-nebulet>
 - Swivel (Spectre hardening for SFI wasm), USENIX Security 2021: <https://www.usenix.org/conference/usenixsecurity21/presentation/narayan>
 - corosensei: <https://github.com/Amanieu/corosensei>
+- IX dataplane OS (OSDI 2014): <https://www.usenix.org/system/files/conference/osdi14/osdi14-paper-belay.pdf>
+- Arrakis (OSDI 2014): <https://www.usenix.org/system/files/conference/osdi14/osdi14-paper-peter_simon.pdf>
+- Shenango (NSDI 2019): <https://www.usenix.org/conference/nsdi19/presentation/ousterhout>; Caladan (OSDI 2020): <https://www.usenix.org/conference/osdi20/presentation/fried>; Shinjuku (NSDI 2019): <https://www.usenix.org/conference/nsdi19/presentation/kaffes>
+- Demikernel (SOSP 2021): <https://dl.acm.org/doi/10.1145/3477132.3483569>
+- Seastar shard-per-core / `foreign_ptr`: <https://docs.seastar.io/master/split/24.html>; thread-per-core tail-latency study (ANCS 2019): <https://penberg.org/papers/tpc-ancs19.pdf>
+- XDP (CoNEXT 2018): <http://borkmann.ch/paper/2018_xdp.pdf>; io_uring: <https://kernel.dk/io_uring.pdf>
+- BOLT (CGO 2019): <https://arxiv.org/abs/1807.06735v1>; Meta hot-text + hugepages: <https://link.springer.com/chapter/10.1007/978-3-030-23499-7_10>; Intel large code pages: <https://www.intel.com/content/dam/develop/external/us/en/documents/runtimeperformanceoptimizationblueprint-largecodepages-q1update.pdf>; AsmDB (ISCA 2019): <https://liberty.cs.princeton.edu/Publications/isca19_frontend.pdf>
+- TCMalloc Temeraire, hugepage-aware allocation (OSDI 2021): <https://www.usenix.org/system/files/osdi21-hunter.pdf>
+- Linux `nohz_full`: <https://kernel.org/doc/html/v5.8/timers/no_hz.html>; OS-noise measurement: <https://www.iris.sssup.it/bitstream/11382/548111/1/IEEE-TC-2022.pdf>
+- Intel UINTR latency numbers (LibPreemptible): <https://arxiv.org/pdf/2308.02896>; RISC-V AIA/IMSIC v1.0: <https://docs.riscv.org/reference/aia/v1.0/MSLevel.html>
+- Unikraft (EuroSys 2021): <https://dl.acm.org/doi/10.1145/3447786.3456248>
+- ERIM, MPK domain switching (USENIX Security 2019): <https://people.mpi-sws.org/~druschel/publications/erim.pdf>
+- LLC slice-hash reverse engineering (why page coloring is dead on modern Intel): <https://eprint.iacr.org/2015/690.pdf>; RISC-V CBQRI: <https://lwn.net/Articles/929553/>
