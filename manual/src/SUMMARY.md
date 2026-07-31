@@ -31,3 +31,4 @@
 # WASM Runtime
 
 - [Supported WASM Features & Proposals](wasm/supported_features_and_proposals.md)
+- [Runtime v2 — Fact-Check and Design Notes](wasm/runtime-v2.md)
