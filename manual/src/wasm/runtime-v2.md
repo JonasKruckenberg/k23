@@ -284,6 +284,27 @@ compiler.**
    takes handles, never names. One slim engine-level type interner stays —
    `call_indirect` needs canonical func types on day one, and GC casts will need
    the same table later.
+6. **Device I/O is WIT all the way down** (decided in review): MMIO, DMA, and
+   interrupts are ordinary WIT interfaces (`k23:mmio`, `k23:dma`, `k23:irq`)
+   whose resources *are* the capabilities — an MMIO-region handle is the right
+   to touch those registers, a DMA-buffer handle is the right to that memory
+   (IOMMU-fenced), an irq handle yields a `stream` of events (top half stays
+   native; the wake is the delivery). Two implementations of one contract:
+   the **reference implementation is plain host calls** — which is what the
+   hosted backend uses against device models, making drivers testable and
+   fuzzable off-target — and the optimizing tier may recognize these interfaces
+   and lower calls on fixed edges to inline volatile accesses with the region
+   base patched in at instantiation, reaching native-driver code quality.
+   Three disciplines make this sound: (a) MMIO must *never* be mapped into a
+   wasm linear memory — wasm has no volatile semantics and any optimizer may
+   merge or elide accesses (invariant 1); interface calls are the only correct
+   surface. (b) The interface contract must state ordering explicitly
+   (read/write plus an explicit fence operation), because once calls inline,
+   the compiler — not a host function — is responsible for emitting the fences
+   (invariants 1–2). (c) Granularity: resources carry control and ownership;
+   bulk data crunching happens in linear memory after one bulk transfer or via
+   handle pass-through — a per-byte interface call in a packet loop is a design
+   bug regardless of how well it lowers.
 
 ## 4. Feature roadmap
 
