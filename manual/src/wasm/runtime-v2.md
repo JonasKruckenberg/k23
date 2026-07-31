@@ -367,14 +367,33 @@ an accident.
    wheel programs the hardware comparator to the next actual deadline. Top halves
    stay native kernel code — running wasm in IRQ context is a category error
    (invariants 4/8). *Verdict: real, nearly free, day one.*
-2. **Shard-per-core runtime state.** Pin instances to harts: task tables, vmctx,
-   waitable-sets become hart-local plain data — no atomics or locks on the poll
-   path (thread-per-core restructuring measured up to −71% p99 in ANCS'19; the CM
-   instance lock already serializes intra-instance execution, so parallelism was
-   never intra-instance anyway). Cross-hart rebalancing steals *instances*, rarely,
-   behind an epoch fence — not tasks, constantly. *Verdict: real, but it is a
-   deliberate kasync design decision against pervasive work-stealing; decide it
-   explicitly.*
+2. **Home-hart instances, not task work-stealing.** The canonical ABI's
+   instance-wide lock serializes execution within an instance, so **the parallel
+   unit of this system is the instance no matter what the scheduler does** —
+   stealing individual tasks can never extract parallelism from one instance, but
+   it forces every cross-component call and every counter (tier-up, IC feedback,
+   backpressure) to be synchronized "just in case." Give every instance a home
+   hart instead: its tasks always run there, the instance lock becomes implicit
+   (hart-serialism), counters are plain increments, eager-completion calls to
+   co-resident instances need zero synchronization, and teardown's `sfence.vma`
+   targets one hart. Burstiness — the legitimate worry, and why pure Seastar-style
+   static sharding fails general workloads (ZygOS measured 1.26x over
+   run-to-completion IX from fixing exactly this) — is handled by making the
+   *instance* the migration unit: a load-triggered rebalancer (Shenango-style
+   queue-delay signal) moves whole instances between harts, which stackless makes
+   trivially safe — at quiescence an instance is heap state and an atomic
+   home-pointer, no stack to move. Home assignment is adaptive at runtime
+   (planner labels are initial hints only), so nothing needs to be known at build
+   time. Migration respects placement labels (never onto a hart shared with a
+   distrusting side-channel-sensitive instance). Kernel-internal tasks (compile
+   jobs, housekeeping) stay in an ordinary stealable pool — two task classes, not
+   one. The pressure valve for a single instance saturating its hart is component
+   sharding (N instances of a stateless component — the planner can autoscale),
+   which is the same answer ScyllaDB gives for hot shards; no scheduler can
+   parallelize what the ABI serializes. *Verdict: real, and the instance-lock
+   argument makes it strictly better than task-stealing for guest work; the cost
+   is a rebalancer policy that doesn't exist yet (worst case degrades to
+   Seastar-static, which still works).*
 3. **Run-to-completion + eager completion + placement.** The planner co-locates
    chatty components on one hart so the eager-completion fast path (§2.6) makes a
    cross-component async call an ordinary call in the common case; IX's adaptive
@@ -438,11 +457,28 @@ an accident.
    world — any module may link at any time, against any embedder. Our component
    graph is explicit data: devirtualization and inlining driven by edge *labels*
    rather than heuristics, and export tree-shaking falls out of lazy compilation
-   (an export no edge reaches is simply never compiled). The discipline that keeps
-   this sound: the world is closed per graph but **open across time**
-   (`store.add`/`linker.start` admit new components), so no closed-world assumption
-   may be baked into code without a patch point — which is the removable-edge rule
-   (§2.6) again.
+   (an export no edge reaches is simply never compiled). How closed is the world,
+   exactly? With generation (NixOS-style) semantics it stratifies precisely along
+   the edge-lifetime labels — `store.add` admits *bytes*, not linkability;
+   linkability is reachable-from-pins, and the pin set is fixed by the root hash:
+   - **Fixed and stable edges are truly closed within a boot** (stable changes
+     only at generation switch): bake assumptions in freely — fuse, inline,
+     delete the call. Stable edges need undo records only if generation switches
+     ever become live rather than reboot-shaped.
+   - **Holes** are dynamic in *when* they fill, but their candidate sets are
+     known at build (the pins) and only ever shrink (`narrow` is monotonic). So
+     hole-filling can be speculated on safely — adapters for every candidate can
+     even be compiled ahead of time — and shrinkage is a revocation event that
+     already implies quiescence (unlink). Growth, the case that breaks
+     closed-world compilers, **cannot be expressed**.
+   - **Removable edges** are the only genuinely open surface, and they carry the
+     patch-point discipline (§2.6).
+
+   One flag: this makes the developer edit-compile-run loop a generation-switch
+   loop. The escape valve already exists in the model — a dev profile labels the
+   app's edges removable, making iteration a live re-link of a removable subgraph
+   instead of an image rebuild — but it must be treated as a first-class
+   requirement, not an afterthought, or the model punishes its own developers.
 2. **No embedder-generality tax.** No `Store<T>` generics, no runtime `Config`, no
    fuel (epochs only), no `.cwasm` serialization-stability contract, no
    SEH/DWARF/frame-pointer interop for foreign profilers and debuggers, no
