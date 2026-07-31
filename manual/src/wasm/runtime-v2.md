@@ -230,12 +230,21 @@ bucket:
    actually suspends or hits backpressure (lazy task creation, Cilk-style). This is
    the single biggest boundary optimization, and it is spec-blessed rather than
    speculative in the deopt sense.
-2. **Handle devirtualization.** Calls on resource handles are interface-typed but
-   implementation-varying — the polymorphic call sites of this system. Inline
-   caches / feedback-guided guarded inlining ("this handle is almost always the
-   uart-driver instance") work as in SpiderMonkey's wasm call inlining: a failed
-   guard falls back to the indirect call *within* optimized code. No frame
-   invalidation, no deopt metadata.
+2. **Handle dispatch.** Correction from review: in the CM as specified, resource
+   method calls are **not** polymorphic. Resource types are generative and an
+   imported resource type binds to exactly one exporting instance at
+   instantiation, so a method call is a direct call to a link-time-known
+   function; the handle is *data* (an index into the owner's handle table
+   yielding the rep), not a dispatch mechanism. With a generation-closed graph
+   this makes essentially every cross-component call site monomorphic-per-
+   generation — so no inline-cache machinery is needed for handles at all.
+   Polymorphism reappears only where the system chooses it: mux/registry
+   components (dispatch on rep *inside* guest code — ordinary core-wasm
+   indirection), wrapper splices (link-time graph edits → recompile/patch, still
+   monomorphic between edits), and guest-internal `call_indirect`/`call_ref`
+   (the classic core-wasm case, where V8's data says feedback buys little for
+   non-GC languages). Speculation machinery accordingly shrinks to: nothing, for
+   v1.
 3. **Placement.** Same-hart vs cross-hart execution is a scheduler decision that the
    CM's confined nondeterminism already permits; it needs no compiler support.
 4. **Edge lifetime.** Fixed/stable edges are static fusion, not speculation.
@@ -522,8 +531,10 @@ an accident.
    pre-initialize (live Wizer) become runtime primitives rather than external
    tools — wasmtime cannot snapshot mid-async at all (suspended fibers are
    machine stacks). This is the pitch's migration story earned structurally.
-6. **Profile infrastructure for free.** Baseline counters + inline-cache feedback
-   give the optimizing tier real PGO on every run (wasmtime AOT compiles blind);
+6. **Profile infrastructure for free.** Baseline counters (plus, if ever needed,
+   call-target feedback for guest-internal indirect calls — the only surviving
+   polymorphic sites, see §2.6) give the optimizing tier real PGO on every run
+   (wasmtime AOT compiles blind);
    owning the timer additionally allows sampling-based hotness with zero
    instrumentation — but counters are needed for call-site feedback anyway, so:
    counters first, sampling as a later augment, not a replacement.
