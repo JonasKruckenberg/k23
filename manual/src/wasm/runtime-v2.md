@@ -257,6 +257,56 @@ before the next call boundary* — e.g. inlining a removable edge into a hot loo
 Nothing in the model requires that; keeping removable-edge calls out-of-line is the
 one discipline that keeps deopt out of the system permanently.
 
+### 2.7 Framing correction: isolation is tiered, and the MMU is used, not forgone
+
+Earlier drafts called this a "single address space" with "software instead of
+hardware isolation." That is backwards and worth correcting, because the caricature
+would lead to actually leaving hardware on the table — which is not the intent. Two
+axes were conflated:
+
+- **What *defines* an isolation boundary** — the compiler/JIT (a bounds check it
+  inserts) or the MMU (a page table that faults).
+- **What *hardware accelerates* enforcement** — guard pages, ASIDs, the IOMMU,
+  W^X bits, CFI extensions.
+
+These are independent, and the design uses hardware aggressively on the second axis
+regardless of the first. The default memory mode (§2.4) is **guard pages**, which
+means the fine-grained sandbox check is *already hardware-accelerated*: the boundary
+is compiler-defined (base+bound the JIT knows), but the enforcement is a hardware
+page fault, not a compare-and-branch. "SFI" here is a hardware/software co-design,
+not a software substitute for hardware. The right principle is exactly the reviewer's:
+**use the hardware primitive wherever it is cheap at the required granularity.** The
+design already does, at three tiers:
+
+1. **Component ↔ component (highest frequency).** Boundary is compiler-defined
+   (bounds checks / guard-page traps), because the crossing must cost a call, not a
+   context switch. Making this an MMU boundary would reintroduce microkernel-IPC
+   cost — here "more hardware isolation" is *slower*, so the axis is not "more
+   hardware" but "right primitive for the crossing rate." Hardware still enforces
+   (guard-page fault) and hardens (W^X on the JIT code).
+2. **Isolate ↔ isolate (low frequency, already a trust/semantic boundary).** Boundary
+   is MMU-defined: a distinct address space per isolate, ASID-tagged, switched by the
+   scheduler at isolate hand-off (not on any call path). This is real hardware
+   isolation exactly where crossings are rare enough to amortize it — and it is the
+   one mechanism with a track record against transient-execution attacks (it is what
+   Chrome site isolation and kernel PTI are). It also multiplies the guard-slot VA
+   budget (each isolate's page table maps only its own slots). See §6 / the security
+   notes for when to actually enable it.
+3. **Device ↔ memory.** IOMMU fences every driver's DMA (§3.6); the MMU backs the
+   frame-granular CoW images and the hugepage code/direct-map layout (§6.2.5).
+
+Further hardware to fold in as it matures (surfaced by the security research):
+RISC-V CFI (Zicfilp landing pads / Zicfiss shadow stack) to harden JIT code control
+flow, speculation-barrier CSRs / the `fence.t` line of proposals, and on other
+targets ARM MTE / PAC and ultimately CHERI. None of these are forgone; several are
+simply not ratified-with-silicon on RISC-V yet.
+
+So the accurate one-liner is not "software isolation instead of hardware." It is:
+**tiered isolation — the boundary mechanism is chosen per crossing-frequency, and
+hardware accelerates or enforces at every tier.** The wins catalogued in §6 come from
+deleting *conservative generality* (unknown-counterparty APIs, per-call MMU switches
+that buy nothing at that granularity), not from declining hardware.
+
 ## 3. The design, condensed
 
 **One sentence: the kernel is the component-model event loop; everything else is a
@@ -447,10 +497,11 @@ an accident.
    probabilistically via THP/khugepaged; we get them by construction — the frame
    allocator and the code region are the same subsystem. *Verdict: real, cheap,
    bake into the allocator/code-region layout now.*
-6. **TLB economics.** Single address space → zero context-switch flushes, global
-   mappings; teardown PTE zaps batched at epoch boundaries → `sfence.vma` per
-   epoch, not per unmap, scoped to the harts that ran the instance. *Verdict:
-   real; falls out of QSBR + SAS.*
+6. **TLB economics.** Intra-isolate: no per-call address-space switch, global-bit
+   mappings for kernel text and direct map; teardown PTE zaps batched at epoch
+   boundaries → `sfence.vma` per epoch, not per unmap, scoped to the harts that ran
+   the instance. Cross-isolate switches are ASID-tagged (no flush) and rare (§2.7).
+   *Verdict: real; falls out of QSBR + tiered isolation.*
 7. **One grace period for everything.** QSBR serves RCU data structures, JIT code
    unload, slot recycling, and subgraph unlink — one mechanism where Linux carries
    RCU + RCU-tasks + deferred work queues, and V8 carries a code-GC with stack
@@ -569,9 +620,11 @@ osmosis:
   usable color bits); RISC-V's Ssqosid/CBQRI has no public silicon numbers yet.
   Rely on the placement labels (don't share cores across sensitive pairs); revisit
   when CBQRI hardware exists.
-- **Per-guest address spaces for defense-in-depth.** Re-pays the 25–33% hardware
-  isolation tax the whole design exists to avoid. The MMU hardens code (W^X) and
-  backs slots; it is not the sandbox.
+- **Per-*instance* address spaces.** Re-pay the 25–33% hardware-isolation tax on
+  exactly the high-frequency intra-isolate calls the design fuses — the tax lands
+  where crossings are cheapest to avoid and blocks fusion/eager-completion. This
+  is the granularity error; per-*isolate* address spaces (§2.7) are the opposite
+  trade and are in the design.
 - **Epochs as the universal clock.** QSBR reclaims; it must not *pace*. Nothing
   latency-sensitive may wait on a grace period (allocation paths stay
   epoch-independent), and backedge checks bound laggard harts.
