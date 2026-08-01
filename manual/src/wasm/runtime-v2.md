@@ -364,6 +364,86 @@ compiler.**
    bulk data crunching happens in linear memory after one bulk transfer or via
    handle pass-through — a per-byte interface call in a packet loop is a design
    bug regardless of how well it lowers.
+7. **Isolates are exposed to init as authority, not syscalls.** The kernel starts
+   exactly one component — `init` — and hands it a root `linker` plus the
+   hardware-handle mint (per the pitch). An **isolate is just a linker whose
+   started instances share one address space and one encryption key**; the key is
+   minted inside the isolate and is not expressible in any interface, so it cannot
+   leak by construction. Creating one is an authority init holds (`isolate.new` →
+   returns that isolate's linker), gated upstream by a keeper that mints the
+   isolate handle only once its lock's evidence is presented. Cross-isolate edges
+   are ordinary handle grants that the build labeled trust-crossing (fusion off,
+   barriers on). Programmer's view: init is a component like any other, but for
+   most systems it is **generated from declarative config by `k23-build`** — the
+   planner resolves placement and labels at build time (§3.8), init merely enacts
+   the resolved plan and fills holes as evidence arrives (boot, login, hotplug).
+   Hand-authoring init against the `k23:link`/`k23:isolate` WIT is the power-user
+   path, not the common one. Nothing here is a syscall surface — it is capability
+   plumbing in a component.
+8. **Placement is relocation-based linking (§3.8).** Instantiating the graph is the
+   *loading* half of dynamic linking with the *symbol-lookup* half deleted (the
+   build already resolved every name to a concrete component pair). See §3.8 for
+   the mechanism; the key point for the pipeline is that compiled code is emitted
+   position-independent with **relocations preserved to placement time**, so one
+   cached `(hash, cpu, tier)` compilation is placed — with fresh randomization —
+   at every boot without recompiling.
+
+### 3.8 Placement, relocation, and the one patchable-edge primitive
+
+Placement — deciding where each instance's code, memory, tables, and the targets of
+its edges physically land, then making the code reference those addresses — is k23's
+equivalent of dynamic linking, and the reviewer's instinct to steal the linker's
+tricks is right. Precisely: we keep the *relocation/loading* half and drop the
+*symbol-resolution* half, because the closed-per-generation graph (§6.3) already
+resolved names to concrete pairs at build. What remains is patching addresses, which
+is exactly what enables randomization without recompilation.
+
+**Two patch strategies, chosen by edge label — the same split as everywhere else:**
+
+- **Baked relocations** for fixed/stable edges and for placement addresses (memory
+  base, table/global bases, direct call targets). The address is an immediate/PC-
+  relative operand the compiler left as a relocation record; placement fills it in.
+  Result: a plain direct call or `base+offset` with no indirection at run time.
+  Patching mutates *code*, but placement patches **before the code ever executes**,
+  so the hard RISC-V cross-modifying-code problem (§2.2) degenerates to its easy
+  case: patch all relocations, one `fence.i` per hart that will run it, then start —
+  no concurrent execution, no IPI dance. Placement-time is the *only* time code
+  modification is cheap, and fixed edges live here.
+- **Data slots** for removable edges and tier-up targets: the call loads a target
+  pointer from a per-edge word and calls through it. One extra load at run time, but
+  patching is a plain store under ordinary Release ordering, patchable *while
+  running*, reclaimed via QSBR — no icache flush, no `fence.i`, no IPI.
+
+The unification worth naming: **placement (dynamic linking), tier-up (code-version
+swap), and removable-edge re-link are one "patchable edge" primitive at two speeds.**
+Fixed/rare → code relocation (fast call, patch once). Removable/live → data slot
+(one load, patch anytime). The edge labels that already drive fusion, mitigation, and
+inlining also pick the patch mechanism — no new concept, just a fourth reading of the
+same labels.
+
+**Randomization falls out for free.** Emitting per-function code with inter-function
+calls as relocations *is* function-granular ASLR: place each function at an
+independently randomized address and patch the calls — the FGKASLR-like design
+`manual/src/aslr.md` aspires to, delivered without the per-boot recompilation that
+document assumed, because relocation patching is memcpy-plus-a-few-stores against a
+cached compilation, not a Cranelift run. Cranelift already emits relocations (the
+current tree resolves them in `link_and_finish`); the only pipeline change is to
+*preserve* them to placement rather than resolve all at compile time.
+
+**"Ad-hoc compiled stubs" = copy-and-patch at the link layer.** For edges that want
+a specialized trampoline (a fused adapter, a mitigation-wrapped call), pre-bake the
+stub as a copy-and-patch *stencil* (§2.2's C&P reference) with holes for the concrete
+addresses/offsets, and stamp it out at placement — machine-code-quality glue for the
+cost of a memcpy and a few patches, no per-edge Cranelift invocation. This is how
+placement stays sub-recompile even when edges need real code, not just an address.
+
+**One caveat to state plainly:** baked code is position-*dependent* after patching —
+it cannot move again without re-patching. That is fine because **code never
+migrates**: instance *migration* (§6.2.2) moves heap state, and the target either
+already has the component's code placed or re-derives it from the hash. Only data
+moves; code is re-placed, never relocated live. Don't let the "relocations" framing
+smuggle in an assumption that placed code is freely movable — it isn't, and nothing
+needs it to be.
 
 ## 4. Feature roadmap
 
