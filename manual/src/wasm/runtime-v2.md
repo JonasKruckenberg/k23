@@ -633,19 +633,161 @@ osmosis:
   that knows more about the scheduler (or vice versa) welds shut the seams that
   make the rest of this document's deletions possible.
 
-## 7. Risks
+## 7. Security model and the isolation TCB
+
+Researched after review. The literature is unanimous on one point, and the design
+must be built on it rather than against it.
+
+### 7.1 What SFI does and does not buy
+
+**SFI gives host-from-guest *integrity*, contingent on a correct compiler, plus a
+*raised bar* on side channels. It never gives Spectre-class confidentiality.** V8's
+team ("Spectre is here to stay", 2019) showed untrusted in-process code can build a
+*universal read gadget* reading all co-mapped memory via microarchitectural channels,
+and concluded there is no comprehensive software mitigation — which is why Chrome
+moved to per-site *process* isolation. Measured leak rates frame the threat: >1 KB/s
+(C++ v1 gadget with `rdtsc`), >10 B/s (JS, coarse timer); Cloudflare's DyPrIs
+demonstrated a *remote* Spectre leak against production Workers at ~120 bit/h even
+after freezing timers. Of the transient-execution family, only **v1
+(bounds-check bypass)** has a credible in-domain software mitigation (index masking,
+SLH at 10–50%, Swivel's linear blocks at ≤10.3% SFI / ≤6.1% CET). **v2/BTI, RSB/
+ret2spec, and MDS/L1TF do not** — they need hardware (CET/IBRS-class) or, for MDS,
+*disabling SMT*, because MDS leaks across hyperthreads independent of address.
+
+The consequence is not "give up" — Cloudflare and Fastly run millions of
+mutually-distrusting SFI tenants — but that they do so on a **layered** stack, never
+SFI alone: memory-safe wasm + a *verified* compiler, environmental throttles (no fine
+timers, no attacker concurrency), fresh guard-separated instances, a hardware
+fallback at tenant granularity, and co-residency control. k23 gets several of these
+structurally rather than bolted on (§7.3), which is the real security story here.
+
+### 7.2 The JIT is the entire TCB — treat it as such
+
+With SFI as the boundary, the compiler *is* the isolation mechanism: a single
+miscompiled bounds check is a full host compromise. This is not hypothetical —
+Cranelift has shipped sandbox-escape miscompiles (CVE-2023-26489: a 35-bit effective
+address instead of 33-bit, reaching ~6–34 GB past the base; April 2026 advisories:
+an aarch64 heap-access bug where the checked and loaded addresses differed, and Winch
+baseline bugs). Two implications specific to this project:
+
+1. **We are writing a *second* compiler** (the riscv64 baseline tier). It will not
+   have Cranelift's fuzzing-years behind it. Baseline backends are exactly where the
+   April 2026 Winch escapes were. So: differential fuzzing (`wasm-smith`, baseline vs
+   Cranelift vs a reference) is a day-one deliverable, not a maturity nicety, and the
+   hosted backend (§2.5) is what makes it runnable at scale off-target.
+2. **Adopt compiler verification as it matures.** VeriWasm (sound static verifier of
+   SFI in compiled output; deployed at Fastly) and Crocus/VeriISLE (SMT verification
+   of Cranelift ISLE lowering rules, ASPLOS 2024) are the state of the art. The
+   translation-validation shape — verify the *output* per compile — fits a kernel
+   that already validates at the store `add` gate; a verifier pass over freshly
+   compiled code before it is published (RX-flipped) is the natural hook, and QSBR
+   already gates publication.
+
+Also inherited: **intra-component memory is unprotected** ("Everything Old is New
+Again", USENIX Sec 2020 — wasm linear memory has no internal guard pages, so a
+component compromised *internally* is a stepping stone even though it cannot escape
+the sandbox). This does not break the isolation story but it bounds what "one
+component = one blast radius" means: a corrupted component can misuse every handle it
+holds, so least-authority handle granting (the pitch's model) is a security control,
+not just an aesthetic.
+
+### 7.3 What k23 gets structurally, and where the hardware boundary goes
+
+The production pattern the literature converges on — **SFI fast path + hardware
+boundary at trust granularity + environmental throttles** — maps onto the existing
+design almost exactly, and in several places k23 gets by construction what
+Cloudflare/Fastly bolt on:
+
+- **Environmental throttles are structural.** No shared memory between components (no
+  `SharedArrayBuffer`-equivalent to build a counting-thread timer), cooperative
+  single-threaded execution per instance (no attacker concurrency), and clock
+  exposed only as a coarse host-updated import (§6.2.9) — this is precisely
+  Cloudflare's timer/concurrency model, except it falls out of the component ABI and
+  cooperative scheduler instead of being a special case.
+- **The isolate is the hardware-boundary granularity, by declaration not detection.**
+  DyPrIs promotes *suspected* workers to processes using runtime HPC monitoring
+  because a cloud can't know trust ahead of time. k23 *does* know: the edge trust
+  labels (§ pitch) mark exactly which boundaries leave an isolate. So the per-isolate
+  address space (§2.7) is DyPrIs made static and precise — the hardware boundary is
+  placed where the build says trust changes, with no detector to evade. This is the
+  single most important defense-in-depth lever and the reason §2.7 exists.
+- **Co-residency control is already in the scheduler.** Home-hart instances + the
+  placement labels (§6.2.10) are where "never co-schedule distrusting components on
+  one physical core" is enforced — the only real control against MDS/SMT leakage. On
+  SMT hardware this must mean SMT-off across trust boundaries, or physical-core
+  exclusion for cross-isolate pairs. State it as policy, enforce it in placement.
+- **Mitigation by label, not globally.** Speculation barriers, index masking, and
+  BTB-flush-on-entry are emitted only on trust-crossing edges by the compiler, which
+  knows the labels; intra-isolate fused calls pay nothing. Conventional systems
+  mitigate globally because they lack the boundary information we have as data.
+
+### 7.4 RISC-V specifics and the honest core-dependence
+
+The threat is **microarchitecture-dependent in a way that matters for k23's targets**:
+
+- **In-order cores (SiFive U74, Rocket)** do not do the out-of-order speculation that
+  drives classic data-cache Spectre v1/v2 — on such a core much of §7.1 is simply not
+  exploitable. **Out-of-order cores (SiFive P670, Ventana Veyron, XiangShan,
+  Tenstorrent Ascalon)** speculate and are Spectre-v1 territory — demonstrated on
+  BOOM and on XiangShan V2/V3 via Flush+Reload; Linux shipped riscv Spectre-v1
+  patches in late 2025. So the security/performance trade has an *architectural* knob
+  most runtimes don't get to think about: the same k23 image is materially safer on
+  an in-order core and faster on an OoO one, and the placement layer could even treat
+  "in-order core" as a property to schedule sensitive isolates onto.
+- **Zicfilp/Zicfiss (ratified CFI)** give landing pads + a hardware shadow stack —
+  the RISC-V equivalent of Intel CET, and the primitive a Swivel-CET-style hardening
+  of the JIT's control flow would build on. Important limit: they are *architectural*
+  CFI and **do not stop speculation** — a misspeculated indirect branch still
+  transiently reaches a gadget before the landing-pad check retires. Use them to
+  harden the JIT-as-TCB against architectural control-flow hijack (real value given
+  §7.2), not as a Spectre fix.
+- **`fence.t.s`** (temporal-partitioning fence, ~1% reported overhead) is the
+  promising primitive for cheap domain-switch state clearing on OoO cores, but is
+  *unratified* — watch it; don't depend on it.
+- **No ratified RISC-V IBRS/STIBP/SSBD-equivalent CSRs** exist yet, so v2 mitigation
+  today is software (fences, masking) — reinforcing "in-order core or accept the
+  residual."
+
+### 7.5 Beyond speculation
+
+- **Rowhammer: SFI does nothing, and a wasm component is an ideal hammering engine**
+  (tight, predictable memory access — Rowhammer.js precedent). This needs a separate
+  layer (ECC, target-row-refresh, refresh management) and must be listed as an
+  explicit out-of-scope-for-SFI hazard, not silently assumed away.
+- **DMA/IOMMU for driver components:** a miscompiled or internally-compromised driver
+  that programs DMA can read arbitrary physical memory without an IOMMU domain per
+  device — and naive IOMMU mappings still expose page-adjacent data (ASPLOS'16). The
+  §3.6 DMA-as-resource design must pair with per-device IOMMU domains and
+  copy-vs-map discipline on sub-page buffers.
+
+### 7.6 Net position for k23
+
+SFI is the right *fast-path* boundary and a correct integrity mechanism, and the
+design's structure (declared trust labels, isolate address spaces, cooperative
+no-shared-memory execution, placement control) gives a genuinely strong layered
+posture — arguably better than the retrofit stacks at Cloudflare/Fastly because the
+trust boundaries are build-time data rather than runtime guesses. But three things are
+non-negotiable and must be stated as such in v1: **(a)** the compiler is the TCB —
+differential fuzzing + output verification from day one, doubly so for the hand-
+written baseline; **(b)** the per-isolate hardware boundary and cross-trust core
+exclusion are the load-bearing Spectre/MDS defenses — "SFI only, one address space,
+share cores freely" is *not* a defensible multi-tenant posture on an OoO core; **(c)**
+Rowhammer and DMA are outside SFI's remit and need their own layers. None of these
+contradict the performance thesis — they land on the rare, coarse, already-semantic
+boundaries — but pretending SFI alone is a security boundary would be the one mistake
+that discredits the whole approach.
+
+## 8. Risks
 
 - **Spec flux.** Stackful lifts, threads, stream splicing, caller-supplied buffers,
   and the CM-1.0 "lazy value handle" ABI redesign are all in motion. Mitigation:
   isolate lift/lower behind one module; everything cut in §4 is also everything in
   flux.
-- **Spectre.** Both ring-0 wasm predecessors (Nebulet, kwast) stalled with
-  transient-execution attacks as the acknowledged open problem; the 2024+ industry
-  answer is hardware isolation underneath (Mewz, Hyperlight) or compiler hardening
-  (Swivel). The pitch's "no fusing across trust boundaries" rule is the right hook;
-  bounds-check masking is the known mitigation on the memory path. v1 should state
-  this as a documented non-goal with the hooks in place, not pretend SFI alone is a
-  security boundary against a determined co-resident attacker.
+- **Spectre / transient execution.** Now treated in full in §7. Summary: SFI is not
+  a Spectre boundary; the load-bearing defenses are the per-isolate hardware boundary
+  (§2.7), cross-trust physical-core exclusion, and label-scoped barriers — all on
+  rare coarse edges. The one-address-space-share-cores-freely posture is indefensible
+  on an out-of-order core; on an in-order core the classic channels largely evaporate.
 - **Guest toolchain maturity.** All-callback-only means p3-native guests only; the
   practical question is how good `wit-bindgen`'s async Rust output is today. Needs a
   spike before committing the fiber-free constraint.
@@ -656,7 +798,7 @@ osmosis:
   regression on sync calls is the cautionary tale; task-state layout must let fused
   sync paths keep task state on the native stack.
 
-## 8. Selected sources
+## 9. Selected sources
 
 - WASI 0.3 launch, Bytecode Alliance (2026): <https://bytecodealliance.org/articles/WASI-0.3>
 - Component-model Concurrency explainer: <https://github.com/WebAssembly/component-model/blob/main/design/mvp/Concurrency.md>
@@ -689,3 +831,14 @@ osmosis:
 - Unikraft (EuroSys 2021): <https://dl.acm.org/doi/10.1145/3447786.3456248>
 - ERIM, MPK domain switching (USENIX Security 2019): <https://people.mpi-sws.org/~druschel/publications/erim.pdf>
 - LLC slice-hash reverse engineering (why page coloring is dead on modern Intel): <https://eprint.iacr.org/2015/690.pdf>; RISC-V CBQRI: <https://lwn.net/Articles/929553/>
+- V8, "Spectre is here to stay" (arXiv 2019): <https://arxiv.org/abs/1902.05178>; "A year with Spectre" (leak-rate numbers): <https://v8.dev/blog/spectre>
+- Cloudflare Workers security model: <https://blog.cloudflare.com/mitigating-spectre-and-other-security-threats-the-cloudflare-workers-security-model/>; Dynamic Process Isolation (ESORICS 2022 / arXiv 2110.04751): <https://arxiv.org/abs/2110.04751>
+- Swivel, Spectre hardening for SFI wasm (USENIX Sec 2021): <https://www.usenix.org/conference/usenixsecurity21/presentation/narayan>
+- LLVM Speculative Load Hardening: <https://llvm.org/docs/SpeculativeLoadHardening.html>
+- "Everything Old is New Again: Binary Security of WebAssembly" (USENIX Sec 2020): <https://www.usenix.org/conference/usenixsecurity20/presentation/lehmann>
+- VeriWasm (NDSS 2021): <https://cseweb.ucsd.edu/~dstefan/pubs/johnson:2021:veriwasm.pdf>; Crocus/VeriISLE Cranelift verification (ASPLOS 2024): <https://cfallin.org/pubs/asplos2024_veri_isle.pdf>
+- Wasmtime security advisories (Cranelift/Winch escape CVEs): <https://bytecodealliance.org/articles/wasmtime-security-advisories>; CVE-2023-26489: <https://github.com/advisories/GHSA-ff4p-7xrq-q5r8>
+- RISC-V CFI (Zicfilp/Zicfiss): <https://docs.riscv.org/reference/isa/v20260120/unpriv/unpriv-cfi.html>; `fence.t.s` temporal fence (arXiv 2409.07576): <https://arxiv.org/abs/2409.07576>
+- Spectre on out-of-order RISC-V: BOOM (CARRV 2019): <https://carrv.github.io/2019/papers/carrv2019_paper_5.pdf>; XiangShan (EuroSec 2026): <https://dl.acm.org/doi/10.1145/3803525.3804986>
+- Cage, ARM MTE wasm sandboxing (CGO 2025): <https://arxiv.org/abs/2408.11456>; ERIM, MPK domains (USENIX Sec 2019): <https://www.usenix.org/system/files/sec19-vahldiek-oberwagner_0.pdf>
+- x86 PTI/KPTI overhead: <https://docs.kernel.org/arch/x86/pti.html>
