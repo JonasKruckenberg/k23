@@ -164,52 +164,6 @@
               '';
             };
 
-          supertd =
-            let
-              targets = {
-                "aarch64-darwin" = {
-                  target = "aarch64-apple-darwin";
-                  hash = "sha256:4128307dd64c31c5d932ea67498d98dfeed02d8b8d88ae826f6b2323e75b3c78";
-                };
-                "x86_64-darwin" = {
-                  target = "x86_64-apple-darwin";
-                  hash = "sha256:89f7cb0510470fe37069372a4a5a2ad730807e0bac24e0c68adb666bc6502da9";
-                };
-                "aarch64-linux" = {
-                  target = "aarch64-unknown-linux-gnu";
-                  hash = "sha256:7058814f403ac56c19910749b7240234d08c897da1d934b2a648e94deb355a4b";
-                };
-                "x86_64-linux" = {
-                  target = "x86_64-unknown-linux-gnu";
-                  hash = "sha256:ed7617a0e5d45d929f34a40a88f03040bdc24b1351a606d4cb8edf8da84c1820";
-                };
-              };
-              info = targets.${pkgs.stdenv.hostPlatform.system};
-            in
-            pkgs.stdenvNoCC.mkDerivation {
-              pname = "supertd";
-              version = "latest";
-
-              src = pkgs.fetchurl {
-                url = "https://github.com/JonasKruckenberg/buck2-change-detector/releases/download/latest/supertd-${info.target}.zst";
-                hash = info.hash;
-              };
-
-              nativeBuildInputs = [
-                pkgs.zstd
-              ]
-              ++ lib.optionals pkgs.stdenvNoCC.hostPlatform.isLinux [ pkgs.autoPatchelfHook ];
-              buildInputs = lib.optionals pkgs.stdenvNoCC.hostPlatform.isLinux [
-                pkgs.stdenv.cc.cc.lib
-              ];
-
-              dontUnpack = true;
-
-              installPhase = ''
-                zstd -d "$src" -o supertd
-                install -Dm755 supertd "$out/bin/supertd"
-              '';
-            };
           # Upstream reindeer's rlimit test fails on Darwin sandboxes
           # where the soft RLIMIT_NOFILE starts above the hard limit.
           reindeer = pkgs.reindeer.overrideAttrs (old: {
@@ -229,7 +183,6 @@
             rustToolchain
             buck2
             reindeer
-            supertd
             rust-project
             jujutsu
             just

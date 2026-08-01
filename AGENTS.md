@@ -37,8 +37,9 @@ Toolchain is pinned in `rust-toolchain.toml` (nightly-2025-07-11). Don't bump it
 `just preflight` is the single gate that mirrors CI.
 
 ```sh
-just preflight                              # full local CI, host lane
-just platform=//platforms:riscv64 preflight # same gate, riscv64 lane
+just preflight                              # all CI lanes, targets your changes affect
+just preflight //...                        # same gate, whole workspace
+just changed-targets                        # print just the affected target set
 just check                                  # quick compile-check
 just clippy / check-fmt / fmt               # lint, format
 just unittests / miri / loom [targets]      # host tests (miri = UB, loom = concurrency)
@@ -46,7 +47,9 @@ just selftests                              # boot kernel under QEMU, run .wast 
 just run //sys:k23-riscv64-qemu             # interactive kernel boot
 ```
 
-`preflight` = `clippy` → `check-fmt` → `typos` → `check` → `unittests` → `miri` → `loom` → `selftests` → `buck2 audit` → `cargo-deny` → `reindeer-clean` → `check-license-headers`. Don't skip steps; license-header and reindeer checks fail PRs that pass locally otherwise.
+`preflight` = `typos` → `check-fmt` → `check-license-headers` → `clippy` on riscv64/aarch64/x86_64 → `unittests` → `miri` → `loom` → `selftests` → `buck2 audit` → `reindeer-clean` → `cargo-deny`. Don't skip steps; license-header and reindeer checks fail PRs that pass locally otherwise.
+
+Recipes take a target list and default to `//...`; an *empty* list means no targets and every recipe exits 0 having done nothing, which is how `changed-targets` reports "nothing affected" without any caller special-casing it.
 
 After adding/removing a crate, run `just rust-project` so rust-analyzer picks up the new BUCK graph.
 

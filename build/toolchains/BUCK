@@ -291,6 +291,11 @@ clang_toolchain(
     visibility = ["PUBLIC"],
 )
 
+# The prelude's cxx toolchain selects between this and `:cxx` on a branch that can
+# never be taken, but unconfigured graph queries still resolve both — without this
+# target `uquery` cannot traverse the deps of any target that needs a cxx toolchain.
+alias(name = "cxx_no_default_deps", actual = ":cxx", visibility = ["PUBLIC"])
+
 qemu_toolchain(
     name = "qemu",
     qemu = ":qemu_bin",

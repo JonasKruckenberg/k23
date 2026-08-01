@@ -1,26 +1,26 @@
 # Running Checks Across Architectures
 
-`just preflight` runs one CI lane locally. Without `platform=`, that's the
-host lane: lint, check, unittests, miri, loom, selftests, and the audit /
-license group. With `platform=X`, it's the X lane: lint and check at X,
-plus the universal audit group. Unit, miri, and loom tests are host-only
-by construction (they declare `target_compatible_with = [host_configuration.os,
+`just preflight` runs every lane CI runs: hygiene, clippy on all three
+arches, then unittests, miri, loom and the qemu selftests, then the audit /
+license group. Unit, miri, and loom tests are host-only by construction
+(they declare `target_compatible_with = [host_configuration.os,
 host_configuration.cpu]`) and `--skip-incompatible-targets` drops them
-silently under `platform=X`. `selftests` always boots the riscv64 qemu
+silently on the arch lanes. `selftests` always boots the riscv64 qemu
 image; per-arch qemu_test targets aren't wired yet.
 
+By default it only covers the targets your changes affect, so it is cheap
+enough to run before every push. Pass targets explicitly to override:
+
 ```sh
-just preflight                                 # full host lane
-just platform=//platforms:riscv64 preflight    # riscv64 lane
-just platform=//platforms:aarch64 preflight    # aarch64 lane
-just platform=//platforms:x86_64  preflight    # x86_64 lane
+just preflight                        # everything your changes affect
+just preflight //...                  # the whole workspace
+just preflight //lib/mycrate:mycrate  # one crate
 ```
 
-The same `platform=` flag is accepted by `check`, `clippy`, `doc`,
-`unittests`, `miri`, `loom`, and `benchmark` if you want to invoke a single
-phase. CI matrixes `check`, `clippy`, and `selftests` across the supported
-arches on every push; the host lane additionally runs unittests, miri,
-loom, and the audit group.
+`just changed-targets` prints the affected set on its own if you want to see
+what preflight will act on. Individual phases (`check`, `clippy`, `doc`,
+`unittests`, `miri`, `loom`, `benchmark`) take the same target list plus a
+`platform=X` flag if you want to invoke just one.
 
 A crate that's intrinsically host-only (test runners, benches, fuzzers,
 host tooling like `mkdisk-img`) declares this with `target_compatible_with`:

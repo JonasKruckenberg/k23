@@ -1,23 +1,25 @@
 name: changed-targets
 
-# Reusable workflow that computes the set of Buck2 targets impacted by a PR and
-# exposes them to downstream jobs as two outputs:
-#   - `impacted`: space-separated target list. EMPTY means "run the full suite"
-#                 (an empty `targets` arg is the whole workspace in the justfile)
-#   - `skip`:     "true" only when nothing is impacted, so a downstream job knows
-#                 an empty `impacted` means "run nothing" rather than "run all".
+# Reusable workflow that computes the set of Buck2 targets impacted by a change
+# and exposes them to downstream jobs as a single output:
 #
-# Intended to be invoked on `pull_request` events only.
+#   `targets`: space-separated target list to hand to `just <recipe> '<targets>'`.
+#              `//...` means the whole workspace, empty means nothing is affected
+#
+# All the logic lives in `just changed-targets`, so CI runs exactly the same code
+# path as a local `just preflight`.
 
 on:
   workflow_call:
+    inputs:
+      base:
+        description: "revision to diff against; empty means run the whole workspace"
+        type: string
+        default: ""
     outputs:
-      impacted:
-        description: "space-separated impacted targets; empty = run the full suite"
-        value: ${{ jobs.changed-targets.outputs.impacted }}
-      skip:
-        description: "true when no targets are impacted (downstream jobs must not run)"
-        value: ${{ jobs.changed-targets.outputs.skip }}
+      targets:
+        description: "space-separated impacted targets; `//...` = whole workspace"
+        value: ${{ jobs.changed-targets.outputs.targets }}
 
 permissions:
   contents: read
@@ -26,16 +28,15 @@ jobs:
   changed-targets:
     name: Determine changed targets
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     outputs:
-      impacted: ${{ steps.compute.outputs.impacted }}
-      skip: ${{ steps.compute.outputs.skip }}
+      targets: ${{ steps.compute.outputs.targets }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -44,69 +45,18 @@ jobs:
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
 
-      - name: Colocate jj on git
-        run: nix develop .#ci --command jj git init --colocate
-
-      - name: Determine base SHA
-        id: base
-        run: |
-          BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
-          echo "sha=$BASE" >> "$GITHUB_OUTPUT"
-          echo "Base: $BASE"
-
-      - name: Restore base.jsonl
-        id: cache-base
-        uses: actions/cache@v5
-        with:
-          path: base.jsonl
-          key: changed-targets-base-${{ runner.os }}-${{ steps.base.outputs.sha }}
-
-      - name: Build base.jsonl (cache miss)
-        if: steps.cache-base.outputs.cache-hit != 'true'
-        timeout-minutes: 10
-        run: |
-          REPO=$PWD
-          git worktree add --detach /tmp/base-tree "${{ steps.base.outputs.sha }}"
-          if [ ! -f /tmp/base-tree/.buckconfig ]; then
-            echo "Base ${{ steps.base.outputs.sha }} predates buck2 setup — no base.jsonl will be produced"
-          else
-            (cd /tmp/base-tree && nix develop "$REPO#ci" --command supertd targets root//... --output "$REPO/base.jsonl") \
-              || { echo "::warning::supertd targets failed at base — base.jsonl skipped"; rm -f base.jsonl; }
-          fi
-          git worktree remove --force /tmp/base-tree
-
+      # BASE goes through the environment rather than being interpolated into the
+      # script: `${{ }}` is substituted before bash ever sees the line, so a ref
+      # containing shell metacharacters would be executed rather than read.
       - name: Compute impacted targets
         id: compute
-        timeout-minutes: 10
-        # Run the `just changed-targets-diff` command to establish the diff, then runs `just changed-targets`
-        # to produce the list of impacted buck2 targets from that.
-        #
-        # Emits the two outputs (`impacted` and `skip`) at the end depending on outcome.
+        env:
+          BASE: ${{ inputs.base }}
         run: |
-          full_run() { echo "impacted=" >> "$GITHUB_OUTPUT"; echo "skip=false" >> "$GITHUB_OUTPUT"; }
-          if [ ! -s base.jsonl ]; then
-            echo "No base.jsonl available — falling back to full suite"
-            full_run; exit 0
-          fi
-          nix develop .#ci --command just changed-targets-diff "${{ steps.base.outputs.sha }}" > changes.txt < /dev/null
-          set +e
-          nix develop .#ci --command just changed-targets changes.txt base.jsonl > impacted.txt < /dev/null
-          rc=$?
-          set -e
-          if [ "$rc" -ne 0 ]; then
-            echo "::error::changed-targets failed (exit $rc) — falling back to full suite"
-            full_run; exit 0
-          fi
-          IMPACTED=$(tr -s '[:space:]' ' ' < impacted.txt | sed 's/^ *//;s/ *$//')
-          if [ "$IMPACTED" = "__ALL__" ]; then
-            echo "Pessimistic fallback: a high-level file changed — full suite"
-            full_run
-          elif [ -z "$IMPACTED" ]; then
-            echo "No impacted targets — downstream jobs skip"
-            echo "impacted=" >> "$GITHUB_OUTPUT"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          if [ -z "$BASE" ]; then
+            targets='//...'
           else
-            echo "Impacted: $IMPACTED"
-            echo "impacted=$IMPACTED" >> "$GITHUB_OUTPUT"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            targets=$(nix develop .#ci --command just changed-targets "$BASE" < /dev/null)
           fi
+          echo "Impacted: ${targets:-<none>}"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
