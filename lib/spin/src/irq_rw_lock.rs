@@ -12,7 +12,7 @@ use core::fmt;
 
 use util::loom_const_fn;
 
-use crate::util::hold_interrupts;
+use crate::util::with_interrupts_disabled;
 use crate::{RwLock, Upgradeable};
 
 /// A lock that provides data access to either one writer or many readers, and
@@ -83,11 +83,9 @@ impl<T: ?Sized> IrqRwLock<T> {
         // Reversing the order would leave a window where the ISR fires after
         // the spinlock is acquired but before IRQs are masked => deadlock.
         //
-        // Unwinding happens in the same order: `RwLock::with_read` releases the
-        // lock, then `_held_irq` drops and restores IRQs.
-        let _held_irq = hold_interrupts();
-
-        self.inner.with_read_lock(f)
+        // Unwinding happens in the same order: `RwLock::with_read_lock`
+        // releases the lock, then the IRQ state is restored on the way out.
+        with_interrupts_disabled(|| self.inner.with_read_lock(f))
     }
 
     /// Masks interrupts and attempts to acquire this lock with shared read
@@ -100,9 +98,7 @@ impl<T: ?Sized> IrqRwLock<T> {
     where
         F: FnOnce(&T) -> R,
     {
-        let _held_irq = hold_interrupts();
-
-        self.inner.try_with_read_lock(f)
+        with_interrupts_disabled(|| self.inner.try_with_read_lock(f))
     }
 
     /// Masks interrupts, locks this rwlock with exclusive write access blocking
@@ -116,9 +112,7 @@ impl<T: ?Sized> IrqRwLock<T> {
     where
         F: FnOnce(&mut T) -> R,
     {
-        let _held_irq = hold_interrupts();
-
-        self.inner.with_write_lock(f)
+        with_interrupts_disabled(|| self.inner.with_write_lock(f))
     }
 
     /// Masks interrupts and attempts to lock this rwlock with exclusive write
@@ -131,9 +125,7 @@ impl<T: ?Sized> IrqRwLock<T> {
     where
         F: FnOnce(&mut T) -> R,
     {
-        let _held_irq = hold_interrupts();
-
-        self.inner.try_with_write_lock(f)
+        with_interrupts_disabled(|| self.inner.try_with_write_lock(f))
     }
 
     /// Masks interrupts and attempts to lock this rwlock with exclusive write
@@ -148,9 +140,7 @@ impl<T: ?Sized> IrqRwLock<T> {
     where
         F: FnOnce(&mut T) -> R,
     {
-        let _held_irq = hold_interrupts();
-
-        self.inner.try_with_write_lock_weak(f)
+        with_interrupts_disabled(|| self.inner.try_with_write_lock_weak(f))
     }
 
     /// Masks interrupts, obtains an upgradeable handle blocking the current
@@ -164,9 +154,7 @@ impl<T: ?Sized> IrqRwLock<T> {
     where
         F: FnOnce(Upgradeable<'_, T>) -> R,
     {
-        let _held_irq = hold_interrupts();
-
-        self.inner.with_upgradeable_read_lock(f)
+        with_interrupts_disabled(|| self.inner.with_upgradeable_read_lock(f))
     }
 
     /// Masks interrupts and attempts to obtain an upgradeable handle; on
@@ -180,9 +168,7 @@ impl<T: ?Sized> IrqRwLock<T> {
     where
         F: FnOnce(Upgradeable<'_, T>) -> R,
     {
-        let _held_irq = hold_interrupts();
-
-        self.inner.try_with_upgradeable_read_lock(f)
+        with_interrupts_disabled(|| self.inner.try_with_upgradeable_read_lock(f))
     }
 
     /// Returns a mutable reference to the underlying data.

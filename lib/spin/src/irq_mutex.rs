@@ -10,7 +10,7 @@ use core::fmt;
 use util::loom_const_fn;
 
 use crate::Mutex;
-use crate::util::hold_interrupts;
+use crate::util::with_interrupts_disabled;
 
 /// A mutual exclusion primitive that additionally masks interrupts for the
 /// duration of the critical section.
@@ -58,12 +58,10 @@ impl<T: ?Sized> IrqMutex<T> {
         // Reversing the order would leave a window where the ISR fires after
         // the spinlock is acquired but before IRQs are masked — same deadlock.
         //
-        // Unwinding happens in the same order: `Mutex::with` releases the
-        // spinlock, then `_held_irq` drops and restores IRQs. Restoring IRQs
-        // while still holding the lock would reopen that window.
-        let _held_irq = hold_interrupts();
-
-        self.inner.with_lock(f)
+        // Unwinding happens in the same order: `Mutex::with_lock` releases the
+        // spinlock, then the IRQ state is restored on the way out. Restoring
+        // IRQs while still holding the lock would reopen that window.
+        with_interrupts_disabled(|| self.inner.with_lock(f))
     }
 
     /// Masks interrupts and attempts to acquire the IrqMutex without spinning;
@@ -76,9 +74,7 @@ impl<T: ?Sized> IrqMutex<T> {
     where
         F: FnOnce(&mut T) -> R,
     {
-        let _held_irq = hold_interrupts();
-
-        self.inner.try_with_lock(f)
+        with_interrupts_disabled(|| self.inner.try_with_lock(f))
     }
 
     /// Returns a mutable reference to the underlying data.

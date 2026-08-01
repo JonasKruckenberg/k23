@@ -9,7 +9,6 @@
 
 #![cfg_attr(not(test), no_std)]
 #![feature(dropck_eyepatch)]
-#![feature(negative_impls)]
 
 mod backoff;
 mod barrier;
