@@ -532,6 +532,130 @@ trusted JIT code; (b) whether small instances share a memory slot's guard reserv
 guest region between memories/tables/vmctx and the randomization budget for each
 (§3.8).
 
+### 3.10 Sv48 layout and arenas
+
+Sv48 gives a 48-bit VA sign-extended from bit 47 to 64 bits — two canonical 128 TiB
+halves with a faulting hole between (identical shape to x86-64). Page granularities:
+4 KiB, 2 MiB, 1 GiB. With per-isolate address spaces (§2.7), the **higher half is the
+shared global kernel** (identical PTEs, global bit, in every isolate's page table) and
+the **lower half is that isolate's private guest region**. This gives a free, load-
+bearing invariant: **any guest-reachable address is lower-half; anything higher-half is
+kernel/shared** — a one-bit provenance check aligned with invariant 5, and the reason
+an isolate switch only reloads the lower half (§3.9).
+
+```
+Sv48 — bit-47 sign-extended.  Two 128 TiB canonical halves.
+
+0xFFFF_FFFF_FFFF_FFFF ┌─────────────────────────────────────────────────┐ ▲
+                      │  device / MMIO / IMSIC   (non-cacheable, phys)    │ │
+                      │  per-hart stacks + cpu-local   (wired, guarded)   │ │ GLOBAL
+                      │  pristine init images   (RO, component-backed)    │ │ KERNEL
+                      │  JIT code   (RX, shared, 2 MiB hugepages)         │ │ HALF
+                      │  direct map of all RAM   (RW, 1 GiB pages;        │ │ — mapped
+                      │      talc kernel heap lives here, inv. 7)         │ │ identically
+                      │  kernel image   (RX/RO/RW, KASLR slide)           │ │ into every
+0xFFFF_8000_0000_0000 └─────────────────────────────────────────────────┘ ▼ isolate
+                      ╳╳╳   non-canonical hole — always faults   ╳╳╳
+0x0000_7FFF_FFFF_FFFF ┌─────────────────────────────────────────────────┐ ▲
+                      │         …randomization gap…                       │ │ PER-ISOLATE
+                      │  linear-memory slots  (~6 GiB: 4 GiB max+guard;   │ │ GUEST HALF
+                      │      demand-commit, CoW, swappable, relocatable)  │ │ — this
+                      │        …randomization gap…                        │ │ isolate's
+                      │  table / vmctx slots                              │ │ instances
+                      │        …randomization gap…                        │ │ only;
+                      │  DMA regions  (wired, IOMMU-mapped) [driver iso]  │ │ reloaded on
+0x0000_0000_0000_1000 │  null guard                                       │ │ isolate
+0x0000_0000_0000_0000 └─────────────────────────────────────────────────┘ ▼ switch
+```
+
+Sub-region sizes are illustrative; the exact carve-up and per-region entropy budget are
+the open decisions from §3.9. Sv57 (five levels, 128 PiB per half) is a drop-in if VA
+ever gets tight — but per-isolate lower halves make that unlikely (each isolate gets a
+fresh 128 TiB).
+
+**Arenas.** Grouping the §3.9 objects by the memory *policy* they need, not by what
+they are:
+
+| Arena | Objects | Prot | Initial content | Reclaim under pressure | Movable | Shared |
+|---|---|---|---|---|---|---|
+| **Wired-core** | kernel img, direct map, page tables, talc heap, per-hart stacks, cpu-local, dispatch slots, vmctx, globals, engine/handle/waitable tables | RW / RX | frames, ELF | **none — pinned** (inv. 7/8) | no | global |
+| **Code** | JIT code, trap/unwind side-tables | RW→**RX** (W^X) | compiler output | **discard + recompile** (recomputable; no write-back) | no (position-dependent, §3.8) | yes (1 copy / component×cpu×tier) |
+| **Image** | pristine linear-memory init images | RO | **component data segments** (from store) | **discard + refetch** from store | no | yes (CoW source) |
+| **Guest-memory** | linear memories, funcref tables | RW (mem), RW→RO (tables) | CoW from Image, else zero; demand-commit | **compress-in-RAM, then swap** | **yes — relocatable** | no (CoW-private) |
+| **DMA** | driver DMA buffers + descriptor rings | RW, cacheable | frames, IOMMU-mapped | **none — pinned** | no | no |
+| **Device** | MMIO registers, IMSIC pages | RW, **non-cacheable** | device physical (not RAM) | none | no | MMIO per-driver / IMSIC global |
+| **Task** | CM callback-task continuations | RW | kernel heap | hot: pinned; **cold-suspended: compress / swap** | yes (heap) | no |
+
+Three corrections to the arena sketch from review, each load-bearing:
+
+1. **Code is *shared*, not CoW, and *recomputed*, not swapped.** Every instance of a
+   component maps the same RX code read-only — that is sharing, and there is never a
+   copy-on-write event (specialization happens by recompiling to a new tier, not by
+   forking code). And code is *recomputable* from the content-addressed component
+   bytes, so under pressure the right move is **discard-and-recompile** (like V8
+   freeing Liftoff code), which is strictly cheaper than swap — no write-back, the
+   "backing store" is the store plus the compiler. Build eviction-by-discard, not a
+   code swapper. Size-class packing into hugepages by call-graph locality (§6.2.5): yes.
+
+2. **The guest-memory pool splits, because DMA memory cannot share its policy.** Normal
+   linear memory is CoW / compressible / swappable / **relocatable** — the last one is a
+   free bonus: guests address memory as `base+bounds-checked-offset` and never see a
+   physical address, so the kernel may relocate the physical frames (compaction, hugepage
+   defrag) as long as the *virtual base* is stable, and the guest cannot observe it.
+   DMA-backed memory (a driver's second linear memory) is the opposite — **wired, IOMMU-
+   mapped, never moved/swapped/compressed**, because the device may write it at any moment.
+   Same object type (linear memory), two arenas, decided by whether it is DMA.
+
+3. **You cannot swap the swapper.** Swap write-back goes *through a storage component*
+   (ZFS-as-library, per the pitch), so the storage path's own memory — disk driver, the
+   keyless substrate — must be **pinned**, or a page-out deadlocks trying to page-out.
+   This makes "which arena" partly a *placement* decision: a component on the swap path
+   lands in a wired arena regardless of its type. It also argues for **compress-in-RAM
+   before swap**: compression stays inside the kernel (no component-boundary crossing, no
+   pinning dependency) and only genuinely cold pages fall through to the storage-component
+   swap path. The Image and Code arenas dodge this entirely — their "swap" is
+   refetch/recompile from the store, not a write to it.
+
+**Component-/file-backing** (the reviewer's "backed by a component"): this is the Image
+arena. A linear memory's initial content is a component's data segment, held once as a
+shared RO image and CoW-mapped into each instance — so backing is by *content hash*, not
+a file path, and eviction is refetch-from-store. If demand-*paging* a memory from its
+image (rather than eager CoW map) is ever wanted for huge memories, that is the same
+Image arena serving faults, and is a later optimization, not v1.
+
+### 3.11 `VirtualAddress` as `isize`, and one address space vs two halves
+
+Two separable questions hide in this idea; they get opposite answers.
+
+**Signed representation — fine, even nice.** Making `VirtualAddress` an `isize` is
+reasonable: Sv48 canonicality *is* a sign-extension property (`addr == (addr << 16) >> 16`
+arithmetic-shifted is the canonical-form check), and pointer differences / ABI offsets /
+PC-relative relocations are naturally signed. Low stakes; adopt it on ergonomics if the
+arithmetic reads better. It does not by itself change any layout policy.
+
+**Scattering instances across *both* halves — don't.** The motivation is VA budget, and
+that budget is not scarce here: with per-isolate address spaces (§2.7) each isolate owns a
+*private* 128 TiB lower half, and at ~6 GiB per full slot that is ~20k full-size memories
+*per isolate* — but a machine runs out of physical RAM (20k × 4 GiB = 80 TiB committed)
+long, long before it runs out of VA. The binding constraint is frames, not address bits.
+Against that non-benefit, using the higher half for guests costs three real things:
+
+1. It **destroys the lower=guest / higher=kernel provenance invariant** (§3.10) — a free
+   safety/security check directly serving invariant 5 (keep host and guest provenance
+   separate) and the SFI-is-the-TCB posture (§7).
+2. It **breaks the isolate-switch optimization** (§3.9): the higher half is the shared
+   global kernel precisely so a `satp`+ASID switch reloads only the lower half and kernel
+   text/heap/code stay TLB-resident. Put per-isolate guest mappings up there and the
+   higher half is no longer global.
+3. It buys ~1 extra address bit of randomization entropy — negligible next to
+   function-granular ASLR within a 128 TiB half.
+
+So: keep the two-half *policy* (guest lower, kernel higher), and use the signed *type* if
+you like it — they are orthogonal. "Treat the whole space as one" is right as a *type*
+statement and wrong as an *allocation-pool* statement. If a genuine VA-scarcity workload
+ever appears (enormous count of tiny-memory instances in one isolate, packed small-slot),
+reach for dense small-slot packing (§2.4) or Sv57 first; both preserve the invariant.
+
 ## 4. Feature roadmap
 
 **Day-1 floor.** Core wasm: LLVM's `lime1` contract (what default clang/rustc output
