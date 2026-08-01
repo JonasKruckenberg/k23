@@ -12,16 +12,15 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -34,11 +33,12 @@ jobs:
       - run: nix develop .#ci --command just reindeer-clean
       - run: nix develop .#ci --command just check-license-headers
 
-  # Computes the set of Buck2 targets impacted by a PR. Skipped on push to main
-  # (no useful base ref). See .github/workflows/_changed-targets.yml for details.
+  # Computes the set of Buck2 targets impacted by this change. A push to main has
+  # no useful base ref, so it passes an empty base and gets the whole workspace.
   changed-targets:
-    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/_changed-targets.yml
+    with:
+      base: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
 
   clippy:
     strategy:
@@ -55,11 +55,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changed-targets]
-    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -67,7 +66,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
@@ -75,17 +74,18 @@ jobs:
             buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: nix develop .#ci --command just platform=${{ matrix.platform }} clippy '${{ needs.changed-targets.outputs.impacted }}'
+      - env:
+          TARGETS: ${{ needs.changed-targets.outputs.targets }}
+        run: nix develop .#ci --command just platform=${{ matrix.platform }} clippy "$TARGETS"
 
   unittests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changed-targets]
-    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -93,24 +93,25 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: nix develop .#ci --command just unittests '${{ needs.changed-targets.outputs.impacted }}'
+      - env:
+          TARGETS: ${{ needs.changed-targets.outputs.targets }}
+        run: nix develop .#ci --command just unittests "$TARGETS"
 
   miri:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changed-targets]
-    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -118,24 +119,25 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: nix develop .#ci --command just miri '${{ needs.changed-targets.outputs.impacted }}'
+      - env:
+          TARGETS: ${{ needs.changed-targets.outputs.targets }}
+        run: nix develop .#ci --command just miri "$TARGETS"
 
   loom:
     runs-on: ubuntu-latest
     needs: [changed-targets]
     timeout-minutes: 45
-    if: ${{ !cancelled() && needs.changed-targets.result != 'failure' && needs.changed-targets.outputs.skip != 'true' }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -143,43 +145,28 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: buck-out
           key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - run: nix develop .#ci --command just loom '${{ needs.changed-targets.outputs.impacted }}'
+      - env:
+          TARGETS: ${{ needs.changed-targets.outputs.targets }}
+        run: nix develop .#ci --command just loom "$TARGETS"
 
+  # `just selftests` narrows whatever it is handed to `kind(qemu_test, …)`, so an
+  # unaffected loader drops out on its own and both boot concurrently under one
+  # `buck2 test` invocation.
   selftests:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: uefi
-            test_targets: "//sys:k23-uefi-qemu-tests"
-          - name: flat
-            test_targets: "//sys:k23-flat-qemu-tests"
-    name: selftests (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [changed-targets]
-    # selftest filtering:
-    # - IF `changed-targets` failed, was cancelled, or produced `skip = true` => skip
-    # - IF `changed-targets` determined a full run OR THIS row's -qemu-tests target
-    #   is impacted => run. Guarding on `matrix.test_targets` (rather than the shared
-    #   `-qemu-tests` substring) keeps a PR touching only one loader from running both rows.
-    if: >-
-      ${{ !cancelled()
-          && needs.changed-targets.result != 'failure'
-          && needs.changed-targets.outputs.skip != 'true'
-          && (needs.changed-targets.outputs.impacted == ''
-            || contains(needs.changed-targets.outputs.impacted, '-qemu-tests')) }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -187,27 +174,25 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: buck-out
-          key: buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-${{ github.run_id }}
+          key: buck2-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
-            buck2-${{ runner.os }}-${{ github.job }}-${{ matrix.name }}-
             buck2-${{ runner.os }}-${{ github.job }}-
             buck2-${{ runner.os }}-
-      - if: >-
-          ${{ needs.changed-targets.outputs.impacted == ''
-            || contains(needs.changed-targets.outputs.impacted, matrix.test_targets) }}
-        run: nix develop .#ci --command just selftests '${{ matrix.test_targets }}'
+      - env:
+          TARGETS: ${{ needs.changed-targets.outputs.targets }}
+        run: nix develop .#ci --command just selftests "$TARGETS"
 
   cargo-deny:
     name: Cargo deny
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
@@ -215,7 +200,7 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry
@@ -226,17 +211,9 @@ jobs:
       - run: nix develop .#ci --command just cargo-deny
 
   # Aggregate gate for branch protection. This is the SINGLE required status
-  # check in the `main CI` ruleset.
-  #
-  # It exists because GitHub never satisfies a required check for a job that is
-  # skipped: a docs-only PR skips every matrix job (`changed-targets` emits
-  # `skip=true`), and skipped matrix jobs don't even expand their context names
-  # (`check (riscv64)` etc. are never reported), so those required contexts hang
-  # forever in the "Expected" state and block the PR.
-  #
-  # This job always runs, so the ruleset always gets a `ci-status` result. It
-  # fails only when a dependency actually failed or was cancelled — an
-  # intentionally-skipped job counts as a pass.
+  # check in the `main CI` ruleset, so the matrix can grow or shrink without
+  # touching the ruleset. It always runs, and fails only when a dependency
+  # actually failed or was cancelled.
   ci-status:
     name: ci-status
     runs-on: ubuntu-latest

@@ -7,13 +7,6 @@ target
 /qemu-monitor-socket
 .direnv/
 
-# buck2-change-detector files
-/base.jsonl
-/changes.txt
-/cells.json
-/config.json
-/impacted-targets.txt
-
 # rust_fuzz running corpus (committed crash repros live in fuzz/artifacts/)
 /fuzz/corpus/
 
