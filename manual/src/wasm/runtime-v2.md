@@ -445,6 +445,93 @@ moves; code is re-placed, never relocated live. Don't let the "relocations" fram
 smuggle in an assumption that placed code is freely movable — it isn't, and nothing
 needs it to be.
 
+### 3.9 Memory object taxonomy and address-space layout
+
+The complete set of object kinds the address-space allocator must place. First a
+load-bearing simplification that shapes everything below: **guest code runs in S-mode
+(the same privilege as the kernel), isolated by SFI, not by a user/kernel privilege
+split.** That is the whole "host calls are plain calls" bet — a U→S trap is the
+syscall cost we delete. Consequence for layout: there is no U-bit distinction to
+manage (no `SUM`/`PTE.U` games), every mapping is a supervisor mapping, and per-isolate
+separation is achieved purely by *which frames each isolate's page table maps* — an
+isolate simply has no PTE for another isolate's memory. The MMU is used for guard
+pages, W^X, and isolate separation, never for a privilege boundary.
+
+Three placement domains: **global** (mapped identically, global-bit, in every
+isolate's page table), **shared code** (RX, global, hugepage-backed), and
+**per-isolate** (the only region that differs between address spaces).
+
+| # | Object | Scope | Prot | Backing | Notes |
+|---|--------|-------|------|---------|-------|
+| 1 | Kernel image (text/rodata/data/bss) | global | RX/RO/RW | ELF frames | the kernel itself |
+| 2 | Direct map of physical RAM | global | RW | all RAM | frame allocator + host courier (below); talc heap lives here (invariant 7) |
+| 3 | Page-table frames | global | RW | frames | one root per isolate + shared kernel-half tables |
+| 4 | Per-hart scheduler + trap stacks | global | RW | frames | `sscratch` trap stack; guard page each (corosensei later for recover/switch) |
+| 5 | Per-hart CPU-local block | global | RW | frames | `cpu-local`; run queue head, current-task ptr, epoch counter |
+| 6 | Engine metadata: type interner, code registry, handle tables, task/subtask/waitable tables, backpressure counters | global (kernel heap) | RW | talc | canonical-ABI handle tables *are* these (§6.2.8); not guest-addressable |
+| 7 | JIT code (per component×cpu×tier) | shared | RX | frames, 2 MiB | one copy shared by all instances of a component across all isolates; content-hashed public bytes, so global RX is fine (§7); reached only by JIT call instrs, never addressable by guests |
+| 8 | Code side-tables: trap-PC table, unwind info, dispatch slots, C&P stub region | shared | RO / RW(slots) / RX(stubs) | frames | dispatch slots are the data-slot patch points (§3.8), RW; stubs RX |
+| 9 | Pristine linear-memory init images | global | RO | frames | one per component; mapped CoW into each instance's memory (§2.4) |
+| 10 | `vmctx` (VMContext) | per-instance | RW | frames | base pointers, import vector, builtin table; reached via a register; kernel-written, in the isolate's region |
+| 11 | Linear memory 0 (heap) | per-instance | RW | guard slot | the big object: reserve max+guard, commit on grow (§2.4) |
+| 12 | Additional linear memories (multi-memory) | per-instance | RW | slot / DMA frames | e.g. a driver's DMA memory (below) |
+| 13 | Tables (funcref) | per-instance | RW→RO | frames | lazy-init; often RO after start |
+| 14 | Globals | per-instance | RW | inline in vmctx / frames | usually folded into vmctx |
+| 15 | Task state (CM callback task = kasync task) | per-active-call (kernel heap) | RW | talc | the continuation heap value; `context.get/set` 2-slot array; **no native stack** — this is the snapshot-by-construction property |
+| 16 | DMA regions (buffers + descriptor rings) | per-driver-isolate | RW | IOMMU-mapped frames | cacheable RAM, known phys addr, per-device IOMMU domain; exposed as `k23:dma` resource *or* as a second linear memory (below) |
+| 17 | MMIO regions (device registers) | per-driver-isolate | RW, non-cacheable | device phys | `k23:mmio` resource; base patched into inlined volatile accessors (§3.6) |
+| 18 | Interrupt-controller pages (IMSIC/APLIC) | global | RW, non-cacheable | device phys | kernel-only; per-hart interrupt files |
+
+**How async inter-component calls are expressed — and why they need no buffer region.**
+This is the key realization for layout: the CM async ABI does **not** introduce a
+dedicated per-call or per-queue memory region. An async call's arguments and results
+are lowered into the *participants' own linear memories* (the callback ABI passes them
+by pointer); the "queue" is the executor's run queue holding task refs (object 15,
+kernel heap); `stream`/`future` are *unbuffered* — `read`/`write` rendezvous and copy
+directly between the reader's and writer's linear-memory buffers. So the only new
+storage an async call needs is its **task state** (object 15) — a heap value — plus
+handle-table entries (object 6). No shared "channel buffer" region exists in the base
+design.
+
+The one subtlety is **cross-isolate** copies: if the two components live in different
+isolate address spaces, neither maps the other's memory, so the kernel is the
+**courier** — it copies through the direct map (object 2) by physical address, touching
+both frames without either isolate sharing a mapping. This is Singularity's
+exchange-heap ownership-transfer without a dedicated exchange heap: the copy is direct
+and physical-address-mediated, one memcpy, host-driven. (Intra-isolate, or on a fixed
+fused edge, the copy is just a `memcpy` the compiler emits — §6.2.4's one-copy floor.)
+If the 0.3.x *buffered* stream/splicing features are later adopted, their buffers would
+be a new kernel-heap pool, not a guest region — flag it then.
+
+**DMA specifically** (answering "where do DMA buffers live"): a DMA buffer is cacheable
+RAM that is (a) frame-backed with a known physical address, (b) placed in a per-device
+IOMMU domain, and (c) reachable by the driver. Two ways to expose (c), decided per
+interface: as a `k23:dma` **resource** the driver reads through interface calls (one
+copy, simplest, safe), or — for zero-copy hot paths — as a **second linear memory** of
+the driver instance (object 12): the driver does ordinary loads/stores against memory
+index 1, whose frames are the IOMMU-mapped DMA region. DMA buffers are normal cacheable
+memory (unlike MMIO), so no volatile-per-access concern — the ordering that matters is
+the *completion* boundary (device-done → CPU-read), handled by the completion `future`
+resolving with a fence (§3.6), not by treating the buffer as volatile. Descriptor rings
+are the same object kind. Because slots never move (§2.4), a DMA region is DMA-safe for
+its whole lifetime with a single IOMMU map at instantiation — no pin/unpin churn.
+
+**Address-space structure that falls out:** every isolate's page table is
+`[ global kernel half (objects 1–9, 18, identical everywhere, global-bit) ]` +
+`[ this isolate's guest region (objects 10–17 for its instances only) ]`. Switching
+isolates (rare, at scheduler hand-off — §2.7) swaps only the guest region via
+`satp`+ASID; the global half never changes, so kernel text/heap/code/direct-map stay
+TLB-resident across the switch. Within an isolate there is no per-call or per-instance
+address-space change at all.
+
+**Open placement decisions** (not blockers, but flag now): (a) whether `vmctx` and
+tables sit in the guest region or a kernel-only sibling region the JIT reaches by
+register — leaning kernel-side-but-isolate-local, since guests reach them only through
+trusted JIT code; (b) whether small instances share a memory slot's guard reservation
+(dense packing) or always get a full slot — a §2.4 knob; (c) exact VA carve-up of the
+guest region between memories/tables/vmctx and the randomization budget for each
+(§3.8).
+
 ## 4. Feature roadmap
 
 **Day-1 floor.** Core wasm: LLVM's `lime1` contract (what default clang/rustc output
