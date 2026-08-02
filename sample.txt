@@ -1,0 +1,640 @@
+Analysis of sampling heartbeat_benchmarks_bin (pid 56465) every 1 millisecond
+Process:         heartbeat_benchmarks_bin [56465]
+Path:            /Users/USER/Documents/*/heartbeat_benchmarks_bin
+Load Address:    0x100254000
+Identifier:      heartbeat_benchmarks_bin
+Version:         ???
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  bash [56464]
+Target Type:     live task
+
+Date/Time:       2026-07-14 11:24:29.442 +0200
+Launch Time:     2026-07-14 11:17:36.721 +0200
+OS Version:      macOS 26.5.1 (25F80)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         324.8M
+Physical footprint (peak):  324.8M
+Idle exit:                  untracked
+----
+
+Call graph:
+    7601 Thread_5035854   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 7601 start  (in dyld) + 6992  [0x18995fe00]
+    +   7601 main  (in heartbeat_benchmarks_bin) + 36  [0x1002705f0]
+    +     7601 _RINvNtCsblkilOWXfC6_3std2rt10lang_startuECs2VdSuciCVdQ_24heartbeat_benchmarks_bin  (in heartbeat_benchmarks_bin) + 84  [0x10027ace4]  rt.rs:205
+    +       7601 _RNvNtCsblkilOWXfC6_3std2rt19lang_start_internal  (in heartbeat_benchmarks_bin) + 952  [0x1006bf53c]  rt.rs:171
+    +         7601 _RNCINvNtCsblkilOWXfC6_3std2rt10lang_startuE0Cs2VdSuciCVdQ_24heartbeat_benchmarks_bin  (in heartbeat_benchmarks_bin) + 28  [0x10027c958]  rt.rs:206
+    +           7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs2VdSuciCVdQ_24heartbeat_benchmarks_bin  (in heartbeat_benchmarks_bin) + 24  [0x100261754]  backtrace.rs:166
+    +             7601 _RNvYFEuINtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_onceCs2VdSuciCVdQ_24heartbeat_benchmarks_bin  (in heartbeat_benchmarks_bin) + 20  [0x10026b66c]  function.rs:250
+    +               7601 _RNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin4main  (in heartbeat_benchmarks_bin) + 20  [0x10026dd38]  macros.rs:120
+    +                 7601 _RNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin7benches  (in heartbeat_benchmarks_bin) + 52  [0x10026ddd4]  macros.rs:69
+    +                   7601 _RNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin19criterion_benchmark  (in heartbeat_benchmarks_bin) + 1192  [0x10026da94]  binary_tree.rs:229
+    +                     7601 _RNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts  (in heartbeat_benchmarks_bin) + 264  [0x10026d584]  binary_tree.rs:135
+    +                       7601 _RINvNtNtCsblkilOWXfC6_3std6thread6scoped5scopeNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts0uEBM_  (in heartbeat_benchmarks_bin) + 500  [0x100275454]  scoped.rs:158
+    +                         7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x100279674]
+    +                           7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCINvNtNtB6_6thread6scoped5scopeNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts0uE0EuEB2v_  (in heartbeat_benchmarks_bin) + 48  [0x10027c4e8]  panicking.rs:575
+    +                             7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCINvNtNtCsblkilOWXfC6_3std6thread6scoped5scopeNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts0uE0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1Y_  (in heartbeat_benchmarks_bin) + 44  [0x1002704d0]  unwind_safe.rs:275
+    +                               7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread6scoped5scopeNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts0uE0BO_  (in heartbeat_benchmarks_bin) + 56  [0x10027775c]  scoped.rs:158
+    +                                 7601 _RNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts0B3_  (in heartbeat_benchmarks_bin) + 1044  [0x10026d1b0]  binary_tree.rs:190
+    +                                   7601 _RNvMs1_NtNtCsblkilOWXfC6_3std6thread6scopedINtB5_16ScopedJoinHandleuE4joinCs2VdSuciCVdQ_24heartbeat_benchmarks_bin  (in heartbeat_benchmarks_bin) + 40  [0x1002782a4]  scoped.rs:323
+    +                                     7601 _RNvMs1_NtNtCsblkilOWXfC6_3std6thread9lifecycleINtB5_9JoinInneruE4joinCs2VdSuciCVdQ_24heartbeat_benchmarks_bin  (in heartbeat_benchmarks_bin) + 44  [0x10025cf24]  lifecycle.rs:220
+    +                                       7601 _RNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB5_6Thread4join  (in heartbeat_benchmarks_bin) + 24  [0x1006aff8c]  unix.rs:126
+    +                                         7601 _pthread_join  (in libsystem_pthread.dylib) + 616  [0x189d20114]
+    +                                           7601 __ulock_wait  (in libsystem_kernel.dylib) + 8  [0x189cdbaf8]
+    7601 Thread_5036016
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036017
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036018
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036019
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036020
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036021
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036022
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036023
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036024
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036025
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5036026
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+    +                     7601 _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+    +                       7601 _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+    +                         7601 _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+    +                           7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+    +                             7601 _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+    +                               7601 _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+    +                                 7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+    +                                   7601 _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+    +                                     7601 _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+    +                                       7601 _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+    +                                         7601 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+    +                                           7601 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x189cdd50c]
+    7601 Thread_5038093
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038094
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038095
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038096
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038098
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038099
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038100
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038102
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038103
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038104
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038105
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038106
+    + 7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+    +   7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+    +     7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+    +       7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+    +         7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+    +           7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+    +             7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+    +               7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+    +                 7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+    +                   7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+    +                     7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+    +                       7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+    +                         7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+    +                           7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+    +                             7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+    +                               7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+    +                                 7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+    +                                   7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+    7601 Thread_5038107
+      7601 thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+        7601 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+          7601 _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+            7601 _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+              7601 _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+                7601 __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+                  7601 _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+                    7601 _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+                      7601 _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+                        7601 _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+                          7601 _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+                            7601 _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+                              7601 _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+                                7601 _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+                                  7601 _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+                                    7601 _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+                                      7601 _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+                                        7601 semaphore_wait_trap  (in libsystem_kernel.dylib) + 8  [0x189cd9bb0]
+
+Total number in stack (recursive counted multiple, when >=5):
+        24       _RNvNvMs0_NtNtNtCsblkilOWXfC6_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in heartbeat_benchmarks_bin) + 408  [0x1006c69ec]  unix.rs:118
+        24       _pthread_start  (in libsystem_pthread.dylib) + 136  [0x189d1dc58]
+        24       thread_start  (in libsystem_pthread.dylib) + 8  [0x189d18c1c]
+        13       _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEB1f_  (in heartbeat_benchmarks_bin) + 32  [0x1002617b8]  backtrace.rs:166
+        13       _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EuEB2P_  (in heartbeat_benchmarks_bin) + 48  [0x10027c5b4]  panicking.rs:575
+        13       _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0B16_  (in heartbeat_benchmarks_bin) + 180  [0x10025c430]  lifecycle.rs:68
+        13       _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00B18_  (in heartbeat_benchmarks_bin) + 104  [0x10025c9c0]  lifecycle.rs:70
+        13       _RNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000B7_  (in heartbeat_benchmarks_bin) + 416  [0x10026c9e0]  binary_tree.rs:147
+        13       _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1b_  (in heartbeat_benchmarks_bin) + 24  [0x100269ec0]  function.rs:250
+        13       _RNvMs0_NtCsaO1TPFUP5Jh_9heartbeat4parkNtB5_4Park4park  (in heartbeat_benchmarks_bin) + 76  [0x100282c0c]  park.rs:138
+        13       _RNvMs1_CsaO1TPFUP5Jh_9heartbeatNtB5_6Worker9main_loop  (in heartbeat_benchmarks_bin) + 240  [0x10028313c]  lib.rs:289
+        13       _RNvNtNtCsblkilOWXfC6_3std6thread9functions4park  (in heartbeat_benchmarks_bin) + 96  [0x1006c1a30]  functions.rs:533
+        13       _RNvNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin8std_park4park  (in heartbeat_benchmarks_bin) + 236  [0x10026f180]  binary_tree.rs:106
+        13       _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNCNCNvCs2VdSuciCVdQ_24heartbeat_benchmarks_bin11bench_harts000uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2i_  (in heartbeat_benchmarks_bin) + 44  [0x100270548]  unwind_safe.rs:275
+        13       __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1002605fc]
+        13       _dispatch_sema4_wait  (in libdispatch.dylib) + 28  [0x189b64490]
+        13       _dispatch_semaphore_wait_slow  (in libdispatch.dylib) + 132  [0x189b64b20]
+        13       semaphore_wait_trap  (in libsystem_kernel.dylib) + 0  [0x189cd9ba8]
+        11       _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep13no_work_foundNCNvMs8_NtB5_8registryNtB19_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 288  [0x1004f3708]  mod.rs:106
+        11       _RINvMNtCsfxUfxqSFJoR_10rayon_core5sleepNtB3_5Sleep5sleepNCNvMs8_NtB5_8registryNtB10_12WorkerThread15wait_until_cold0EB5_  (in heartbeat_benchmarks_bin) + 984  [0x1004f3be0]  mod.rs:187
+        11       _RINvMNtNtNtCsblkilOWXfC6_3std4sync6poison7condvarNtB3_7Condvar4waitbECsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 48  [0x1004eea14]  condvar.rs:128
+        11       _RINvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB6_12WorkerThread10wait_untilNtNtB8_5latch9OnceLatchEB8_  (in heartbeat_benchmarks_bin) + 76  [0x1004e0e80]  registry.rs:775
+        11       _RINvNtNtCsblkilOWXfC6_3std3sys9backtrace28___rust_begin_short_backtraceNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1f_12DefaultSpawnNtB1f_11ThreadSpawn5spawn0uEB1h_  (in heartbeat_benchmarks_bin) + 16  [0x1004e3544]  backtrace.rs:166
+        11       _RINvNvNtCsblkilOWXfC6_3std9panicking12catch_unwind7do_callINtNtNtCs4Bl0CKBHNnK_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2P_12DefaultSpawnNtB2P_11ThreadSpawn5spawn0uEs_00EuEB2R_  (in heartbeat_benchmarks_bin) + 48  [0x1004ef7b0]  panicking.rs:575
+        11       _RNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB16_12DefaultSpawnNtB16_11ThreadSpawn5spawn0uEs_0B18_  (in heartbeat_benchmarks_bin) + 208  [0x1004effb8]  lifecycle.rs:68
+        11       _RNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB18_12DefaultSpawnNtB18_11ThreadSpawn5spawn0uEs_00B1a_  (in heartbeat_benchmarks_bin) + 120  [0x1004f026c]  lifecycle.rs:70
+        11       _RNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB7_12DefaultSpawnNtB7_11ThreadSpawn5spawn0B9_  (in heartbeat_benchmarks_bin) + 44  [0x1004e3e14]  registry.rs:95
+        11       _RNSNvYNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB1b_12DefaultSpawnNtB1b_11ThreadSpawn5spawn0uEs_0INtNtNtCs4Bl0CKBHNnK_4core3ops8function6FnOnceuE9call_once6vtableB1d_  (in heartbeat_benchmarks_bin) + 24  [0x1004e3eec]  function.rs:250
+        11       _RNvMNtCsfxUfxqSFJoR_10rayon_core8registryNtB2_13ThreadBuilder3run  (in heartbeat_benchmarks_bin) + 44  [0x1004e3f6c]  registry.rs:50
+        11       _RNvMNtNtNtNtCsblkilOWXfC6_3std3sys4sync7condvar7pthreadNtB2_7Condvar4waitCsfxUfxqSFJoR_10rayon_core  (in heartbeat_benchmarks_bin) + 116  [0x1004f0ed0]  pthread.rs:64
+        11       _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread15wait_until_cold  (in heartbeat_benchmarks_bin) + 488  [0x1004e53a8]  registry.rs:806
+        11       _RNvMs8_NtCsfxUfxqSFJoR_10rayon_core8registryNtB5_12WorkerThread22wait_until_out_of_work  (in heartbeat_benchmarks_bin) + 184  [0x1004e5528]  registry.rs:824
+        11       _RNvNtCsfxUfxqSFJoR_10rayon_core8registry9main_loop  (in heartbeat_benchmarks_bin) + 260  [0x1004e7664]  registry.rs:929
+        11       _RNvXsn_NtNtCs4Bl0CKBHNnK_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCsblkilOWXfC6_3std6thread9lifecycle15spawn_uncheckedNCNvXs0_NtCsfxUfxqSFJoR_10rayon_core8registryNtB2i_12DefaultSpawnNtB2i_11ThreadSpawn5spawn0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2k_  (in heartbeat_benchmarks_bin) + 44  [0x1004f3224]  unwind_safe.rs:275
+        11       __psynch_cvwait  (in libsystem_kernel.dylib) + 0  [0x189cdd504]
+        11       __rust_try  (in heartbeat_benchmarks_bin) + 32  [0x1004f35ac]
+        11       _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x189d1e128]
+
+Sort by top of stack, same collapsed (when >= 5):
+        semaphore_wait_trap  (in libsystem_kernel.dylib)        98813
+        __psynch_cvwait  (in libsystem_kernel.dylib)        83611
+        __ulock_wait  (in libsystem_kernel.dylib)        7601
+
+Binary Images:
+       0x100254000 -        0x100900e07 +heartbeat_benchmarks_bin (???) <4C4C44CE-5555-3144-A1FB-BF8B4DA98A74> /Users/*/Documents/*/heartbeat_benchmarks_bin
+       0x1011bc000 -        0x1011c7ff3 +libiconv.2.dylib (0) <978331C5-45FC-3D49-A708-2BCA556EDF0E> /Volumes/*/libiconv.2.dylib
+       0x1011d4000 -        0x1011d7fff +libcharset.1.dylib (0) <99D418F1-2314-3B75-8173-4A78A200C963> /Volumes/*/libcharset.1.dylib
+       0x1898b8000 -        0x18990ab4b  libobjc.A.dylib (951.7) <FF1D8AE4-ABEF-35F1-A30A-1183B9CB414F> /usr/lib/libobjc.A.dylib
+       0x18990b000 -        0x18993fd07  libdyld.dylib (1378) <B147D877-D0C2-388F-B38D-D3132E39905F> /usr/lib/system/libdyld.dylib
+       0x189940000 -        0x1899e6217  dyld (1.0.0 - 1378) <A237EF81-B68B-37BA-A165-92C965529534> /usr/lib/dyld
+       0x1899e7000 -        0x1899ea228  libsystem_blocks.dylib (96) <CC947089-488D-316B-A9C7-46DEC0F73145> /usr/lib/system/libsystem_blocks.dylib
+       0x1899eb000 -        0x189a3f55f  libxpc.dylib (3102.120.13) <C40FCAE8-7A17-3D82-87CB-3DA4802ADEF1> /usr/lib/system/libxpc.dylib
+       0x189a40000 -        0x189a609ff  libsystem_trace.dylib (1861.120.4) <D0FABAB3-5AE7-3F10-8C62-60CBF5D70850> /usr/lib/system/libsystem_trace.dylib
+       0x189a61000 -        0x189b0f5f7  libcorecrypto.dylib (1922.121.1) <A01A158D-6FE7-3B1C-A2C4-6BCB90D7314A> /usr/lib/system/libcorecrypto.dylib
+       0x189b10000 -        0x189b601d7  libsystem_malloc.dylib (812.100.31) <5FAE4807-4D2B-3A95-A63A-DD96D3DA11B4> /usr/lib/system/libsystem_malloc.dylib
+       0x189b61000 -        0x189ba823f  libdispatch.dylib (1542.100.32) <F071EFE4-299F-3089-ACC4-0025B8FFB52A> /usr/lib/system/libdispatch.dylib
+       0x189ba9000 -        0x189babffb  libsystem_featureflags.dylib (103) <71FCFFBD-85F8-3365-AFE0-BECEA4369122> /usr/lib/system/libsystem_featureflags.dylib
+       0x189bac000 -        0x189c2cd9f  libsystem_c.dylib (1752.120.2) <694B7881-1BF3-3D0F-8F19-B50AE4E8EF8A> /usr/lib/system/libsystem_c.dylib
+       0x189c2d000 -        0x189cbdae7  libc++.1.dylib (2100.43) <5013C0F8-84A9-3B56-9FEB-C353816A750F> /usr/lib/libc++.1.dylib
+       0x189cbe000 -        0x189cd875f  libc++abi.dylib (2100.43) <E482D257-E5A0-3816-BD97-7B39342958DA> /usr/lib/libc++abi.dylib
+       0x189cd9000 -        0x189d162af  libsystem_kernel.dylib (12377.121.6) <CC1CF985-BC65-3725-809F-4C1E36B8F4BA> /usr/lib/system/libsystem_kernel.dylib
+       0x189d17000 -        0x189d23b3b  libsystem_pthread.dylib (539.100.4) <4F33683C-18C8-39A1-800B-2E3BD43BCC13> /usr/lib/system/libsystem_pthread.dylib
+       0x189d24000 -        0x189d2c963  libsystem_platform.dylib (375.120.2) <160FD864-8D15-36FC-9E97-9725388CFAFE> /usr/lib/system/libsystem_platform.dylib
+       0x189d2d000 -        0x189d5c6eb  libsystem_info.dylib (600) <3D62F2D9-F516-31BF-83C7-E203D872300B> /usr/lib/system/libsystem_info.dylib
+       0x18dcf4000 -        0x18dcfde5f  libsystem_darwin.dylib (1752.120.2) <8858F025-745A-388E-9544-080781CC9A69> /usr/lib/system/libsystem_darwin.dylib
+       0x18e15f000 -        0x18e1711b6  libsystem_notify.dylib (348.120.4) <64D76451-1E0C-369B-A631-54DA3140E083> /usr/lib/system/libsystem_notify.dylib
+       0x19042c000 -        0x190446f7b  libsystem_networkextension.dylib (2226.121.1) <0331EE20-A1FB-3C0D-990A-F65939CFF505> /usr/lib/system/libsystem_networkextension.dylib
+       0x1904c9000 -        0x1904e0fdf  libsystem_asl.dylib (406) <F40838DF-2F15-3F62-970F-DEE25706BF1B> /usr/lib/system/libsystem_asl.dylib
+       0x192087000 -        0x19208f387  libsystem_symptoms.dylib (2169.120.7) <F5029F5C-1BF3-31C7-892E-BC8606AC829E> /usr/lib/system/libsystem_symptoms.dylib
+       0x19632b000 -        0x196363257  libsystem_containermanager.dylib (725.120.2) <518BE44D-AA31-31E6-B44B-A37AD5E47040> /usr/lib/system/libsystem_containermanager.dylib
+       0x19773c000 -        0x1977405d7  libsystem_configuration.dylib (1405.120.5) <0F7BBC1C-3D50-3E59-A31F-E4672A80BCEB> /usr/lib/system/libsystem_configuration.dylib
+       0x197741000 -        0x1977478cf  libsystem_sandbox.dylib (2680.120.12) <EC3A75EA-44C0-3A0B-9BF7-71C117B0A9C6> /usr/lib/system/libsystem_sandbox.dylib
+       0x198d9b000 -        0x198d9e1fb  libquarantine.dylib (196.120.2) <5849009B-ACA3-3796-94C4-BBDF8D300EBA> /usr/lib/system/libquarantine.dylib
+       0x19953a000 -        0x199540d03  libsystem_coreservices.dylib (191.4.5) <9576143B-C303-35A3-BA63-1FD06EDA2BB1> /usr/lib/system/libsystem_coreservices.dylib
+       0x199ac5000 -        0x199b02a77  libsystem_m.dylib (3312.100.1) <A7E0863C-101A-31A0-922B-ED9B02626151> /usr/lib/system/libsystem_m.dylib
+       0x199b04000 -        0x199b07527  libmacho.dylib (1378) <755441B4-C034-3E3A-8E3C-F424FBB28261> /usr/lib/system/libmacho.dylib
+       0x199b21000 -        0x199b2e3a7  libcommonCrypto.dylib (600035) <CE357BB1-2D49-37CC-9FFE-D093936B1475> /usr/lib/system/libcommonCrypto.dylib
+       0x199b2f000 -        0x199b38ca3  libunwind.dylib (2100.2) <FC8F0C4E-6FB0-3E27-ABEF-B0FA720CD5E4> /usr/lib/system/libunwind.dylib
+       0x199b41000 -        0x199b4b7ff  libcopyfile.dylib (240) <8ACFAC7A-88E9-3EF4-853F-A9140FF110E5> /usr/lib/system/libcopyfile.dylib
+       0x199b4c000 -        0x199b4f987  libcompiler_rt.dylib (103.3) <AA79151F-C19D-3C7C-92F8-B10F04D82C1C> /usr/lib/system/libcompiler_rt.dylib
+       0x199b50000 -        0x199b5478b  libsystem_collections.dylib (1752.120.2) <72DB5BE7-EF78-37D0-8AAD-53E37CFE4287> /usr/lib/system/libsystem_collections.dylib
+       0x199b55000 -        0x199b584cf  libsystem_secinit.dylib (168.100.7) <E525C566-CDA4-3D99-B12B-1615FD54A1F3> /usr/lib/system/libsystem_secinit.dylib
+       0x199b59000 -        0x199b5bbf7  libremovefile.dylib (85.100.6) <635E661D-80A7-340D-A165-3F7D318FDFC9> /usr/lib/system/libremovefile.dylib
+       0x199b5c000 -        0x199b5cf27  libkeymgr.dylib (31) <8C08891A-DF1C-3DCC-AB64-4742FD6BE9BA> /usr/lib/system/libkeymgr.dylib
+       0x199b5d000 -        0x199b65e37  libsystem_dnssd.dylib (2881.120.11) <6F45DF3F-233B-3BC3-BA8C-B43E7DA884BF> /usr/lib/system/libsystem_dnssd.dylib
+       0x199b66000 -        0x199b6b09b  libcache.dylib (95) <189B576E-6176-3F82-8FA4-5914B0BEAEE7> /usr/lib/system/libcache.dylib
+       0x199b6c000 -        0x199b6dce3  libSystem.B.dylib (1356) <D65E4112-C151-3FF8-BEB7-4841436012D6> /usr/lib/libSystem.B.dylib
+       0x28cda3000 -        0x28cdaa349  libRosetta.dylib (367.9) <8651ED4F-6506-3788-B56B-32EE414A85CA> /usr/lib/libRosetta.dylib
+       0x28e9c0000 -        0x28e9c3a4b  libsystem_darwindirectory.dylib (122) <CF277A2C-C818-3F16-8B3F-3C7B39FCD164> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x28e9c4000 -        0x28e9cd5d3  libsystem_eligibility.dylib (319.121.1) <DDAC0531-0262-3DDC-8EC8-80EB9438847A> /usr/lib/system/libsystem_eligibility.dylib
+       0x28e9ce000 -        0x28e9d588b  libsystem_sanitizers.dylib (26.1) <44C4234F-8B2D-38D3-A774-B4B3C75AF3A7> /usr/lib/system/libsystem_sanitizers.dylib
+       0x28e9d6000 -        0x28e9d6bb7  libsystem_trial.dylib (474.2.18.2) <68C583BA-AFF5-3916-86AE-6E38BFEF98D6> /usr/lib/system/libsystem_trial.dylib

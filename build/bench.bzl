@@ -48,9 +48,15 @@ def rust_benchmark(name, modifiers = [], visibility = None, **kwargs):
         visibility = visibility,
         **kwargs
     )
+    # Buck2 applies a target's `modifiers` only when it is the *top-level* target
+    # being built. The runner is what `just benchmark` builds, so the modifiers
+    # must live here as well — as a mere dependency, the `_bin`'s own modifiers
+    # are ignored and it would inherit the runner's (default, opt-level=0)
+    # configuration, silently benchmarking unoptimized code.
     _rust_benchmark_runner(
         name = name,
         binary = ":" + bin_name,
         target_compatible_with = [host_configuration.os, host_configuration.cpu],
+        modifiers = _DEFAULT_MODIFIERS + modifiers,
         visibility = visibility,
     )
