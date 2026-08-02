@@ -6,7 +6,7 @@ name: Release
 
 on:
   schedule:
-    - cron: "17 1 * * *" # 03:17 CEST/02:17CET daily (off-peak to avoid cron backlog)
+    - cron: "17 1 * * FRI" # 03:17 CEST/02:17CET on Friday (off-peak to avoid cron backlog)
   workflow_dispatch:
 
 concurrency:
