@@ -105,6 +105,18 @@ impl WastContext {
             arg
         })?;
 
+        // used in check_stack_pointer smoke test to ensure we're checking the
+        // stack pointer on host function entry.
+        linker.func_wrap(
+            "k23",
+            "corrupt_stack_limit",
+            |caller: crate::wasm::func::host::Caller<_>| unsafe {
+                let stack_limit = caller.store.opaque.vm_store_context().stack_limit.get();
+                *stack_limit =
+                    mem_core::VirtualAddress::new((*stack_limit).get() + 5 * 1024 * 1024);
+            },
+        )?;
+
         // let ty = GlobalType {
         //     content_type: ValType::I32,
         //     mutable: false,

@@ -13,6 +13,7 @@ use core::{iter, ptr};
 
 use anyhow::bail;
 
+use crate::arch::get_stack_pointer;
 use crate::wasm::func::typed::WasmTy;
 use crate::wasm::func::{FuncData, FuncKind};
 use crate::wasm::store::{StoreInner, StoreOpaque};
@@ -57,7 +58,7 @@ impl HostFunc {
 }
 
 pub struct Caller<'a, T> {
-    store: &'a mut StoreInner<T>,
+    pub(crate) store: &'a mut StoreInner<T>,
     caller: &'a crate::wasm::vm::Instance,
 }
 
@@ -134,6 +135,22 @@ impl HostContext {
             // should be part of this closure, and the long-jmp-ing
             // happens after the closure in handling the result.
             let run = move |mut caller: Caller<'_, T>| {
+                let stack_limit = &*caller.store.opaque.vm_store_context().stack_limit.get();
+                let wasm_entry_fp = &*caller
+                    .store
+                    .opaque
+                    .vm_store_context()
+                    .last_wasm_entry_fp
+                    .get();
+                let stack_pointer = mem_core::VirtualAddress::new(get_stack_pointer());
+                // Expect wasm_entry_fp >= stack_pointer >= stack_limit
+                if stack_pointer < *stack_limit || stack_pointer > *wasm_entry_fp {
+                    tracing::error!(
+                        "Found invalid stack pointer {stack_pointer:?} for stack \\
+                        limit {stack_limit:?} and wasm_entry_fp {wasm_entry_fp:?}"
+                    );
+                    bail!("Wasm attempted to call host function with invalid stack pointer.")
+                }
                 let mut params_results = NonNull::slice_from_raw_parts(
                     params_results.cast::<MaybeUninit<VMVal>>(),
                     params_len,
