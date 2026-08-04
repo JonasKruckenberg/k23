@@ -9,6 +9,16 @@ constraint(
 )
 
 constraint(
+    name = "loom",
+    values = [
+        "enabled",
+        "disabled",
+    ],
+    default = "disabled",
+    visibility = ["PUBLIC"],
+)
+
+constraint(
     name = "opt-level",
     values = [
         "0",

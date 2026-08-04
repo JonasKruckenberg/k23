@@ -51,6 +51,15 @@ configuration_transition(
     visibility = ["PUBLIC"],
 )
 
+configuration_transition(
+    name = "loom",
+    constraint_values = [
+        "constraints//:loom[enabled]",
+        "constraints//:opt-level[3]", # loom is really slow unoptimized
+    ],
+    visibility = ["PUBLIC"],
+)
+
 # Sanitizer / opt / debuginfo overlay for fuzz binaries. Applied via
 # incoming_transition (not the rule's `modifiers` attr) so the toolchain's
 # `select(constraints//:sanitizer[address])` actually picks up the link flag

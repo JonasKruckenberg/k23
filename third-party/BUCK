@@ -789,6 +789,13 @@ cargo.rust_library(
         "default",
     ],
     visibility = [],
+    deps = select({
+        "DEFAULT": [],
+        "constraints//:loom[enabled]": [
+            "//third-party:loom",
+            "//third-party:tracing",
+        ],
+    }),
 )
 
 http_archive(
@@ -2800,7 +2807,13 @@ cargo.rust_library(
         ":mycelium-bitfield-0.1",
         ":pin-project-1",
         ":portable-atomic-1",
-    ],
+    ] + select({
+        "DEFAULT": [],
+        "constraints//:loom[enabled]": [
+            "//third-party:loom",
+            "//third-party:tracing",
+        ],
+    }),
 )
 
 http_archive(
