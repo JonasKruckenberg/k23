@@ -52,5 +52,8 @@ def rust_benchmark(name, modifiers = [], visibility = None, **kwargs):
         name = name,
         binary = ":" + bin_name,
         target_compatible_with = [host_configuration.os, host_configuration.cpu],
+        # Modifiers only apply at the top level: a dep's are ignored, so the runner has to repeat
+        # the binary's or the benchmark it runs is built at opt-level 0.
+        modifiers = _DEFAULT_MODIFIERS + modifiers,
         visibility = visibility,
     )
