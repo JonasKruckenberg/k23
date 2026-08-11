@@ -1,0 +1,46 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load("//build:bench.bzl", "rust_benchmark")
+load("//build:loom.bzl", "rust_loom_test")
+
+_DEPS = [
+    "//lib/util:util",
+    "//third-party:cfg-if",
+]
+
+rust_library(
+    name = "flightbuf",
+    srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS,
+    visibility = ["PUBLIC"],
+    tests = [":flightbuf_unittests", ":flightbuf_loom_tests"],
+)
+
+# Tests live inline under `#[cfg(test)]`, which also makes the crate a std one so the loom models
+# get threads. Deps repeat the library's own, since this target recompiles `src/`.
+rust_test(
+    name = "flightbuf_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    deps = _DEPS + ["//third-party:proptest"],
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+# Same sources with `--cfg=loom`: `src/loom.rs` swaps in loom's atomics, and the property test —
+# no concurrency to model — is compiled out.
+rust_loom_test(
+    name = "flightbuf_loom_tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "flightbuf",
+    deps = _DEPS + ["//third-party:loom"],
+)
+
+rust_benchmark(
+    name = "flightbuf_benchmarks",
+    srcs = ["benches/flight.rs"],
+    crate_root = "benches/flight.rs",
+    deps = [
+        ":flightbuf",
+        "//third-party:criterion",
+    ],
+    visibility = ["PUBLIC"],
+)
