@@ -5,25 +5,24 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-/// Disables interrupts and returns a guard that restores the previous state
-/// on drop.
+/// Runs `f` with interrupts masked on the calling hart, restoring the previous
+/// state afterwards — including when `f` unwinds.
 #[inline]
-pub(crate) fn hold_interrupts() -> HeldInterrupts {
-    // Safety: paired with the `release` in `HeldInterrupts::drop`.
-    HeldInterrupts(unsafe { critical_section::acquire() })
-}
-
-/// An RAII guard that keeps interrupts disabled for as long as it is held.
-pub(crate) struct HeldInterrupts(critical_section::RestoreState);
-
-// this type MUST NOT be `Send` because toggling interrupts is fundamentally a
-// per-hart operation
-impl !Send for HeldInterrupts {}
-
-impl Drop for HeldInterrupts {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: restores the state saved by `HeldInterrupts::disable`, exactly once.
-        unsafe { critical_section::release(self.0) };
+pub(crate) fn with_interrupts_disabled<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    cfg_if::cfg_if! {
+        if #[cfg(not(target_os = "none"))] {
+            // A host process has no interrupts to mask. The inner spinlock
+            // still provides the mutual exclusion the `Irq*` types promise;
+            // only the re-entrancy guard is moot, since there is no handler to
+            // be re-entered from.
+            f()
+        } else if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+            riscv::interrupt::with_disabled(f)
+        } else {
+            compile_error!("unsupported target architecture")
+        }
     }
 }

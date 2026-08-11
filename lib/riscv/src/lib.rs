@@ -10,10 +10,8 @@
 #![cfg_attr(not(test), no_std)]
 #![allow(edition_2024_expr_fragment_specifier, reason = "vetted usage")]
 
-mod critical_section;
 mod error;
 pub mod extensions;
-pub mod hio;
 pub mod interrupt;
 mod macros;
 pub mod register;

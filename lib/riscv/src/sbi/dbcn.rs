@@ -9,6 +9,19 @@
 
 use super::{EID_DBCN, sbi_call};
 
+/// Write bytes to the debug console from input memory.
+///
+/// The `num_bytes` parameter specifies the number of bytes in the input memory.
+/// The physical base address of the input memory is represented by two usize
+/// bits wide parameters. The `base_addr_lo` parameter specifies the lower XLEN
+/// bits and the `base_addr_hi` parameter specifies the upper XLEN bits
+/// of the input memory physical base address.
+///
+/// This is a non-blocking SBI call and it may do partial/no writes if the debug
+/// console is not able to accept more bytes.
+///
+/// Returns the number of bytes written.
+///
 /// # Errors
 ///
 /// Returns an error if the SBI call fails.
