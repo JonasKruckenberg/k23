@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changed-targets]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: DeterminateSystems/determinate-nix-action@61cbfe2efc2d4e7a8a6d56967c3c1058e846c858 # v3
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
@@ -34,7 +34,7 @@ jobs:
           purge-prefixes: nix-${{ runner.os }}-
           purge-last-accessed: P7D
       - name: restore fuzz corpus
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
