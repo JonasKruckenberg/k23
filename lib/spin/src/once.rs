@@ -7,9 +7,8 @@
 
 use core::mem;
 
-use util::loom_const_fn;
+use util::{Backoff, loom_const_fn};
 
-use crate::Backoff;
 use crate::loom::sync::atomic::{AtomicU8, Ordering};
 
 /// No initialization has run yet, and no thread is currently using the Once.
