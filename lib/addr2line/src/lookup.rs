@@ -222,8 +222,9 @@ where
     }
 
     pub(crate) fn new_lookup(mut r: LookupResult<L>, mut mutator: F) -> LookupResult<Self> {
-        // Drive the loop eagerly so that we only ever have to represent one state
-        // (the r == ControlFlow::Continue state) in LoopingLookup.
+        // Drive the loop eagerly so that we only ever have to represent one
+        // state (the r == ControlFlow::Continue state) in
+        // LoopingLookup.
         loop {
             match r {
                 LookupResult::Output(l) => match mutator(l) {

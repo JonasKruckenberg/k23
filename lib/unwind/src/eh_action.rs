@@ -70,8 +70,8 @@ pub fn find_eh_action(
             let cs_len = read_encoded_offset(&mut call_site_table, call_site_encoding)?;
             let cs_lpad = read_encoded_offset(&mut call_site_table, call_site_encoding)?;
             let cs_action_entry = call_site_table.read_uleb128()?;
-            // Callsite table is sorted by cs_start, so if we've passed the ip, we
-            // may stop searching.
+            // Callsite table is sorted by cs_start, so if we've passed the ip,
+            // we may stop searching.
             if ip < func_start.wrapping_add(cs_start) {
                 break;
             }
@@ -96,8 +96,8 @@ unsafe fn interpret_cs_action(
     lpad: LPad,
 ) -> crate::Result<EHAction> {
     if cs_action_entry == 0 {
-        // If cs_action_entry is 0 then this is a cleanup (Drop::drop). We run these
-        // for both Rust panics and foreign exceptions.
+        // If cs_action_entry is 0 then this is a cleanup (Drop::drop). We run
+        // these for both Rust panics and foreign exceptions.
         Ok(EHAction::Cleanup(lpad))
     } else {
         // If lpad != 0 and cs_action_entry != 0, we have to check ttype_index.

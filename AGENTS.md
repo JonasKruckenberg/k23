@@ -47,7 +47,7 @@ just selftests                              # boot kernel under QEMU, run .wast 
 just run //sys:k23-riscv64-qemu             # interactive kernel boot
 ```
 
-`preflight` = `typos` → `check-fmt` → `check-license-headers` → `clippy` on riscv64/aarch64/x86_64 → `unittests` → `miri` → `loom` → `selftests` → `buck2 audit` → `reindeer-clean` → `cargo-deny`. Don't skip steps; license-header and reindeer checks fail PRs that pass locally otherwise.
+`preflight` = `typos` → `check-fmt` → `check-license-headers` → `clippy` on riscv64/aarch64/x86_64 → `doc` → `unittests` → `miri` → `loom` → `selftests` → `buck2 audit` → `reindeer-clean` → `unused-third-party` → `cargo-deny`. Don't skip steps; license-header and reindeer checks fail PRs that pass locally otherwise.
 
 Recipes take a target list and default to `//...`; an *empty* list means no targets and every recipe exits 0 having done nothing, which is how `changed-targets` reports "nothing affected" without any caller special-casing it.
 

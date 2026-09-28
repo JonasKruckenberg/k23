@@ -78,7 +78,8 @@ impl<T> MmapVec<T> {
         if self.len == 0 {
             &[]
         } else {
-            // Safety: The rest of the code has to ensure that `self.len` is valid.
+            // Safety: The rest of the code has to ensure that `self.len` is
+            // valid.
             unsafe { slice::from_raw_parts(self.as_ptr(), self.len) }
         }
     }
@@ -87,7 +88,8 @@ impl<T> MmapVec<T> {
         if self.len == 0 {
             &mut []
         } else {
-            // Safety: The rest of the code has to ensure that `self.len` is valid.
+            // Safety: The rest of the code has to ensure that `self.len` is
+            // valid.
             unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len) }
         }
     }
@@ -109,7 +111,8 @@ impl<T> MmapVec<T> {
         assert!(self.len() + other.len() <= self.capacity());
 
         // "Transmute" the slice to a byte slice
-        // Safety: we're just converting the slice to a byte slice of the same length
+        // Safety: we're just converting the slice to a byte slice of the same
+        // length
         let src = unsafe { slice::from_raw_parts(other.as_ptr().cast::<u8>(), size_of_val(other)) };
         self.mmap
             .copy_to_userspace(
@@ -130,7 +133,8 @@ impl<T> MmapVec<T> {
         self.mmap
             .with_user_slice_mut(aspace, Range::from(self.len..self.len + count), |dst| {
                 // "Transmute" the slice to a byte slice
-                // Safety: we're just converting the slice to a byte slice of the same length
+                // Safety: we're just converting the slice to a byte slice of
+                // the same length
                 let dst =
                     unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr().cast(), size_of_val(dst)) };
 

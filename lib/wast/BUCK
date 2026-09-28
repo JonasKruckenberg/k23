@@ -5,6 +5,8 @@ rust_library(
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/lib.rs",
     features = ["wasm-module"],
+    # Upstream docs link to items behind features we don't enable.
+    rustdoc_flags = ["--cap-lints=warn"],
     deps = [
         "//lib/cpu-local:cpu-local",
         "//third-party:leb128fmt",

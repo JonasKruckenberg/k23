@@ -5,6 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#![expect(
+    deprecated,
+    reason = "`entity_impl!` uses `core::u32::MAX`; fixed in cranelift 0.137"
+)]
+
 use cranelift_entity::entity_impl;
 
 /// Iterate over all builtin functions and call the provided macro for each.

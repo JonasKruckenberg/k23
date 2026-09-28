@@ -7,7 +7,6 @@
 
 #![no_std]
 #![no_main]
-#![feature(unwrap_infallible)]
 #![feature(slice_partition_dedup)]
 
 mod arch;

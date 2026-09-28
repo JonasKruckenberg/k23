@@ -85,7 +85,8 @@ pub struct BootEntry<'a> {
     /// no-emulation entry with `sector_count` < 2 is read as extending to
     /// end-of-CD. If `None`, the layout pass auto-computes from the image.
     pub(super) load_size: Option<u16>,
-    // must be a `/`-separated path to a file that has been added to the directory tree.
+    // must be a `/`-separated path to a file that has been added to the
+    // directory tree.
     pub(super) boot_image_path: &'a str,
     /// LBA of the boot image file; 0 until LBA assignment.
     pub(super) boot_image_lba: u32,

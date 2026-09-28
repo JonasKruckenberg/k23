@@ -259,8 +259,9 @@ impl Worker {
         let res = crate::future::select(future, main_loop).await;
         match res {
             Either::Left((val, _)) => Ok(val),
-            // The `main_loop` future either never returns or always returns Err(Closed)
-            Either::Right((_)) => Err(Closed(())),
+            // The `main_loop` future either never returns or always returns
+            // Err(Closed)
+            Either::Right(_) => Err(Closed(())),
         }
     }
 
@@ -358,8 +359,8 @@ impl Worker {
             };
 
             let Ok(stealer) = victim.try_steal() else {
-                // the victim either doesn't have any tasks, or is already being stolen from
-                // either way, just advance past
+                // the victim either doesn't have any tasks, or is already being
+                // stolen from either way, just advance past
                 continue;
             };
 
@@ -491,7 +492,8 @@ impl Scheduler {
             tick.woken_external = self.woken.swap(0, Ordering::Relaxed);
         }
 
-        // are there still tasks in the queue? if so, we have more tasks to poll.
+        // are there still tasks in the queue? if so, we have more tasks to
+        // poll.
         if self.queued.load(Ordering::SeqCst) > 0 {
             tick.has_remaining = true;
         }
@@ -606,11 +608,12 @@ mod tests {
     }
 
     // Disabled under loom: polling a `JoinHandle` from a thread other than the
-    // one running the task reaches `State::wait_for_join_waker` (task/state.rs),
-    // which is a `compare_exchange_weak` + `Backoff::spin()` busy-wait. Loom's
-    // interleaving exploration can't bound the branching there, so the model
-    // hits `LOOM_MAX_BRANCHES` regardless of how high it's set. Revisit once
-    // the join handshake uses a real wait primitive.
+    // one running the task reaches `State::wait_for_join_waker`
+    // (task/state.rs), which is a `compare_exchange_weak` +
+    // `Backoff::spin()` busy-wait. Loom's interleaving exploration can't
+    // bound the branching there, so the model hits `LOOM_MAX_BRANCHES`
+    // regardless of how high it's set. Revisit once the join handshake uses
+    // a real wait primitive.
     #[cfg(not(loom))]
     #[test]
     fn join_handle_cross_thread() {

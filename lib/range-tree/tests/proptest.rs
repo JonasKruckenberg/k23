@@ -1,5 +1,3 @@
-#![feature(allocator_api)]
-
 mod common;
 
 use core::num::NonZeroU64;

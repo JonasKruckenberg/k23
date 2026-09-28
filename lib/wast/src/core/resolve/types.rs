@@ -150,10 +150,10 @@ impl<'a> Expander<'a> {
                 }
 
                 match &bt.ty.inline {
-                    // Only actually expand `TypeUse` with an index which appends a
-                    // type if it looks like we need one. This way if the
-                    // multi-value proposal isn't enabled and/or used we won't
-                    // encode it.
+                    // Only actually expand `TypeUse` with an index which
+                    // appends a type if it looks like we need one. This way if
+                    // the multi-value proposal isn't enabled and/or used we
+                    // won't encode it.
                     Some(inline) => {
                         if inline.params.is_empty() && inline.results.len() <= 1 {
                             return;

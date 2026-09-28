@@ -2682,7 +2682,8 @@ fn translate_unreachable_operator(
                     *consequent_ends_reachable = Some(state.reachable);
 
                     if head_is_reachable {
-                        // We have a branch from the head of the `if` to the `else`.
+                        // We have a branch from the head of the `if` to the
+                        // `else`.
                         state.reachable = true;
 
                         let else_block = match *else_data {
@@ -2696,7 +2697,8 @@ fn translate_unreachable_operator(
                                 let frame = state.control_stack.last().unwrap();
                                 frame.truncate_value_stack_to_else_params(&mut state.stack);
 
-                                // We change the target of the branch instruction.
+                                // We change the target of the branch
+                                // instruction.
                                 builder.change_jump_destination(
                                     branch_inst,
                                     placeholder,
@@ -2765,9 +2767,9 @@ fn translate_unreachable_operator(
                 builder.switch_to_block(frame.following_code());
                 builder.seal_block(frame.following_code());
 
-                // And add the return values of the block but only if the next block is
-                // reachable (which corresponds to testing if the stack depth is
-                // 1)
+                // And add the return values of the block but only if the next
+                // block is reachable (which corresponds to
+                // testing if the stack depth is 1)
                 stack.extend_from_slice(builder.block_params(frame.following_code()));
                 state.reachable = true;
             }
@@ -2955,8 +2957,8 @@ fn translate_br_if_args(
 
     let (return_count, br_destination) = {
         let frame = &mut state.control_stack[i];
-        // The values returned by the branch are still available for the reachable
-        // code that comes after it
+        // The values returned by the branch are still available for the
+        // reachable code that comes after it
         frame.set_branched_to_exit();
         let return_count = if frame.is_loop() {
             frame.num_param_values()
@@ -3327,9 +3329,10 @@ fn bitcast_arguments<'a>(
                 arg_type
             );
 
-            // This is the same check that would be done by `optionally_bitcast_vector`,
-            // except we can't take a mutable borrow of the FunctionBuilder
-            // here, so we defer inserting the bitcast instruction to the
+            // This is the same check that would be done by
+            // `optionally_bitcast_vector`, except we can't take a
+            // mutable borrow of the FunctionBuilder here, so we
+            // defer inserting the bitcast instruction to the
             // caller.
             arg_type != *param_type
         })

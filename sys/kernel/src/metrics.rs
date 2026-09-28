@@ -76,23 +76,17 @@ impl Counter {
     /// Set the absolute value of the counter if the provided value is larger
     /// than the current value.
     pub fn max(&self, value: u64) {
-        let _ =
-            self.arena
-                .get_or_default()
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
-                    (old < value).then_some(value)
-                });
+        self.arena
+            .get_or_default()
+            .fetch_max(value, Ordering::Relaxed);
     }
 
     /// Set the absolute value of the counter if the provided value is smaller
     /// than the current value.
     pub fn min(&self, value: u64) {
-        let _ =
-            self.arena
-                .get_or_default()
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
-                    (old > value).then_some(value)
-                });
+        self.arena
+            .get_or_default()
+            .fetch_min(value, Ordering::Relaxed);
     }
 
     /// Get the counter value of the calling cpu, or `None` if the counter was

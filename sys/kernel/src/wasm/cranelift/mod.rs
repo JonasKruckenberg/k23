@@ -101,9 +101,9 @@ impl CraneliftTable {
             .with_alias_region(Some(table_alias_region(builder.func)));
 
         if spectre_mitigations_enabled {
-            // Short-circuit the computed table element address to a null pointer
-            // when out-of-bounds. The consumer of this address will trap when
-            // trying to access it.
+            // Short-circuit the computed table element address to a null
+            // pointer when out-of-bounds. The consumer of this
+            // address will trap when trying to access it.
             let zero = builder.ins().iconst(pointer_type, 0);
             (
                 builder.ins().select_spectre_guard(oob, zero, element_addr),

@@ -48,8 +48,9 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                             },
                         });
                     }
-                    // If data is defined inline insert an explicit `data` module
-                    // field here instead, switching this to a `Normal` memory.
+                    // If data is defined inline insert an explicit `data`
+                    // module field here instead, switching this to a `Normal`
+                    // memory.
                     MemoryKind::Inline {
                         is64,
                         ref data,

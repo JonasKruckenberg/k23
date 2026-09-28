@@ -35,7 +35,8 @@ pub(crate) fn discover() -> crate::Result<MachineInfo> {
     let chosen = LazyCell::new(|| fdt.as_ref()?.find_node("/chosen").ok().flatten());
 
     Ok(MachineInfo {
-        // try to obtain the boot hart ID from UEFI first, then fall back to the FDT
+        // try to obtain the boot hart ID from UEFI first, then fall back to the
+        // FDT
         boot_hart_id: efi_boot_hartid()
             .or_else(|| fdt.as_ref().and_then(loader_common::fdt::boot_hartid))
             .ok_or(Error::NoBootHartId)?,
@@ -43,7 +44,8 @@ pub(crate) fn discover() -> crate::Result<MachineInfo> {
         rng_seed: efi_rng_seed()
             .or_else(|| chosen.as_ref().and_then(loader_common::fdt::rng_seed))
             .ok_or(Error::NoRngSeed)?,
-        // the only mechanism we have to discover the UART port is through FDT...
+        // the only mechanism we have to discover the UART port is through
+        // FDT...
         uart: fdt.as_ref().zip(chosen.as_ref()).and_then(|(fdt, chosen)| {
             loader_common::fdt::stdout_uart(fdt, chosen, uefi::boot::PAGE_SIZE)
         }),
@@ -68,16 +70,17 @@ fn discover_firmware_tables() -> crate::Result<FirmwareTables> {
         }
     });
 
-    // NB: EDK2 has a fun bug where the FDT and SMBIOS are placed right below the
-    // EFI apps stack _without_ any guard pages or protection. This means as our
-    // stack grows we can override the FDT and SMBIOS blobs... (the reserved
-    // stack is quite small too, so in debug mode we've actually hit this regularly)
-    // To work around this we copy the FDT and SMBIOS blobs into fresh allocations.
-    // This has the advantage of BOTH correctly tracking the allocation as
-    // `RESERVED` AND drawing from the firmwares high DXE pool (well clear of
-    // our stack).
+    // NB: EDK2 has a fun bug where the FDT and SMBIOS are placed right below
+    // the EFI apps stack _without_ any guard pages or protection. This
+    // means as our stack grows we can override the FDT and SMBIOS blobs...
+    // (the reserved stack is quite small too, so in debug mode we've
+    // actually hit this regularly) To work around this we copy the FDT and
+    // SMBIOS blobs into fresh allocations. This has the advantage of BOTH
+    // correctly tracking the allocation as `RESERVED` AND drawing from the
+    // firmwares high DXE pool (well clear of our stack).
     Ok(FirmwareTables {
-        // ACPI RSDP does not need staging, UEFI already correctly tracks and manages this one...
+        // ACPI RSDP does not need staging, UEFI already correctly tracks and
+        // manages this one...
         raw_rsdp,
         raw_fdt: raw_fdt.map(stage_fdt).transpose()?,
         raw_smbios3: raw_smbios3.map(stage_smbios3).transpose()?,
@@ -104,7 +107,8 @@ fn stage_smbios3(ep_addr: PhysicalAddress) -> crate::Result<PhysicalAddress> {
         return Err(Error::BadSmbios);
     }
 
-    // §5.2.2: structure-table max size at 0x0C (u32), table address at 0x10 (u64).
+    // §5.2.2: structure-table max size at 0x0C (u32), table address at 0x10
+    // (u64).
     let table_len = u32::from_le_bytes(ep[0x0C..0x10].try_into().unwrap()) as usize;
     let table_addr = u64::from_le_bytes(ep[0x10..0x18].try_into().unwrap());
     // Safety: the entry point describes a `table_len`-byte structure table at
@@ -112,8 +116,8 @@ fn stage_smbios3(ep_addr: PhysicalAddress) -> crate::Result<PhysicalAddress> {
     let table = unsafe { slice::from_raw_parts(table_addr as *const u8, table_len) };
     let staged_table = stage_blob(table)?;
 
-    // Rebuild the entry point pointing at the staged table, then fix the checksum
-    // so the whole structure sums to zero (mod 256).
+    // Rebuild the entry point pointing at the staged table, then fix the
+    // checksum so the whole structure sums to zero (mod 256).
     let mut staged_ep = [0u8; EP_LEN];
     staged_ep.copy_from_slice(ep);
     staged_ep[0x10..0x18].copy_from_slice(&(staged_table.get() as u64).to_le_bytes());

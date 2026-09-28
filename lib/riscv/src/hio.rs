@@ -63,8 +63,8 @@ impl HostStream {
                     buf = unsafe { slice::from_raw_parts(buf.as_ptr().add(offset), n) }
                 }
                 // #[cfg(feature = "jlink-quirks")]
-                // // Error (-1) - should be an error but JLink can return -1, -2, -3,...
-                // // For good measure, we allow up to negative 15.
+                // // Error (-1) - should be an error but JLink can return -1,
+                // -2, -3,... // For good measure, we allow up to negative 15.
                 // n if n > 0xfffffff0 => return Ok(()),
                 // Error
                 _ => return Err(()),

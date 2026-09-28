@@ -227,10 +227,11 @@ impl AddressSpaceRegion {
         let access_permission = Permissions::from(flags);
         let diff = access_permission.difference(self.permissions);
         if !diff.is_empty() {
-            // diff being empty here means there is no permission mismatch e.g. a read fault
-            // against a read-accessible mapping. Hardware *should* never
-            // generate such faults, and for soft faults it is a programmer
-            // error. either way, a bug is afoot.
+            // diff being empty here means there is no permission mismatch e.g.
+            // a read fault against a read-accessible mapping.
+            // Hardware *should* never generate such faults, and for
+            // soft faults it is a programmer error. either way, a
+            // bug is afoot.
             debug_assert!(
                 !diff.is_empty(),
                 "triggered page fault against accessible page"
@@ -249,17 +250,19 @@ impl AddressSpaceRegion {
             bail!("requested permissions must be R^X");
         }
 
-        // At this point we know that the access was legal, so either we faulted because
-        // the Frame was missing because we paged it out (THIS IS NOT POSSIBLE
-        // YET) or the actual MMU flags didn't match the logical permissions.
-        // This either means MMU flags were set incorrectly (DOES THIS EVEN HAPPEN?) or
+        // At this point we know that the access was legal, so either we faulted
+        // because the Frame was missing because we paged it out (THIS
+        // IS NOT POSSIBLE YET) or the actual MMU flags didn't match the
+        // logical permissions. This either means MMU flags were set
+        // incorrectly (DOES THIS EVEN HAPPEN?) or
         // - and this is the most common case - we attempted to write to a
         // non-writable region which means we need to do copy-on-write.
         //
-        // There is another small optimization here: The physical memory can also be
-        // *Wired* which means it is always mapped, cannot be paged-out, and
-        // also doesn't support COW. This is used to simplify handling of
-        // regions like kernel memory which must always be present anyway.
+        // There is another small optimization here: The physical memory can
+        // also be *Wired* which means it is always mapped, cannot be
+        // paged-out, and also doesn't support COW. This is used to
+        // simplify handling of regions like kernel memory which must
+        // always be present anyway.
 
         let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
 

@@ -111,8 +111,8 @@ pub fn region_layouts(
         regions
             .into_iter()
             .map(|size| {
-                // Safety: `alignment` is a power of two (asserted above), hence non-zero, so `-
-                // 1` cannot underflow
+                // Safety: `alignment` is a power of two (asserted above), hence
+                // non-zero, so `- 1` cannot underflow
                 let align_minus_one = unsafe { alignment.unchecked_sub(1) };
 
                 let size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);

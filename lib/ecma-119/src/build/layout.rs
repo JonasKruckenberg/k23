@@ -63,15 +63,16 @@ impl<'a> Layout<'a> {
                         let entries_hint = subdir.entries.len();
                         let child = DirNode::new(name.clone(), parent_idx, entries_hint);
 
-                        // update the required path table size to hold this directory
+                        // update the required path table size to hold this
+                        // directory
                         path_table_size += child.required_path_table_record_size();
                         // update our parent so it knows where this directory is
                         dirs[parent_idx as usize].attach_child_directory(name, child_idx);
                         // and push it to the flattened list
                         dirs.push(child);
 
-                        // also push it to the queue so we continue to process this directories
-                        // children
+                        // also push it to the queue so we continue to process
+                        // this directories children
                         queue.push_back((child_idx, subdir));
                     }
                     Entry::File(File { source }) => {
@@ -84,8 +85,8 @@ impl<'a> Layout<'a> {
         }
 
         // `sorted_entry_ids` must be sorted according to ECMA-119 §6.8.1.1.
-        // We rely on the BTreeMap to automatically do this, but its easy to mess this
-        // up
+        // We rely on the BTreeMap to automatically do this, but its easy to
+        // mess this up
         #[cfg(debug_assertions)]
         for d in &dirs {
             debug_assert!(
@@ -331,12 +332,14 @@ impl<'a> Layout<'a> {
         write_path_table::<BigEndian>(&mut w, &self.dirs)?;
         pad_to_sector(&mut w)?;
 
-        // Directory extents, in BFS order (which is the order flatten appended them)
+        // Directory extents, in BFS order (which is the order flatten appended
+        // them)
         for i in 0..self.dirs.len() {
             serialize_dir_extent(&mut w, &self.dirs[i], &self.dirs, &self.files)?;
         }
 
-        // File data, in BFS order. Consuming self.dirs lets us move FileSource out.
+        // File data, in BFS order. Consuming self.dirs lets us move FileSource
+        // out.
         for file in self.files.into_iter() {
             if file.len == 0 {
                 continue; // zero-byte files occupy no sectors (LBA stays 0)
@@ -776,14 +779,15 @@ fn serialize_dir_extent(
 ///   2. `InitialEntry`     — the default boot entry
 ///   3. For each section: `SectionHeaderEntry` + one `SectionEntry` per entry
 fn write_boot_catalog(w: &mut impl io::Write, boot_config: &BootConfig) -> io::Result<()> {
-    // ValidationEntry — checksum ensures the 16-bit word sum of the 32-byte record
-    // is zero.
+    // ValidationEntry — checksum ensures the 16-bit word sum of the 32-byte
+    // record is zero.
     let validation = {
         let mut e = ValidationEntry::new_zeroed();
         e.header_id = 1;
         e.platform_id = u8::from(boot_config.validation_platform);
         e.key = [0x55, 0xAA];
-        // Compute checksum with all other fields set; negate so the total sum is zero.
+        // Compute checksum with all other fields set; negate so the total sum
+        // is zero.
         let bytes = e.as_bytes();
         let sum = bytes
             .chunks_exact(2)

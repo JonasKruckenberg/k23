@@ -113,7 +113,8 @@ impl PhysMap {
             "invalid physical address. this is a bug! physmap={self:#x?},phys={phys:?}"
         );
 
-        // Safety: we have checked the address to be within the physical range above
+        // Safety: we have checked the address to be within the physical range
+        // above
         let virt = unsafe { self.phys_to_virt_internal(phys) };
 
         debug_assert!(
@@ -138,9 +139,11 @@ impl PhysMap {
         );
 
         let virt = {
-            // Safety: we checked the range bound to be within the physical range above
+            // Safety: we checked the range bound to be within the physical
+            // range above
             let start = unsafe { self.phys_to_virt_internal(phys.start) };
-            // Safety: we checked the range bound to be within the physical range above
+            // Safety: we checked the range bound to be within the physical
+            // range above
             let end = unsafe { self.phys_to_virt_internal(phys.end) };
 
             Range::from(start..end)

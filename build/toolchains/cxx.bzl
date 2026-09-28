@@ -109,7 +109,6 @@ def _clang_toolchain(ctx: AnalysisContext) -> list[Provider]:
                 ranlib = clang["ranlib"][RunInfo],
                 strip = clang["strip"][RunInfo],
                 dwp = None,
-                bolt_msdk = None,
             ),
             cxx_compiler_info = CxxCompilerInfo(
                 compiler = RunInfo(args = [cxx_compiler]),

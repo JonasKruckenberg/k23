@@ -563,7 +563,8 @@ impl VMGlobalDefinition {
                 WasmValType::Ref(r) => match r.heap_type.top().0 {
                     WasmHeapTopType::Extern => {
                         // VMVal::externref(match self.as_gc_ref() {
-                        //     Some(r) => store.gc_store_mut()?.clone_gc_ref(r).as_raw_u32(),
+                        //     Some(r) =>
+                        // store.gc_store_mut()?.clone_gc_ref(r).as_raw_u32(),
                         //     None => 0,
                         // }),
                         todo!()
@@ -571,7 +572,8 @@ impl VMGlobalDefinition {
                     WasmHeapTopType::Any => {
                         //VMVal::anyref({
                         // match self.as_gc_ref() {
-                        //     Some(r) => store.gc_store_mut()?.clone_gc_ref(r).as_raw_u32(),
+                        //     Some(r) =>
+                        // store.gc_store_mut()?.clone_gc_ref(r).as_raw_u32(),
                         //     None => 0,
                         // }
                         // }),
@@ -715,10 +717,10 @@ impl VMGlobalDefinition {
 
     // /// Return a reference to the global value as a borrowed GC reference.
     // pub unsafe fn as_gc_ref(&self) -> Option<&VMGcRef> {
-    //     let raw_ptr = self.storage.as_ref().as_ptr().cast::<Option<VMGcRef>>();
-    //     let ret = (*raw_ptr).as_ref();
-    //     assert!(cfg!(feature = "gc") || ret.is_none());
-    //     ret
+    //     let raw_ptr =
+    // self.storage.as_ref().as_ptr().cast::<Option<VMGcRef>>();     let ret
+    // = (*raw_ptr).as_ref();     assert!(cfg!(feature = "gc") ||
+    // ret.is_none());     ret
     // }
     //
     // /// Initialize a global to the given GC reference.

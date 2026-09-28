@@ -74,8 +74,8 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
     /// Returns `true` when _all_ page table entries in this table are _vacant_.
     pub fn is_empty(&self, physmap: &PhysMap, arch: &A) -> bool {
         (0..self.level().entries()).all(|entry_index| {
-            // Safety: we iterate through the entries for this level above, `entry_index` is
-            // always in-bounds
+            // Safety: we iterate through the entries for this level above,
+            // `entry_index` is always in-bounds
             unsafe { self.get(entry_index, physmap, arch) }.is_vacant()
         })
     }
@@ -90,10 +90,11 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
     pub unsafe fn get(&self, index: u16, physmap: &PhysMap, arch: &A) -> A::PageTableEntry {
         let entry_virt = self.entry_address(index, physmap);
 
-        // Safety: The address is always well aligned by the way we calculate it above
-        // (2.) we also know `0` is a valid pattern for `A::PageTableEntry` and
-        // we know that we can access the location either through the physmap or
-        // because we're still in bootstrapping.
+        // Safety: The address is always well aligned by the way we calculate it
+        // above (2.) we also know `0` is a valid pattern for
+        // `A::PageTableEntry` and we know that we can access the
+        // location either through the physmap or because we're still in
+        // bootstrapping.
         unsafe { arch.read(entry_virt) }
     }
 }
@@ -120,7 +121,8 @@ impl<A: Arch> Table<A, marker::Owned> {
     }
 
     pub fn deallocate(self, frame_allocator: impl FrameAllocator) {
-        // Safety: page tables are always exactly one page translation granule in size
+        // Safety: page tables are always exactly one page translation granule
+        // in size
         unsafe { frame_allocator.deallocate(self.base, A::GRANULE_LAYOUT) };
     }
 
@@ -170,10 +172,11 @@ pub trait Visitor<A: Arch, S: PageSize> {
         // Safety: the walk only descends through in-bounds indices.
         let entry = unsafe { table.get(index, physmap, arch) };
 
-        // The default descent is read-only: it neither allocates nor writes. The
-        // operations that use it (remap, set-attributes, unmap) run over an
-        // already-mapped range, so a vacant interior entry means the range is not
-        // fully mapped at `S` — a precondition violation.
+        // The default descent is read-only: it neither allocates nor writes.
+        // The operations that use it (remap, set-attributes, unmap) run
+        // over an already-mapped range, so a vacant interior entry
+        // means the range is not fully mapped at `S` — a precondition
+        // violation.
         debug_assert!(
             !entry.is_vacant(),
             "virtual address range must be mapped at page size {}",
@@ -253,10 +256,11 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
 
         let entry_virt = self.entry_address(index, physmap);
 
-        // Safety: The address is always well aligned by the way we calculate it above
-        // (2.) we also know `0` is a valid pattern for `A::PageTableEntry` and
-        // we know that we can access the location either through the physmap or
-        // because we're still in bootstrapping.
+        // Safety: The address is always well aligned by the way we calculate it
+        // above (2.) we also know `0` is a valid pattern for
+        // `A::PageTableEntry` and we know that we can access the
+        // location either through the physmap or because we're still in
+        // bootstrapping.
         unsafe { arch.write(entry_virt, entry) }
     }
 
@@ -279,8 +283,8 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
         V: Visitor<A, S>,
     {
         if range.len() == S::BYTES {
-            // Optimized fast-path for single leaf-page operations such as when committing,
-            // decommitting, etc individual CoW pages.
+            // Optimized fast-path for single leaf-page operations such as when
+            // committing, decommitting, etc individual CoW pages.
             visit_leaf::<S, A, V>(self, range.start, physmap, arch, visitor)
         } else {
             visit_range::<S, A, V>(self, range, physmap, arch, visitor)
@@ -308,10 +312,12 @@ where
         return visitor.fill(&mut table, index, 1, va, physmap, arch);
     }
 
-    // The visitor hands back the child table to descend into, or `None` to stop.
+    // The visitor hands back the child table to descend into, or `None` to
+    // stop.
     if let Some(child_base) = visitor.descend(&mut table, index, physmap, arch)? {
-        // Safety: the visitor promised `child_base` is a table, so it sits one level
-        // below `table`, and we inherit `table`'s mutable access to the tree.
+        // Safety: the visitor promised `child_base` is a table, so it sits one
+        // level below `table`, and we inherit `table`'s mutable access
+        // to the tree.
         let subtable = unsafe { Table::from_raw_parts(child_base, depth + 1) };
         visit_leaf::<S, A, V>(subtable, va, physmap, arch, visitor)?;
         visitor.ascend(&mut table, index, child_base, depth + 1, physmap, arch)?;
@@ -352,8 +358,9 @@ where
 
     for (index, sub_range) in page_table_entries_for::<A>(range, &A::LEVELS[depth as usize]) {
         if let Some(child_base) = visitor.descend(&mut table, index, physmap, arch)? {
-            // Safety: the visitor promised `child_base` is a table, so it sits one level
-            // below `table`, and we inherit `table`'s mutable access to the tree.
+            // Safety: the visitor promised `child_base` is a table, so it sits
+            // one level below `table`, and we inherit `table`'s
+            // mutable access to the tree.
             let subtable = unsafe { Table::from_raw_parts(child_base, depth + 1) };
             visit_range::<S, A, V>(subtable, sub_range, physmap, arch, visitor)?;
             visitor.ascend(&mut table, index, child_base, depth + 1, physmap, arch)?;

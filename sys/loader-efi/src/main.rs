@@ -7,8 +7,6 @@
 
 #![no_std]
 #![no_main]
-#![feature(unwrap_infallible)]
-#![feature(never_type)]
 #![feature(slice_partition_dedup)]
 
 extern crate alloc;
@@ -118,8 +116,8 @@ fn discover_physical_memory() -> Vec<MemoryRegion> {
                     MemoryRegionKind::Usable
                 }
 
-                // TODO handle MMIO, and other memory region types here instead of defaulting to
-                // unusable
+                // TODO handle MMIO, and other memory region types here instead
+                // of defaulting to unusable
                 _ => MemoryRegionKind::Unusable,
             };
 
@@ -148,14 +146,15 @@ fn collect_memory_regions(memory_map: MemoryMapOwned) -> loader_api::MemoryRegio
                 MemoryRegionKind::Usable
             }
 
-            // TODO handle MMIO, and other memory region types here instead of defaulting to
-            // unusable
+            // TODO handle MMIO, and other memory region types here instead of
+            // defaulting to unusable
             _ => MemoryRegionKind::Unusable,
         };
 
-        // Runs post-`exit_boot_services`, where a panic has no clean recovery. On all
-        // supported (64-bit) targets `usize == u64` so these conversions never fail;
-        // skip any region we somehow can't represent rather than panicking.
+        // Runs post-`exit_boot_services`, where a panic has no clean recovery.
+        // On all supported (64-bit) targets `usize == u64` so these
+        // conversions never fail; skip any region we somehow can't
+        // represent rather than panicking.
         let Ok(start) = usize::try_from(desc.phys_start) else {
             debug_assert!(false, "phys_start {:#x} exceeds usize", desc.phys_start);
             continue;

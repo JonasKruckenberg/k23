@@ -9,9 +9,7 @@
 #![no_main]
 #![feature(used_with_arg)]
 #![feature(thread_local)]
-#![feature(debug_closure_helpers)]
 #![feature(iter_next_chunk)]
-#![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 
 extern crate alloc;
@@ -79,9 +77,10 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
-    // Unwinding expects at least one landing pad in the callstack, but capturing
-    // all unwinds that bubble up to this point is also a good idea since we can
-    // perform some last cleanup and print an error message.
+    // Unwinding expects at least one landing pad in the callstack, but
+    // capturing all unwinds that bubble up to this point is also a good
+    // idea since we can perform some last cleanup and print an error
+    // message.
     let res = panic_unwind::catch_unwind(|| {
         backtrace::__rust_begin_short_backtrace(|| kmain(boot_info));
     });
@@ -95,8 +94,8 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
                 hint::spin_loop();
             }
         }
-        // If the panic propagates up to this catch here there is nothing we can do, this is a
-        // terminal failure.
+        // If the panic propagates up to this catch here there is nothing we can
+        // do, this is a terminal failure.
         Err(_) => {
             tracing::error!("unrecoverable kernel panic");
             abort()
@@ -136,12 +135,13 @@ fn kmain(boot_info: &'static BootInfo) {
     let (console_tx, console_rx) =
         unsafe { uart_16550::open(uart.regs.start.get(), uart.clock_frequency, uart.baud_rate) };
 
-    // set up the basic functionality of the tracing subsystem as early as possible
+    // set up the basic functionality of the tracing subsystem as early as
+    // possible
     tracing::init_early(console_tx);
     log::info!("{boot_info}");
 
-    // initialize a simple bump allocator for allocating memory before our virtual
-    // memory subsystem is available
+    // initialize a simple bump allocator for allocating memory before our
+    // virtual memory subsystem is available
     let allocatable_memories = allocatable_memory_regions(boot_info);
     log::info!("allocatable memories: {:?}", allocatable_memories);
     let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
@@ -166,9 +166,10 @@ fn kmain(boot_info: &'static BootInfo) {
     // perform global, architecture-specific initialization
     let arch = arch::init();
 
-    // Hand the still-free regions (after the initial-heap carve-out) to the frame
-    // allocator. `boot_alloc.free_regions()` reports usable bytes that haven't been
-    // burned during early boot, so the buddy never re-hands those out.
+    // Hand the still-free regions (after the initial-heap carve-out) to the
+    // frame allocator. `boot_alloc.free_regions()` reports usable bytes
+    // that haven't been burned during early boot, so the buddy never
+    // re-hands those out.
     let free_regions: loader_api::MemoryRegions = boot_alloc
         .free_regions()
         .map(|range| loader_api::MemoryRegion {
@@ -178,17 +179,17 @@ fn kmain(boot_info: &'static BootInfo) {
         .collect();
     let frame_alloc = frame_alloc::init(boot_alloc, free_regions, &boot_info.physmap);
 
-    // wire the frame allocator into the kernel heap's OOM handler so the heap can
-    // grow automatically. Must come after `frame_alloc::init`; safe to come
-    // before `mem::init` since the OOM handler doesn't touch the kernel address
-    // space.
+    // wire the frame allocator into the kernel heap's OOM handler so the heap
+    // can grow automatically. Must come after `frame_alloc::init`; safe to
+    // come before `mem::init` since the OOM handler doesn't touch the
+    // kernel address space.
     allocator::late_init(frame_alloc, bootargs.heap_max);
 
     // initialize the virtual memory subsystem
     mem::init(boot_info, &mut rng, frame_alloc).unwrap();
 
-    // Give every hart a dense `LogicalCpuId`. Must precede anything sized by, or
-    // indexed by, the CPU count.
+    // Give every hart a dense `LogicalCpuId`. Must precede anything sized by,
+    // or indexed by, the CPU count.
     let cpus = Cpus::from_device_tree(&device_tree, boot_hartid).unwrap();
     tracing::debug!("{} CPUs, booted on hart {boot_hartid}", cpus.len());
 

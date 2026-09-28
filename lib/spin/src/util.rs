@@ -23,7 +23,8 @@ impl !Send for HeldInterrupts {}
 impl Drop for HeldInterrupts {
     #[inline]
     fn drop(&mut self) {
-        // Safety: restores the state saved by `HeldInterrupts::disable`, exactly once.
+        // Safety: restores the state saved by `HeldInterrupts::disable`,
+        // exactly once.
         unsafe { critical_section::release(self.0) };
     }
 }

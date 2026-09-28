@@ -13,7 +13,7 @@ _DEPS = [
 ] + select({
     # `riscv` is the only genuinely riscv64-only dependency; everything above is
     # portable no_std, so on any other bare-metal target the crate builds without it.
-    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+    "prelude//cpu:riscv64": ["//lib/riscv:riscv"],
     "DEFAULT": [],
 })
 
@@ -23,6 +23,6 @@ rust_library(
     crate_root = "src/lib.rs",
     deps = _DEPS,
     incoming_transition = "//build:loader",
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    target_compatible_with = ["prelude//cpu:riscv64"],
     visibility = ["PUBLIC"],
 )

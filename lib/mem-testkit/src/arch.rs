@@ -83,8 +83,9 @@ impl<A: Arch> Arch for EmulateArch<A> {
             // Safety: ensured by caller.
             unsafe { self.machine.read(self.asid, address) }
         } else {
-            // Safety: We checked for the absence of an active translation table, meaning
-            // we're in "bare" mode and VirtualAddress==PhysicalAddress.
+            // Safety: We checked for the absence of an active translation
+            // table, meaning we're in "bare" mode and
+            // VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             // Safety: validity/alignment ensured by caller
             unsafe { self.machine.read_phys(address) }
@@ -99,8 +100,9 @@ impl<A: Arch> Arch for EmulateArch<A> {
             // Safety: ensured by caller.
             unsafe { self.machine.write(self.asid, address, value) }
         } else {
-            // Safety: We checked for the absence of an active translation table, meaning
-            // we're in "bare" mode and VirtualAddress==PhysicalAddress.
+            // Safety: We checked for the absence of an active translation
+            // table, meaning we're in "bare" mode and
+            // VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             // Safety: validity/alignment ensured by caller
             unsafe { self.machine.write_phys(address, value) }
@@ -115,9 +117,10 @@ impl<A: Arch> Arch for EmulateArch<A> {
             // Safety: ensured by caller.
             unsafe { self.machine.read_bytes(self.asid, address, count) }
         } else {
-            // Safety: We checked for the absence of an active translation table, meaning
-            // we're in "bare" mode and VirtualAddress==PhysicalAddress. All
-            // other safety invariants are ensured by the caller.
+            // Safety: We checked for the absence of an active translation
+            // table, meaning we're in "bare" mode and
+            // VirtualAddress==PhysicalAddress. All other safety
+            // invariants are ensured by the caller.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             // Safety: validity ensured by caller
             self.machine.read_bytes_phys(address, count)
@@ -132,9 +135,10 @@ impl<A: Arch> Arch for EmulateArch<A> {
             // Safety: ensured by caller.
             unsafe { self.machine.write_bytes(self.asid, address, value, count) }
         } else {
-            // Safety: We checked for the absence of an active translation table, meaning
-            // we're in "bare" mode and VirtualAddress==PhysicalAddress. All
-            // other safety invariants are ensured by the caller.
+            // Safety: We checked for the absence of an active translation
+            // table, meaning we're in "bare" mode and
+            // VirtualAddress==PhysicalAddress. All other safety
+            // invariants are ensured by the caller.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             // Safety: validity ensured by caller
             self.machine.write_bytes_phys(address, value, count);

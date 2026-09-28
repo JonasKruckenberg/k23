@@ -49,8 +49,8 @@ unsafe impl FrameAllocator for UefiFrameAlloc {
         let ptr = uefi::boot::allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, pages)
             .map_err(|_| AllocError)?;
 
-        // SAFETY: `allocate_pages` returned `pages` fresh, exclusively-owned pages,
-        // which is at least `layout.size()` writable bytes.
+        // SAFETY: `allocate_pages` returned `pages` fresh, exclusively-owned
+        // pages, which is at least `layout.size()` writable bytes.
         unsafe {
             ptr.write_bytes(0, layout.size());
         }
@@ -68,8 +68,8 @@ unsafe impl FrameAllocator for UefiFrameAlloc {
         let pages = layout.pad_to_align().size().div_ceil(uefi::boot::PAGE_SIZE);
         let ptr = NonNull::dangling().with_addr(NonZero::new(block.get()).unwrap());
 
-        // SAFETY: the caller guarantees `block`/`layout` denote a live allocation
-        // previously handed out by this allocator.
+        // SAFETY: the caller guarantees `block`/`layout` denote a live
+        // allocation previously handed out by this allocator.
         if let Err(err) = unsafe { uefi::boot::free_pages(ptr, pages) } {
             log::warn!("failed to free {pages} pages at {block}: {err}");
         }

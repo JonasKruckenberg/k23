@@ -163,7 +163,8 @@ impl ModuleTypesBuilder {
         // *after* we finish defining the rec group because we may need to
         // intern new function types, which would conflict with the contiguous
         // range of type indices we pre-reserved for the rec group elements.
-        // FIXME this collect here is annoying, but it circumvents the lifetime issuec
+        // FIXME this collect here is annoying, but it circumvents the lifetime
+        // issuec
         let elements: Vec<_> = self.types.rec_group_elements(rec_group_index).collect();
         for ty in elements {
             if self.types.wasm_types[ty].is_func() {

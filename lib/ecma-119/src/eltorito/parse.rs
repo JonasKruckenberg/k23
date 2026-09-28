@@ -70,7 +70,8 @@ enum State {
     // next record is a section header
     SectionHeader,
     // next record is a section entry;
-    // when remaining hits zero we switch back to the next section header (or stop)
+    // when remaining hits zero we switch back to the next section header (or
+    // stop)
     SectionEntries {
         remaining: u16,
         has_more_sections: bool,
@@ -176,7 +177,8 @@ impl<'a> FallibleIterator for BootCatalogIter<'a> {
                     let ext_indicator = self.parser.peek::<u8>()?;
 
                     if *ext_indicator != 0x44 {
-                        // Not an extension — send back to entries without consuming a count
+                        // Not an extension — send back to entries without
+                        // consuming a count
                         self.state = State::SectionEntries {
                             remaining: remaining_entries,
                             has_more_sections,

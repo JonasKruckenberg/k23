@@ -150,8 +150,8 @@ impl WastContext {
         //     ctx.store,
         //     "spectest",
         //     "global_f64",
-        //     Global::new(ty, Value::F64(f64::from_bits(0x4084_d4cc_cccc_cccd))),
-        // )?;
+        //     Global::new(ty,
+        // Value::F64(f64::from_bits(0x4084_d4cc_cccc_cccd))), )?;
 
         // let ty = TableType {
         //     element_type: RefType::FUNCREF,
@@ -350,7 +350,8 @@ impl WastContext {
             .iter()
             .map(|v| match v {
                 WastArg::Core(v) => wast_arg_to_val(v),
-                // WastArg::Component(_) => bail!("expected component function, found core"),
+                // WastArg::Component(_) => bail!("expected component function,
+                // found core"),
                 _ => unreachable!(),
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -359,13 +360,13 @@ impl WastContext {
         let ty = func.ty(&inner.store);
         let this = self.0.clone();
 
-        // FIXME the virtual memory subsystem trap handling code will look for a current
-        // task  in order to find the current address space to resole page
-        // faults against. This is why  we need to wrap this call in a `spawn`
-        // that we immediately await (so the scheduling  subsystem tracks it as
-        // a task). Ideally we would get rid of this and have some other
-        //  mechanism of tracking the current address space...
-        // scheduler()
+        // FIXME the virtual memory subsystem trap handling code will look for a
+        // current task  in order to find the current address space to
+        // resole page faults against. This is why  we need to wrap this
+        // call in a `spawn` that we immediately await (so the
+        // scheduling  subsystem tracks it as a task). Ideally we would
+        // get rid of this and have some other  mechanism of tracking
+        // the current address space... scheduler()
         //     .spawn(async move {
         let mut results = vec![Val::I32(0); ty.results().len()];
 
@@ -512,8 +513,8 @@ pub fn match_val(store: &Store<()>, actual: &Val, expected: &WastRetCore) -> any
 
         // Null references.
         // (
-        //     Val::FuncRef(None) | Val::ExternRef(None), /* | Value::AnyRef(None) */
-        //     WastRetCore::RefNull(_),
+        //     Val::FuncRef(None) | Val::ExternRef(None), /* |
+        // Value::AnyRef(None) */     WastRetCore::RefNull(_),
         // )
         // | (Val::ExternRef(None), WastRetCore::RefExtern(None)) => Ok(()),
         //
@@ -528,11 +529,11 @@ pub fn match_val(store: &Store<()>, actual: &Val, expected: &WastRetCore) -> any
         //         shared: false,
         //     })),
         // ) => {
-        //     bail!("expected null externref, found non-null externref of {x}");
-        // }
-        // (Val::ExternRef(Some(_)) | Val::FuncRef(Some(_)), WastRetCore::RefNull(_)) => {
-        //     bail!("expected null, found non-null reference: {actual:?}")
-        // }
+        //     bail!("expected null externref, found non-null externref of
+        // {x}"); }
+        // (Val::ExternRef(Some(_)) | Val::FuncRef(Some(_)),
+        // WastRetCore::RefNull(_)) => {     bail!("expected null, found
+        // non-null reference: {actual:?}") }
         //
         // // // Non-null references.
         // (Val::FuncRef(Some(_)), WastRetCore::RefFunc(_)) => Ok(()),
@@ -542,8 +543,8 @@ pub fn match_val(store: &Store<()>, actual: &Val, expected: &WastRetCore) -> any
         //     // let x = x
         //     //     .data(store)?
         //     //     .downcast_ref::<u32>()
-        //     //     .expect("only u32 externrefs created in wast test suites");
-        //     // if x == y {
+        //     //     .expect("only u32 externrefs created in wast test
+        // suites");     // if x == y {
         //     //     Ok(())
         //     // } else {
         //     //     bail!();
@@ -583,12 +584,13 @@ where
 
 pub fn match_f32(actual: u32, expected: NanPattern<F32>) -> anyhow::Result<()> {
     match expected {
-        // Check if an f32 (as u32 bits to avoid possible quieting when moving values in registers,
-        // e.g. https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
+        // Check if an f32 (as u32 bits to avoid possible quieting when moving
+        // values in registers, e.g. https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
         // is a canonical NaN:
         //  - the sign bit is unspecified,
         //  - the 8-bit exponent is set to all 1s
-        //  - the MSB of the payload is set to 1 (a quieted NaN) and all others to 0.
+        //  - the MSB of the payload is set to 1 (a quieted NaN) and all others
+        //    to 0.
         // See https://webassembly.github.io/spec/core/syntax/values.html#floating-point.
         NanPattern::CanonicalNan => {
             let canon_nan = 0x7fc0_0000;
@@ -648,12 +650,13 @@ pub fn match_f32(actual: u32, expected: NanPattern<F32>) -> anyhow::Result<()> {
 
 pub fn match_f64(actual: u64, expected: &NanPattern<F64>) -> anyhow::Result<()> {
     match expected {
-        // Check if an f64 (as u64 bits to avoid possible quieting when moving values in registers,
-        // e.g. https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
+        // Check if an f64 (as u64 bits to avoid possible quieting when moving
+        // values in registers, e.g. https://developer.arm.com/documentation/ddi0344/i/neon-and-vfp-programmers-model/modes-of-operation/default-nan-mode?lang=en)
         // is a canonical NaN:
         //  - the sign bit is unspecified,
         //  - the 11-bit exponent is set to all 1s
-        //  - the MSB of the payload is set to 1 (a quieted NaN) and all others to 0.
+        //  - the MSB of the payload is set to 1 (a quieted NaN) and all others
+        //    to 0.
         // See https://webassembly.github.io/spec/core/syntax/values.html#floating-point.
         NanPattern::CanonicalNan => {
             let canon_nan = 0x7ff8_0000_0000_0000;
@@ -671,10 +674,10 @@ pub fn match_f64(actual: u64, expected: &NanPattern<F64>) -> anyhow::Result<()> 
             }
         }
 
-        // Check if an f64 (as u64, see comments above) is an arithmetic NaN. This is the same as a
-        // canonical NaN including that the payload MSB is set to 1, but one or more of the
-        // remaining payload bits MAY BE set to 1 (a canonical NaN specifies all 0s). See
-        // https://webassembly.github.io/spec/core/syntax/values.html#floating-point.
+        // Check if an f64 (as u64, see comments above) is an arithmetic NaN.
+        // This is the same as a canonical NaN including that the payload MSB is
+        // set to 1, but one or more of the remaining payload bits MAY BE set to
+        // 1 (a canonical NaN specifies all 0s). See https://webassembly.github.io/spec/core/syntax/values.html#floating-point.
         NanPattern::ArithmeticNan => {
             const AF64_NAN: u64 = 0x7ff0_0000_0000_0000;
             let is_nan = actual & AF64_NAN == AF64_NAN;

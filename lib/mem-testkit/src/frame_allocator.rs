@@ -75,8 +75,8 @@ unsafe impl FrameAllocator for TestFrameAllocator {
         if layout.size() == 0 {
             return Err(AllocError);
         }
-        // Each block we hand back is a single frame, so it can only honor alignments up
-        // to one frame. Larger alignments must go through
+        // Each block we hand back is a single frame, so it can only honor
+        // alignments up to one frame. Larger alignments must go through
         // `allocate_contiguous`.
         assert!(
             layout.align() <= self.granule,
@@ -112,8 +112,8 @@ unsafe impl FrameAllocator for TestFrameAllocator {
         let nframes = layout.size().div_ceil(self.granule);
         let mut free = self.free.lock().unwrap();
 
-        // Find the lowest `align`-aligned frame that begins a run of `nframes` free
-        // frames.
+        // Find the lowest `align`-aligned frame that begins a run of `nframes`
+        // free frames.
         let base = free
             .iter()
             .copied()
@@ -140,7 +140,8 @@ unsafe impl FrameAllocator for TestFrameAllocator {
                 frame.is_aligned_to(self.granule),
                 "deallocated block {block:?} is not frame-aligned"
             );
-            // Catches `mem-core` double-frees / frees of never-allocated frames.
+            // Catches `mem-core` double-frees / frees of never-allocated
+            // frames.
             let newly_freed = free.insert(frame);
             debug_assert!(newly_freed, "double free of frame {frame:?}");
         }

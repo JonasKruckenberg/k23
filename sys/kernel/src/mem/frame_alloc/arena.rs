@@ -169,8 +169,8 @@ impl Arena {
             .skip(min_order)
             .find_map(|(i, list)| list.pop_back().map(|area| (i, area)))?;
 
-        // if the free area we found was of higher order (ie larger) that we requested
-        // we need to split it up
+        // if the free area we found was of higher order (ie larger) that we
+        // requested we need to split it up
         for order in (min_order + 1..frame_order + 1).rev() {
             // Safety: we just allocated the frame
             let frame = unsafe { frame.as_mut() };
@@ -187,9 +187,9 @@ impl Arena {
         }
 
         // Initialize all frame structs
-        // The base frame we pulled from the freelist is already correctly initialized,
-        // but all following frames of its buddy "block" are left uninitialized,
-        // so we need to do that now.
+        // The base frame we pulled from the freelist is already correctly
+        // initialized, but all following frames of its buddy "block"
+        // are left uninitialized, so we need to do that now.
         let frames = {
             let uninit: &mut [MaybeUninit<FrameInfo>] =
                 // Safety: we just allocate the frames

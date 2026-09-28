@@ -189,9 +189,9 @@ impl Arena {
     }
 
     fn find_phandle(&self, phandle: u32) -> Option<DeviceId> {
-        // Safety: `self.phandle_index` was constructed by `Builder::finish` from a
-        // `BumpVec` finalized via `into_bump_slice`; its bytes live in
-        // `self.bump`, which is alive while `&self` is held.
+        // Safety: `self.phandle_index` was constructed by `Builder::finish`
+        // from a `BumpVec` finalized via `into_bump_slice`; its bytes
+        // live in `self.bump`, which is alive while `&self` is held.
         let idx = unsafe { self.phandle_index.as_ref() };
         idx.binary_search_by_key(&phandle, |&(p, _)| p)
             .ok()

@@ -205,13 +205,14 @@ impl<'a> Frame<'a> {
                 .unwrap_or_else(|| arch::default_register_rule_for(reg));
 
             match rule {
-                // According to LLVM libunwind (and this appears to be true in practice as well)
-                // leaf functions don't actually store their return address on the stack instead
-                // keeping it in register and there is no explicit EH_FRAME instruction on how to
-                // restore it. (great btw that stuff like this is well documented -
-                // not) This means if the register is the return address register
-                // AND there isn't a register rule for it, we need to maintain it
-                // nonetheless.
+                // According to LLVM libunwind (and this appears to be true in
+                // practice as well) leaf functions don't actually store their
+                // return address on the stack instead keeping it in register
+                // and there is no explicit EH_FRAME instruction on how to
+                // restore it. (great btw that stuff like this is well
+                // documented - not) This means if the register is the return
+                // address register AND there isn't a register rule for it, we
+                // need to maintain it nonetheless.
                 RegisterRule::Undefined if reg == self.return_address_register => {
                     new_regs[reg] = self.regs[self.return_address_register];
                 }
@@ -364,26 +365,27 @@ impl FallibleIterator for FrameIter {
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
         let mut ip = self.ip;
 
-        // The previous call to `Frame::unwind` set the return address to zero (meaning
-        // there was no information on how to restore the return address) this
-        // means we're done walking the stack. Reached end of stack
+        // The previous call to `Frame::unwind` set the return address to zero
+        // (meaning there was no information on how to restore the
+        // return address) this means we're done walking the stack.
+        // Reached end of stack
         if ip == 0 {
             return Ok(None);
         }
 
-        // RA points to the *next* instruction, so move it back 1 byte for the call
-        // instruction.
+        // RA points to the *next* instruction, so move it back 1 byte for the
+        // call instruction.
         if !self.signal {
             ip -= 1;
         }
 
-        // Construct the frame from the registers and instruction pointer, this will
-        // also look up all the required unwind information.
+        // Construct the frame from the registers and instruction pointer, this
+        // will also look up all the required unwind information.
         let frame = Frame::from_context(&self.regs, ip)?;
         // and then unwind the frame to obtain the next register context
         self.regs = frame.unwind()?;
-        // Use the return address as the next value of `pc` this essentially simulates a
-        // function return.
+        // Use the return address as the next value of `pc` this essentially
+        // simulates a function return.
         self.ip = self.regs[arch::RA];
 
         self.signal = frame.is_signal_trampoline();

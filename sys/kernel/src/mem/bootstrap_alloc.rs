@@ -62,9 +62,10 @@ impl<'a> BootstrapAllocator<'a> {
         for region in self.regions.iter().rev() {
             // only consider regions that we haven't already exhausted
             if offset < region.len() {
-                // Allocating a contiguous range has different requirements than "regular"
-                // allocation contiguous are rare and often happen in very
-                // critical paths where e.g. virtual memory is not available
+                // Allocating a contiguous range has different requirements than
+                // "regular" allocation contiguous are rare and
+                // often happen in very critical paths where
+                // e.g. virtual memory is not available
                 // yet. So we rather waste some memory than outright crash.
                 if region.len() - offset < requested_size {
                     tracing::warn!(

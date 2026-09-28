@@ -16,8 +16,6 @@
 //! feature) so the libraries stay unconditionally `no_std` and there is exactly
 //! one configured build of each across every dependency graph.
 
-#![feature(debug_closure_helpers)]
-
 mod arch;
 mod frame_allocator;
 mod machine;

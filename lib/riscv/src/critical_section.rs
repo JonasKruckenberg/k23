@@ -34,7 +34,8 @@ unsafe impl Impl for SingleHartCriticalSection {
     }
 
     unsafe fn release(was_active: RawRestoreState) {
-        // Only re-enable interrupts if they were enabled before the critical section.
+        // Only re-enable interrupts if they were enabled before the critical
+        // section.
         if was_active {
             // Safety: ensured by the caller
             unsafe { interrupt::enable() }

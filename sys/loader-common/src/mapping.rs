@@ -244,8 +244,9 @@ pub(crate) fn map_uart(
 
     log::debug!("mapping UART {virt:?} => {phys:?}");
 
-    // Safety: `phys` is the firmware-described UART register block and `virt` is
-    // a fresh, unmapped range reserved for it in the kernel layout, of equal size.
+    // Safety: `phys` is the firmware-described UART register block and `virt`
+    // is a fresh, unmapped range reserved for it in the kernel layout, of
+    // equal size.
     unsafe {
         aspace.map_contiguous::<Size4KiB>(virt, phys.start, attrs, frame_alloc, physmap, flush)?;
     }
@@ -276,8 +277,8 @@ pub fn map_handoff_trampoline(
 
     log::debug!("handoff trampoline {start}..{end}");
 
-    // Safety: page allocator ensures region is disjoint (unmapped) and we checked
-    // the bounds to be aligned above.
+    // Safety: page allocator ensures region is disjoint (unmapped) and we
+    // checked the bounds to be aligned above.
     unsafe {
         aspace.map_identity::<Size4KiB>(
             Range::from(start..end),

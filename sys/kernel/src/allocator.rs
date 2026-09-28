@@ -91,10 +91,11 @@ impl KernelHeapSource {
 // indirectly.
 unsafe impl Source for KernelHeapSource {
     fn acquire<B: Binning>(talc: &mut Talc<Self, B>, layout: Layout) -> Result<(), ()> {
-        // TODO(metrics): increment a "kernel_heap.oom.invocations" counter here.
+        // TODO(metrics): increment a "kernel_heap.oom.invocations" counter
+        // here.
 
-        // Snapshot what we need from the source up front so we don't have to juggle
-        // reborrows around the call to `talc.claim`.
+        // Snapshot what we need from the source up front so we don't have to
+        // juggle reborrows around the call to `talc.claim`.
         let fa = talc.source.frame_alloc.ok_or(())?;
         if talc.source.chunks.is_full() {
             // TODO(metrics): increment "kernel_heap.oom.chunk_table_full".
@@ -103,11 +104,11 @@ unsafe impl Source for KernelHeapSource {
         let max_total = talc.source.max_total_pages;
         let total = talc.source.total_pages;
 
-        // Round to whole pages with worst-case alignment slack, plus one page for
-        // talc's per-claim metadata. Without that slack, a layout sized within
-        // a few words of a page boundary would loop: the chunk fits raw bytes
-        // but not talc-managed bytes, so talc retries with the same layout
-        // until we hit `max_total_pages`.
+        // Round to whole pages with worst-case alignment slack, plus one page
+        // for talc's per-claim metadata. Without that slack, a layout
+        // sized within a few words of a page boundary would loop: the
+        // chunk fits raw bytes but not talc-managed bytes, so talc
+        // retries with the same layout until we hit `max_total_pages`.
         let needed_pages = layout
             .size()
             .saturating_add(layout.align() - 1)
@@ -118,9 +119,9 @@ unsafe impl Source for KernelHeapSource {
             return Err(());
         }
         let mut want_pages = needed_pages.max(HEAP_GROW_CHUNK_PAGES);
-        // Trim to the remaining cap budget so one grow can't overshoot by up to a
-        // chunk. The cap check above guarantees `max_total > total` here, so
-        // the sub is exact.
+        // Trim to the remaining cap budget so one grow can't overshoot by up to
+        // a chunk. The cap check above guarantees `max_total > total`
+        // here, so the sub is exact.
         if max_total != 0 {
             want_pages = want_pages.min(max_total - total);
         }
@@ -135,23 +136,24 @@ unsafe impl Source for KernelHeapSource {
 
         let virt_start = fa.physmap.phys_to_virt(phys_start);
 
-        // Safety: we just exclusively allocated this physical run from the frame
-        // allocator and the HHDM mapping is wired and stable for the rest of
-        // the kernel's lifetime.
+        // Safety: we just exclusively allocated this physical run from the
+        // frame allocator and the HHDM mapping is wired and stable for
+        // the rest of the kernel's lifetime.
         //
-        // `claim` returns `None` only for regions below `CHUNK_UNIT`; we always pass at
-        // least one page, so this is unreachable. If it ever does fail the
-        // physical run stays pinned (`alloc_contiguous_pages_global`
-        // `mem::forget`s the frames) until a matching free path exists — see
-        // TODO on that function.
+        // `claim` returns `None` only for regions below `CHUNK_UNIT`; we always
+        // pass at least one page, so this is unreachable. If it ever
+        // does fail the physical run stays pinned
+        // (`alloc_contiguous_pages_global` `mem::forget`s the frames)
+        // until a matching free path exists — see TODO on that
+        // function.
         unsafe {
             talc.claim(virt_start.as_mut_ptr(), frames.len() * arch::PAGE_SIZE)
                 .ok_or(())?;
         };
 
         // Capacity was checked before we did anything observable.
-        // Safety: `chunks.is_full()` returned false above and we hold the talc lock, so
-        // no other task can have pushed in between.
+        // Safety: `chunks.is_full()` returned false above and we hold the talc
+        // lock, so no other task can have pushed in between.
         unsafe {
             talc.source.chunks.push_unchecked(HeapChunk {
                 phys_start,
@@ -187,9 +189,9 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &'static BootInfo) {
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
 
-    // Safety: just allocated the memory region. The compile-time assertion at the
-    // top of this module guarantees the initial heap is large enough for talc's
-    // first-claim metadata.
+    // Safety: just allocated the memory region. The compile-time assertion at
+    // the top of this module guarantees the initial heap is large enough
+    // for talc's first-claim metadata.
     unsafe { alloc.claim(virt.start.as_mut_ptr(), virt.len()).unwrap() };
 
     // Safety: `chunks` is empty and `MAX_HEAP_CHUNKS >= 1`.

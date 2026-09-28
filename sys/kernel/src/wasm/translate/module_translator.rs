@@ -191,8 +191,8 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             // | Payload::ComponentStartSection { .. }
             // | Payload::ComponentImportSection(_)
             // | Payload::ComponentExportSection(_) => {
-            //     return Err(wasm_unsupported!("component model is unsupported"));
-            // }
+            //     return Err(wasm_unsupported!("component model is
+            // unsupported")); }
             p => tracing::warn!("unknown section {p:?}"),
         }
         Ok(())

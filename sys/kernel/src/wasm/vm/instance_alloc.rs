@@ -207,10 +207,11 @@ pub trait InstanceAllocator {
             self.allocate_memories(module.translated(), &mut memories)?;
             self.allocate_instance_and_vmctx(module.vmshape())
         })() {
-            // Safety: we crated the instance handle and memories/tables from the same module
-            // description so should be fine
+            // Safety: we crated the instance handle and memories/tables from
+            // the same module description so should be fine
             Ok(instance) => Ok(unsafe { Instance::from_parts(module, instance, tables, memories) }),
-            // Safety: memories and tables have just been allocated and will not be handed out
+            // Safety: memories and tables have just been allocated and will not
+            // be handed out
             Err(e) => unsafe {
                 self.deallocate_memories(&mut memories);
                 self.deallocate_tables(&mut tables);
@@ -241,8 +242,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
     }
 
     unsafe fn deallocate_instance_and_vmctx(&self, instance: NonNull<Instance>, vmshape: &VMShape) {
-        // Safety: `NonNull<Instance>` is only ever created above using the same global
-        // allocator
+        // Safety: `NonNull<Instance>` is only ever created above using the same
+        // global allocator
         unsafe {
             // FIXME this shouldn't allocate from the kernel heap
             let layout = Instance::alloc_layout(vmshape);
@@ -255,9 +256,9 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         memory: &translate::Memory,
         _memory_index: DefinedMemoryIndex,
     ) -> crate::Result<vm::Memory> {
-        // TODO we could call out to some resource management instance here to obtain
-        //  dynamic "minimum" and "maximum" values that reflect the state of the real
-        // systems  memory consumption
+        // TODO we could call out to some resource management instance here to
+        // obtain  dynamic "minimum" and "maximum" values that reflect
+        // the state of the real systems  memory consumption
 
         // If the minimum memory size overflows the size of our own address
         // space, then we can't satisfy this request, but defer the error to
@@ -289,14 +290,15 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         let request_bytes = allocation_bytes + offset_guard_bytes;
 
         let mmap = crate::mem::with_kernel_aspace(|aspace| {
-            // attempt to use 2MiB alignment but if that's not available fallback to the
-            // largest
+            // attempt to use 2MiB alignment but if that's not available
+            // fallback to the largest
             let align = cmp::min(
                 2 * 1048576,
                 aspace.with_lock(|aspace| aspace.frame_alloc.max_alignment()),
             );
 
-            // TODO the align arg should be a named const not a weird number like this
+            // TODO the align arg should be a named const not a weird number
+            // like this
             Mmap::new_zeroed(aspace.clone(), request_bytes, align, None)
                 .context("Failed to mmap zeroed memory for Memory")
         })?;
@@ -317,9 +319,9 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         table: &translate::Table,
         _table_index: DefinedTableIndex,
     ) -> crate::Result<vm::Table> {
-        // TODO we could call out to some resource management instance here to obtain
-        //  dynamic "minimum" and "maximum" values that reflect the state of the real
-        // systems  memory consumption
+        // TODO we could call out to some resource management instance here to
+        // obtain  dynamic "minimum" and "maximum" values that reflect
+        // the state of the real systems  memory consumption
         let maximum = table.limits.max.and_then(|m| usize::try_from(m).ok());
         let reserve_size = TABLE_MAX.min(maximum.unwrap_or(usize::MAX));
 

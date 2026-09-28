@@ -14,9 +14,10 @@ use mem_core::arch::Arch;
 use mem_core::{AddressRangeExt, PhysicalAddress};
 
 pub struct Memory {
-    // Regions sorted ascending by end address. A `Vec` + linear scan is deliberate
-    // over a `BTreeMap`: there are only a handful of regions, and Miri interprets a
-    // flat scan far faster than B-tree node navigation, which dominated test time.
+    // Regions sorted ascending by end address. A `Vec` + linear scan is
+    // deliberate over a `BTreeMap`: there are only a handful of regions, and
+    // Miri interprets a flat scan far faster than B-tree node navigation, which
+    // dominated test time.
     regions: Vec<(Range<PhysicalAddress>, NonNull<[u8]>, Layout)>,
 }
 
@@ -25,7 +26,8 @@ impl Drop for Memory {
         let regions = mem::take(&mut self.regions);
 
         for (_range, region, layout) in regions {
-            // Safety: we allocated the pointer with the layout at construction time
+            // Safety: we allocated the pointer with the layout at construction
+            // time
             unsafe { host_dealloc(region, layout) }
         }
     }
@@ -48,8 +50,9 @@ impl Memory {
             })
             .collect();
 
-        // Sort by end so `get_region_containing` can take the first region whose
-        // end is past the requested start, matching the previous BTreeMap order.
+        // Sort by end so `get_region_containing` can take the first region
+        // whose end is past the requested start, matching the previous
+        // BTreeMap order.
         regions.sort_unstable_by_key(|(bounds, ..)| bounds.end);
 
         Self { regions }
@@ -96,8 +99,8 @@ impl Memory {
             )
         };
 
-        // Safety: `region` is a live allocation from `host_alloc`, valid for the
-        // lifetime of this `Memory`.
+        // Safety: `region` is a live allocation from `host_alloc`, valid for
+        // the lifetime of this `Memory`.
         let region = unsafe { region.as_mut() };
         &mut region[offset..offset + range.len()]
     }
@@ -152,8 +155,9 @@ impl fmt::Debug for Memory {
 // branch below.
 #[cfg(all(unix, not(miri)))]
 fn host_alloc(layout: Layout) -> NonNull<[u8]> {
-    // Safety: `mmap` with NUL will ask the kernel to choose a memory range => safe.
-    // invalid requests yield `MAP_FAILED`, which is asserted against below.
+    // Safety: `mmap` with NUL will ask the kernel to choose a memory range =>
+    // safe. invalid requests yield `MAP_FAILED`, which is asserted against
+    // below.
     let ptr = unsafe {
         libc::mmap(
             std::ptr::null_mut(),

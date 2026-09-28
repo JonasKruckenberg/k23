@@ -195,12 +195,12 @@ impl StoreOpaque {
         // There are a few instances where a "close to zero" pointer is loaded
         // and we expect that to happen:
         //
-        // * Explicitly bounds-checked memories with spectre-guards enabled will cause
-        //   out-of-bounds accesses to get routed to address 0, so allow wasm
-        //   instructions to fault on the null address.
-        // * `call_indirect` when invoking a null function pointer may load data from
-        //   the a `VMFuncRef` whose address is null, meaning any field of `VMFuncRef`
-        //   could be the address of the fault.
+        // * Explicitly bounds-checked memories with spectre-guards enabled will
+        //   cause out-of-bounds accesses to get routed to address 0, so allow
+        //   wasm instructions to fault on the null address.
+        // * `call_indirect` when invoking a null function pointer may load data
+        //   from the a `VMFuncRef` whose address is null, meaning any field of
+        //   `VMFuncRef` could be the address of the fault.
         //
         // In these situations where the address is so small it won't be in any
         // instance, so skip the checks below.

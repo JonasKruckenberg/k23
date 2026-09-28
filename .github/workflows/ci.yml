@@ -31,6 +31,7 @@ jobs:
       - run: nix develop .#ci --command just check-fmt
       - run: nix develop .#ci --command just buck2-audit
       - run: nix develop .#ci --command just reindeer-clean
+      - run: nix develop .#ci --command just unused-third-party
       - run: nix develop .#ci --command just check-license-headers
 
   # Computes the set of Buck2 targets impacted by this change. A push to main has
@@ -103,6 +104,9 @@ jobs:
       - env:
           TARGETS: ${{ needs.changed-targets.outputs.targets }}
         run: nix develop .#ci --command just unittests "$TARGETS"
+      - env:
+          TARGETS: ${{ needs.changed-targets.outputs.targets }}
+        run: nix develop .#ci --command just doc "$TARGETS"
 
   miri:
     runs-on: ubuntu-latest
