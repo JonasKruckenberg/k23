@@ -99,7 +99,8 @@ where
         let frames = match &mut self.0 {
             FrameIterState::Empty => return Ok(None),
             FrameIterState::Location(location) => {
-                // We can't move out of a mutable reference, so use `take` instead.
+                // We can't move out of a mutable reference, so use `take`
+                // instead.
                 let location = location.take();
                 self.0 = FrameIterState::Empty;
                 return Ok(Some(Frame {

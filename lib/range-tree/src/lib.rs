@@ -180,8 +180,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         if mem::needs_drop::<V>() {
             let mut iter = self.raw_iter();
             while let Some((_pivot, value_ptr)) = unsafe { iter.next(&self.leaf) } {
-                // Safety: `RawIter` yields only entries where `pivot` is non-max, meaning the
-                // value is present and initialized.
+                // Safety: `RawIter` yields only entries where `pivot` is
+                // non-max, meaning the value is present and
+                // initialized.
                 unsafe {
                     value_ptr.drop_in_place();
                 }
@@ -205,13 +206,13 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     #[inline]
     pub fn is_empty(&self) -> bool {
         if self.height == Height::LEAF {
-            // Safety: if the tree height is `LEAF` (which we tested for above) the root
-            // MUST be a leaf node
+            // Safety: if the tree height is `LEAF` (which we tested for above)
+            // the root MUST be a leaf node
             let first_pivot = unsafe { self.root.pivot(pos!(0), &self.leaf) };
             first_pivot == I::Int::MAX
         } else {
-            // if we do have internal nodes that means we have split, meaning the tree
-            // cannot be empty
+            // if we do have internal nodes that means we have split, meaning
+            // the tree cannot be empty
             false
         }
     }
@@ -348,8 +349,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         prev_leaf: &mut Option<NodeRef>,
     ) {
         let Some(down) = height.down() else {
-            // Safety: we have checked this node to be at leaf-level. It MUST be a leaf
-            // node.
+            // Safety: we have checked this node to be at leaf-level. It MUST be
+            // a leaf node.
             unsafe {
                 self.check_leaf_node(node, assert_sorted, min, max, prev_leaf);
             }
@@ -361,8 +362,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
                 // Safety: `0..I::B` only produces indices `< I::B`
                 let pos = unsafe { NodePos::new_unchecked(i) };
 
-                // Safety: all leaf nodes are handled above, therefore it MUST be an internal
-                // node
+                // Safety: all leaf nodes are handled above, therefore it MUST
+                // be an internal node
                 unsafe { node.pivot(pos, &self.internal) }
             })
         };
@@ -402,8 +403,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
             //  => `len` must be `< B`
             //  => every `i..len` must be a valid position
             //  => every position `i` must be valid for reads
-            // Additionally, all leaf nodes are handled at the top of the functions,
-            // therefore this MUST be an internal node
+            // Additionally, all leaf nodes are handled at the top of the
+            // functions, therefore this MUST be an internal node
             unsafe {
                 let pos = NodePos::new_unchecked(i);
                 let key = node.pivot(pos, &self.internal);
@@ -497,8 +498,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for RangeTree<I, V, A> {
             let mut iter = self.raw_iter();
 
             while let Some((_pivot, value_ptr)) = unsafe { iter.next(&self.leaf) } {
-                // Safety: `RawIter` yields only entries where `pivot` is non-max, meaning the
-                // value is present and initialized.
+                // Safety: `RawIter` yields only entries where `pivot` is
+                // non-max, meaning the value is present and
+                // initialized.
                 unsafe {
                     value_ptr.drop_in_place();
                 }

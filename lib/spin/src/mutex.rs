@@ -96,7 +96,8 @@ impl<T: ?Sized> Mutex<T> {
     /// Returns a mutable reference to the underlying data.
     #[inline]
     pub fn get_mut(&mut self) -> &mut T {
-        // Safety: exclusive borrow of self means no critical section can be running.
+        // Safety: exclusive borrow of self means no critical section can be
+        // running.
         self.data.with_mut(|data| unsafe { &mut *data })
     }
 

@@ -439,12 +439,12 @@ impl ControlStackFrame {
     /// Pop values from the value stack so that it is left at the state it was
     /// before this control-flow frame.
     pub fn truncate_value_stack_to_original_size(&self, stack: &mut Vec<Value>) {
-        // The "If" frame pushes its parameters twice, so they're available to the else
-        // block (see also `FuncTranslationState::push_if`).
-        // Yet, the original_stack_size member accounts for them only once, so that the
-        // else block can see the same number of parameters as the consequent
-        // block. As a matter of fact, we need to subtract an extra number of
-        // parameter values for if blocks.
+        // The "If" frame pushes its parameters twice, so they're available to
+        // the else block (see also `FuncTranslationState::push_if`).
+        // Yet, the original_stack_size member accounts for them only once, so
+        // that the else block can see the same number of parameters as
+        // the consequent block. As a matter of fact, we need to
+        // subtract an extra number of parameter values for if blocks.
         let num_duplicated_params = match self {
             &ControlStackFrame::If {
                 num_param_values, ..

@@ -143,8 +143,9 @@ impl FrameAllocator {
     /// requirements of `layout`.
     pub fn alloc_contiguous(&self, layout: Layout) -> Result<List<FrameInfo>, AllocError> {
         // Fast path: try to satisfy from the per-cpu cache. The borrow must be
-        // released before the slow path runs, otherwise the slow path's re-borrow
-        // panics with "RefCell already borrowed" — non-reentrant by design.
+        // released before the slow path runs, otherwise the slow path's
+        // re-borrow panics with "RefCell already borrowed" —
+        // non-reentrant by design.
         if let Some(frames) = CPU_LOCAL_CACHE.borrow_mut().allocate_contiguous(layout) {
             return Ok(frames);
         }
@@ -162,8 +163,8 @@ impl FrameAllocator {
         cpu_local_cache.free_list.append(&mut refill);
 
         tracing::trace!("retrying allocation...");
-        // If this fails then we failed to pull enough frames from the global allocator
-        // which means we're fully out of frames.
+        // If this fails then we failed to pull enough frames from the global
+        // allocator which means we're fully out of frames.
         cpu_local_cache
             .allocate_contiguous(layout)
             .ok_or(AllocError)

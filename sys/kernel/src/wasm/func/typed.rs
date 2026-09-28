@@ -156,22 +156,22 @@ where
 {
     // /// Invokes this functions with the `params`, returning the results
     // asynchronously. ///
-    // /// Execution of WebAssembly will happen synchronously in the `poll` method
-    // of the /// future returned from this function. Note that, the faster
-    // `poll` methods return the more /// responsive the overall system is, so
-    // WebAssembly execution interruption should be configured /// such that
-    // this futures `poll` method resolves *reasonably* quickly. /// (Reasonably
-    // because at the end of the day a task will need to block if it wants to
-    // perform /// any meaningful work, there is no way around it).
-    // ///
-    // /// This function will return `Ok(())` if execution completed without a trap
-    // /// or error of any kind. In this situation the results will be written to
-    // /// the provided `results` array.
+    // /// Execution of WebAssembly will happen synchronously in the `poll`
+    // method of the /// future returned from this function. Note that, the
+    // faster `poll` methods return the more /// responsive the overall
+    // system is, so WebAssembly execution interruption should be configured
+    // /// such that this futures `poll` method resolves *reasonably*
+    // quickly. /// (Reasonably because at the end of the day a task will
+    // need to block if it wants to perform /// any meaningful work, there
+    // is no way around it). ///
+    // /// This function will return `Ok(())` if execution completed without a
+    // trap /// or error of any kind. In this situation the results will be
+    // written to /// the provided `results` array.
     // ///
     // /// # Errors
     // ///
-    // /// Any error which occurs throughout the execution of the function will be
-    // /// returned as `Err(e)`.
+    // /// Any error which occurs throughout the execution of the function will
+    // be /// returned as `Err(e)`.
     // /// Errors typically indicate that execution of WebAssembly was halted
     // /// mid-way and did not complete after the error condition happened.
     // pub fn call(self, store: &mut StoreOpaque, params: Params) ->
@@ -183,32 +183,37 @@ where
     }
 
     pub fn call(&self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
-        // Safety: The code below does the lowering and lifting of VM values. The
-        // correctness of which is enforced both through this type's generics
-        // AND the correct implementation of the array-call trampoline.
+        // Safety: The code below does the lowering and lifting of VM values.
+        // The correctness of which is enforced both through this type's
+        // generics AND the correct implementation of the array-call
+        // trampoline.
         unsafe {
             // Okay, so what is going on here?
             //
-            // Because the `TypedFunc` generics we know exactly how much space we need for
-            // the array-call parameters and results *at compile time* (declared
+            // Because the `TypedFunc` generics we know exactly how much space
+            // we need for the array-call parameters and results *at
+            // compile time* (declared
             // by the `WasmParams::VMValStorage` or `WasmResults::VMValStorage`
-            // associated types). Which neatly allows us to allocate that array on the
-            // stack.
+            // associated types). Which neatly allows us to allocate that array
+            // on the stack.
             //
-            // Remember that the array-call "calling convention" will store the parameters
-            // in a consecutive array and use *that same array* to store the
-            // results too. This means before jumping to WASM we essentially
+            // Remember that the array-call "calling convention" will store the
+            // parameters in a consecutive array and use *that same
+            // array* to store the results too. This means before
+            // jumping to WASM we essentially
             // have a `Params::VMValStorage` on stack, while after returning we
-            // have a `Results::VMValStorage` on stack. Note also that (just like when
-            // calling through the untyped func) we need to make sure to reserve
-            // enough space to fit the larger of the two types.
+            // have a `Results::VMValStorage` on stack. Note also that (just
+            // like when calling through the untyped func) we need
+            // to make sure to reserve enough space to fit the
+            // larger of the two types.
             //
-            // If that sounded suspiciously like a union, congrats! You are correct, a union
-            // is exactly what we use.
+            // If that sounded suspiciously like a union, congrats! You are
+            // correct, a union is exactly what we use.
             //
-            // Notice how `Func::call_inner` uses a very different approach: Instead of
-            // allocating on stack, it has to use a heap-allocated vec that it
-            // needs to resize appropriately.
+            // Notice how `Func::call_inner` uses a very different approach:
+            // Instead of allocating on stack, it has to use a
+            // heap-allocated vec that it needs to resize
+            // appropriately.
             union Storage<T: Copy, U: Copy> {
                 params: MaybeUninit<T>,
                 results: U,
@@ -222,11 +227,12 @@ where
             // Aaand initialize it by lowering the params into it
             params.store(store, &self.ty, &mut storage.params)?;
 
-            // Now, heres a tricky part: We allocated a `Storage::<Params::VMValStorage,
+            // Now, heres a tricky part: We allocated a
+            // `Storage::<Params::VMValStorage,
             // Results::VMValStorage>` type on stack above. But what we need for
             // the array call is a `*mut [VMVal]`. We therefore
-            // need to essentially "transmute" the union into a slice of `VMVal` which is
-            // exactly what we do below.
+            // need to essentially "transmute" the union into a slice of `VMVal`
+            // which is exactly what we do below.
             {
                 let storage_len = size_of_val::<Storage<_, _>>(&storage) / size_of::<VMVal>();
                 let storage: *mut Storage<_, _> = &mut storage;
@@ -239,10 +245,11 @@ where
                 do_call(store, func_ref, storage)?;
             }
 
-            // At this point we have successfully returned from WASM which means that now we
-            // have a `Results::VMValStorage` on stack instead of the
-            // `Params::VMValStorage` that we wrote into it. Go ahead and lift
-            // our Rust values from it and return.
+            // At this point we have successfully returned from WASM which means
+            // that now we have a `Results::VMValStorage` on stack
+            // instead of the `Params::VMValStorage` that we wrote
+            // into it. Go ahead and lift our Rust values from it
+            // and return.
             Ok(Results::load(store, &storage.results))
         }
     }

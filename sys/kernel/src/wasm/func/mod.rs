@@ -88,9 +88,9 @@ impl Func {
         params: &[Val],
         results: &mut [Val],
     ) -> crate::Result<()> {
-        // Do the typechecking. Notice how `TypedFunc::call` is essentially the same
-        // function minus this typechecking? Yeah. That's the benefit of the
-        // typed function.
+        // Do the typechecking. Notice how `TypedFunc::call` is essentially the
+        // same function minus this typechecking? Yeah. That's the
+        // benefit of the typed function.
         let ty = self.ty(store);
 
         let params_ = ty.params().zip_eq(params);
@@ -131,13 +131,15 @@ impl Func {
         params: &[Val],
         results: &mut [Val],
     ) -> crate::Result<()> {
-        // This function mainly performs the lowering and lifting of VMVal values from
-        // and to Rust. Because - unlike TypedFunc - we don't have compile-time
-        // knowledge about the function type, we use a heap allocated vec
-        // (obtained through `store.take_wasm_vmval_storage()`) to store
-        // our parameters into and read results from.
+        // This function mainly performs the lowering and lifting of VMVal
+        // values from and to Rust. Because - unlike TypedFunc - we
+        // don't have compile-time knowledge about the function type, we
+        // use a heap allocated vec (obtained through
+        // `store.take_wasm_vmval_storage()`) to store our parameters
+        // into and read results from.
         //
-        // This is obviously a little less efficient, but it's not that big of a deal.
+        // This is obviously a little less efficient, but it's not that big of a
+        // deal.
 
         // take out the argument storage from the store
         let mut values_vec = store.take_wasm_vmval_storage();
@@ -159,8 +161,9 @@ impl Func {
         let func_ref = unsafe { self.vm_func_ref(store).as_ref() };
 
         // do the actual call
-        // Safety: at this point we have typechecked, we have allocated enough memory
-        // for the params and results, and obtained a valid func ref to call.
+        // Safety: at this point we have typechecked, we have allocated enough
+        // memory for the params and results, and obtained a valid func
+        // ref to call.
         unsafe {
             do_call(store, func_ref, &mut values_vec)?;
         }
@@ -351,9 +354,9 @@ fn enter_wasm(store: &mut StoreOpaque) -> Option<VirtualAddress> {
     // If this is a recursive call, e.g. our stack limit is already set, then
     // we may be able to skip this function.
     //
-    // // For synchronous stores there's nothing else to do because all wasm calls
-    // // happen synchronously and on the same stack. This means that the previous
-    // // stack limit will suffice for the next recursive call.
+    // // For synchronous stores there's nothing else to do because all wasm
+    // calls // happen synchronously and on the same stack. This means that
+    // the previous // stack limit will suffice for the next recursive call.
     // //
     // // For asynchronous stores then each call happens on a separate native
     // // stack. This means that the previous stack limit is no longer relevant

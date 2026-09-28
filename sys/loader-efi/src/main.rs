@@ -153,9 +153,10 @@ fn collect_memory_regions(memory_map: MemoryMapOwned) -> loader_api::MemoryRegio
             _ => MemoryRegionKind::Unusable,
         };
 
-        // Runs post-`exit_boot_services`, where a panic has no clean recovery. On all
-        // supported (64-bit) targets `usize == u64` so these conversions never fail;
-        // skip any region we somehow can't represent rather than panicking.
+        // Runs post-`exit_boot_services`, where a panic has no clean recovery.
+        // On all supported (64-bit) targets `usize == u64` so these
+        // conversions never fail; skip any region we somehow can't
+        // represent rather than panicking.
         let Ok(start) = usize::try_from(desc.phys_start) else {
             debug_assert!(false, "phys_start {:#x} exceeds usize", desc.phys_start);
             continue;

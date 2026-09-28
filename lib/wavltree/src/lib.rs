@@ -913,16 +913,18 @@ where
         unsafe {
             let node_links = T::links(node).as_ref();
 
-            // assert that all links are set up correctly (no loops, self references, etc.)
+            // assert that all links are set up correctly (no loops, self
+            // references, etc.)
             node_links.assert_valid(ctx);
 
-            // We can only check the WAVL rule if we track the rank, which we only do in
-            // debug builds
+            // We can only check the WAVL rule if we track the rank, which we
+            // only do in debug builds
             #[cfg(debug_assertions)]
             {
                 let parent_links = T::links(parent).as_ref();
 
-                // Weak AVL Rule: All rank differences are 1 or 2 and every leaf has rank 0.
+                // Weak AVL Rule: All rank differences are 1 or 2 and every leaf
+                // has rank 0.
                 let rank_diff = parent_links.rank() - node_links.rank();
                 assert!(
                     rank_diff <= 2 && rank_diff > 0,
@@ -1122,21 +1124,23 @@ where
         unsafe {
             let mut parent = T::links(x).as_ref().parent().unwrap();
 
-            // The WAVL rank rules require all rank differences to be either 1 or 2; 0 is
-            // now allowed. The parent was previously a 1,1 leaf, but is now a
-            // 0,1 unary node. 0 is not allowed so we need to rebalance.
+            // The WAVL rank rules require all rank differences to be either 1
+            // or 2; 0 is now allowed. The parent was previously a
+            // 1,1 leaf, but is now a 0,1 unary node. 0 is not
+            // allowed so we need to rebalance.
             //
             // Sep 1: Promotion
-            // We begin with promoting the parent nodes, according to the following
-            // algorithm:
+            // We begin with promoting the parent nodes, according to the
+            // following algorithm:
             //
             // while parent_.is_some() && parent is 0,1
             //      promote parent
             //      move up the tree
             //
-            // To determine whether parent is a 0,1 node, we need `curr`s rank parity,
-            // `parent`s rank parity and the other sibling's parity which we read below.
-            // Note, that they are all `let mut` because we need to update them each
+            // To determine whether parent is a 0,1 node, we need `curr`s rank
+            // parity, `parent`s rank parity and the other sibling's
+            // parity which we read below. Note, that they are all
+            // `let mut` because we need to update them each
             // iteration.
 
             let mut par_x: bool;
@@ -1158,8 +1162,8 @@ where
                 parent = parent_;
 
                 // update parities
-                // note that we explicitly create new `T::links` references here bc we just
-                // updated the pointers.
+                // note that we explicitly create new `T::links` references here
+                // bc we just updated the pointers.
                 par_x = T::links(x).as_ref().rank_parity();
                 par_parent = T::links(parent).as_ref().rank_parity();
 
@@ -1167,24 +1171,29 @@ where
                 par_sibling = utils::get_link_parity(sibling);
                 sibling_side = side;
 
-                // Let N, P and S denote the current node, parent, and sibling parities
-                // that we read above. Then `parent` is 0,1 iff (!N * !P * S) + (N * P * !S)
+                // Let N, P and S denote the current node, parent, and sibling
+                // parities that we read above. Then `parent` is
+                // 0,1 iff (!N * !P * S) + (N * P * !S)
                 //
-                // This means when the inverse is true, we reached a parent that's not 0,1 and
-                // so we can stop the promotion loop.
+                // This means when the inverse is true, we reached a parent
+                // that's not 0,1 and so we can stop the
+                // promotion loop.
                 if (!par_x || !par_parent || par_sibling) && (par_x || par_parent || !par_sibling) {
                     break;
                 }
             }
 
-            // At this point we know `x` has a parent and that parent is not 0,1. So either,
-            // the rank rule has been restored or the parent is 0,2.
+            // At this point we know `x` has a parent and that parent is not
+            // 0,1. So either, the rank rule has been restored or
+            // the parent is 0,2.
             //
-            // Using the notation above, our parent is 0,2 iff (!N * !P * !S) + (N * P * S).
-            // The inverse can be expressed much more succinctly as (N != P) || (N != S)
-            // (according to godbolt also generates 3x less code)
+            // Using the notation above, our parent is 0,2 iff (!N * !P * !S) +
+            // (N * P * S). The inverse can be expressed much more
+            // succinctly as (N != P) || (N != S) (according to
+            // godbolt also generates 3x less code)
             //
-            // Therefore, iff (N != P) || (N != S) the rank rule holds and we are done
+            // Therefore, iff (N != P) || (N != S) the rank rule holds and we
+            // are done
             if (par_x != par_parent) || (par_x != par_sibling) {
                 return;
             }
@@ -1192,7 +1201,8 @@ where
             let x_links = T::links(x).as_mut();
             debug_assert!(x_links.parent().is_some());
 
-            // If X is a left child, we rotate right, if it's a right child we rotate left
+            // If X is a left child, we rotate right, if it's a right child we
+            // rotate left
             //
             // We define
             // - Y as X's child in direction of rotation
@@ -1203,7 +1213,8 @@ where
             if let Some(y) = y
                 && T::links(y).as_ref().rank_parity() != par_x
             {
-                // If Y is a 1-child we do a double rotation, then demote x and z
+                // If Y is a 1-child we do a double rotation, then demote x and
+                // z
                 self.double_rotate_at(y, sibling_side);
 
                 T::links(y).as_mut().promote();
@@ -1250,8 +1261,9 @@ where
                     utils::get_link_parity(y_links.left())
                         && utils::get_link_parity(y_links.right())
                 } else {
-                    // If Y has even rank parity, it can only be a 2,2 node if it is
-                    // a binary node and both of its children have even parity.
+                    // If Y has even rank parity, it can only be a 2,2 node if
+                    // it is a binary node and both of its
+                    // children have even parity.
                     let y_left_links = y_links.left().map(|l| unsafe { T::links(l).as_ref() });
                     let y_right_links = y_links.right().map(|r| unsafe { T::links(r).as_ref() });
 
@@ -1263,9 +1275,11 @@ where
                     y_links.demote();
                     z_links.demote();
                 } else {
-                    // At this point we know that y is neither a 2-child nor a 2,2 node
-                    // and give the loop conditions above this means we're done with promotions.
-                    // x still might be a 3-child, but that will be fixed with rotations below.
+                    // At this point we know that y is neither a 2-child nor a
+                    // 2,2 node and give the loop conditions
+                    // above this means we're done with promotions.
+                    // x still might be a 3-child, but that will be fixed with
+                    // rotations below.
                     break;
                 }
             }
@@ -1328,8 +1342,8 @@ where
             // Demote the node turning it into a 1,1 leaf.
             x_links.demote();
 
-            // By demoting this node, we just created a 3-child so we need to deal with
-            // that.
+            // By demoting this node, we just created a 3-child so we need to
+            // deal with that.
             self.rebalance_after_remove_3_child(Some(x), parent);
         } else {
             // Demote the node turning it into a 1,1 leaf.

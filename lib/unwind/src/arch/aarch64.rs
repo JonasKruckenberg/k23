@@ -34,8 +34,8 @@ cfg_if! {
 /// architecture.
 pub fn default_register_rule_for(reg: Register) -> RegisterRule<usize> {
     // the AArch64 DWARF standard requires rules for callee-saved registers and
-    //  "registers intentionally unused by the program, for example as a consequence
-    // of the procedure call standard"  to be initialized to
+    //  "registers intentionally unused by the program, for example as a
+    // consequence of the procedure call standard"  to be initialized to
     // `RegisterRule::SameValue` while other registers should be initialized to
     // `RegisterRule::Undefined`.  <https://github.com/ARM-software/abi-aa/blob/main/aadwarf64/aadwarf64.rst#43common-information-entries>
     //

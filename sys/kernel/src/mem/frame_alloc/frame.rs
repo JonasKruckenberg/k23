@@ -66,9 +66,9 @@ impl Clone for Frame {
     /// This creates reference to the same `FrameInfo`, increasing the reference
     /// count by one.
     fn clone(&self) -> Self {
-        // Increase the reference count by one. Using relaxed ordering, as knowledge of
-        // the original reference prevents other threads from erroneously
-        // deleting the object.
+        // Increase the reference count by one. Using relaxed ordering, as
+        // knowledge of the original reference prevents other threads
+        // from erroneously deleting the object.
         //
         // Again, restating what the `Arc` implementation quotes from the
         // [Boost documentation][1]:
@@ -83,18 +83,20 @@ impl Clone for Frame {
         let old_size = self.info().refcount.fetch_add(1, Ordering::Relaxed);
         debug_assert_ne!(old_size, 0);
 
-        // Just like with `Arc` we want to prevent excessive refcounts in the case that
-        // we are leaking `Frame`s somewhere (which we really shouldn't but just
-        // in case). Overflowing the refcount would *really* bad as it would
-        // treat the frame as free and potentially cause a use-after-free
-        // scenario. Realistically this branch should never be taken.
+        // Just like with `Arc` we want to prevent excessive refcounts in the
+        // case that we are leaking `Frame`s somewhere (which we really
+        // shouldn't but just in case). Overflowing the refcount would
+        // *really* bad as it would treat the frame as free and
+        // potentially cause a use-after-free scenario. Realistically
+        // this branch should never be taken.
         //
-        // Also worth noting: Just like `Arc`, the refcount could still overflow when in
-        // between the load above and this check some other cpu increased the
-        // refcount from `isize::MAX` to `usize::MAX` but that seems unlikely.
-        // The other option, doing the comparison and update in one conditional
-        // atomic operation produces much worse code, so if its good enough for the
-        // standard library, it is good enough for us.
+        // Also worth noting: Just like `Arc`, the refcount could still overflow
+        // when in between the load above and this check some other cpu
+        // increased the refcount from `isize::MAX` to `usize::MAX` but
+        // that seems unlikely. The other option, doing the comparison
+        // and update in one conditional atomic operation produces much
+        // worse code, so if its good enough for the standard library,
+        // it is good enough for us.
         assert!(old_size <= MAX_REFCOUNT, "Frame refcount overflow");
 
         // Safety: self was valid so it's info ptr is as well
@@ -154,12 +156,12 @@ impl Frame {
 
     #[inline]
     fn info(&self) -> &FrameInfo {
-        // Safety: Through `Clone` and `Drop` we're guaranteed that the FrameInfo
-        // remains valid as long as this Frame is alive, we also know that
-        // `FrameInfo` is `Sync` and therefore - analogous to `Arc` -
-        // handing out an immutable reference is fine.
-        // Because it is an immutable reference, safe code can also not move out of
-        // `FrameInner`.
+        // Safety: Through `Clone` and `Drop` we're guaranteed that the
+        // FrameInfo remains valid as long as this Frame is alive, we
+        // also know that `FrameInfo` is `Sync` and therefore -
+        // analogous to `Arc` - handing out an immutable reference is
+        // fine. Because it is an immutable reference, safe code can
+        // also not move out of `FrameInner`.
         unsafe { self.ptr.as_ref() }
     }
 
@@ -186,10 +188,11 @@ impl Frame {
 
     pub fn get_mut(this: &mut Frame) -> Option<&mut FrameInfo> {
         if this.is_unique() {
-            // Safety: This unsafety is ok because we're guaranteed that the pointer
-            // returned is the *only* pointer that will ever be returned to T. Our
-            // reference count is guaranteed to be 1 at this point, and we required
-            // the Arc itself to be `mut`, so we're returning the only possible
+            // Safety: This unsafety is ok because we're guaranteed that the
+            // pointer returned is the *only* pointer that will ever
+            // be returned to T. Our reference count is guaranteed
+            // to be 1 at this point, and we required the Arc itself
+            // to be `mut`, so we're returning the only possible
             // reference to the inner data.
             unsafe { Some(Frame::get_mut_unchecked(this)) }
         } else {
@@ -208,7 +211,8 @@ impl Frame {
 
     #[inline(never)]
     fn drop_slow(&mut self) {
-        // TODO if we ever add more fields to FrameInfo we should reset them here
+        // TODO if we ever add more fields to FrameInfo we should reset them
+        // here
 
         let mut cpu_local_cache = CPU_LOCAL_CACHE.borrow_mut();
         cpu_local_cache.free_list.push_back(self.ptr);

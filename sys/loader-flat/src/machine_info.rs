@@ -57,7 +57,8 @@ pub(crate) fn from_dtb<const N: usize>(
     // make sure the FDT is excluded so we don't accidentally override it with
     apply_fdt_reservation(&mut memory_regions, &fdt)?;
 
-    // make sure the loader itself is also excluded, this will be no fun otherwise
+    // make sure the loader itself is also excluded, this will be no fun
+    // otherwise
     apply_loader_reservation(&mut memory_regions, granule_size)?;
 
     Ok((minfo, memory_regions))

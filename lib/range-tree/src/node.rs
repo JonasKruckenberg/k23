@@ -186,7 +186,8 @@ impl NodeRef {
         #[cfg(debug_assertions)]
         self.assert_valid(pool);
 
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe { pool.ptr.byte_add(self.0 as usize).cast() }
     }
 
@@ -204,7 +205,8 @@ impl NodeRef {
         self.assert_valid(pool);
 
         let (_, values_offset, _) = const { node_layout::<I, V>() };
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
             ptr.byte_add(values_offset).cast::<MaybeUninit<V>>()
@@ -224,7 +226,8 @@ impl NodeRef {
         #[cfg(debug_assertions)]
         self.assert_valid(pool);
 
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe { I::search(self.pivots(pool), I::MAX) }
     }
 
@@ -241,7 +244,8 @@ impl NodeRef {
         #[cfg(debug_assertions)]
         self.assert_valid(pool);
 
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe { I::search(self.pivots(pool), I::MAX).next() }
     }
 
@@ -252,7 +256,8 @@ impl NodeRef {
     /// `self` must be allocated from `pool`.
     #[inline]
     pub(crate) unsafe fn pivots<I: RangeTreeInteger, V>(self, pool: &NodePool<I, V>) -> &I::Pivots {
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe { self.pivots_ptr(pool).cast::<I::Pivots>().as_ref() }
     }
 
@@ -267,7 +272,8 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &NodePool<I, V>,
     ) -> I::Raw {
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe { self.pivots_ptr(pool).add(pos.index()).read() }
     }
 
@@ -283,7 +289,8 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &mut NodePool<I, V>,
     ) {
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe { self.pivots_ptr(pool).add(pos.index()).write(pivot) }
     }
 
@@ -298,7 +305,8 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &NodePool<I, V>,
     ) -> &MaybeUninit<V> {
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe { self.values_ptr(pool).add(pos.index()).as_ref() }
     }
 
@@ -313,7 +321,8 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &mut NodePool<I, V>,
     ) -> &mut MaybeUninit<V> {
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe { self.values_ptr(pool).add(pos.index()).as_mut() }
     }
 
@@ -333,7 +342,8 @@ impl NodeRef {
         self.assert_valid(pool);
 
         let (_, _, next_leaf_offset) = const { node_layout::<I, V>() };
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         let next_leaf = unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
             ptr.byte_add(next_leaf_offset).cast::<NodeRef>().read()
@@ -359,7 +369,8 @@ impl NodeRef {
 
         let (_, _, next_leaf_offset) = const { node_layout::<I, V>() };
 
-        // Safety: ensured by caller implementation of the node pool and node layout
+        // Safety: ensured by caller implementation of the node pool and node
+        // layout
         unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
             ptr.byte_add(next_leaf_offset)
@@ -691,8 +702,8 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             self.ptr = alloc.allocate(new_layout)?.cast();
 
             debug_assert!(u32::try_from(new_layout.size()).is_ok());
-            // Safety: layouts `> u32::MAX` are very unlikely AND we check this with
-            // debug-assertions enabled.
+            // Safety: layouts `> u32::MAX` are very unlikely AND we check this
+            // with debug-assertions enabled.
             self.capacity = unsafe { u32::try_from(new_layout.size()).unwrap_unchecked() };
         } else {
             let old_layout = unsafe {
@@ -712,8 +723,8 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             self.ptr = unsafe { alloc.grow(self.ptr, old_layout, new_layout)?.cast() };
 
             debug_assert!(u32::try_from(new_layout.size()).is_ok());
-            // Safety: layouts `> u32::MAX` are very unlikely AND we check this with
-            // debug-assertions enabled.
+            // Safety: layouts `> u32::MAX` are very unlikely AND we check this
+            // with debug-assertions enabled.
             self.capacity = unsafe { u32::try_from(new_layout.size()).unwrap_unchecked() };
         }
 
@@ -737,8 +748,8 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             // Freed nodes hold a single `NodeRef` with the next element in the
             // free list.
             let node = UninitNodeRef(NodeRef(self.free_list));
-            // Safety: `free_list` is a node-pointer that is within this allocation by
-            // construction
+            // Safety: `free_list` is a node-pointer that is within this
+            // allocation by construction
             self.free_list = unsafe { self.ptr.byte_add(self.free_list as usize).cast().read() };
             return Ok(node);
         }

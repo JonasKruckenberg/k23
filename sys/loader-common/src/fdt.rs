@@ -38,8 +38,9 @@ pub fn stdout_uart(fdt: &Fdt, chosen: &Node, page_size: usize) -> Option<Discove
         .as_str()
         .ok()?;
 
-    // Split the node path from its optional `:options` tail; a leading `/` marks
-    // a full path, anything else is an `/aliases` entry to dereference.
+    // Split the node path from its optional `:options` tail; a leading `/`
+    // marks a full path, anything else is an `/aliases` entry to
+    // dereference.
     let (head, mut options) = split_options(prop);
 
     let path = if head.starts_with('/') {
@@ -60,8 +61,8 @@ pub fn stdout_uart(fdt: &Fdt, chosen: &Node, page_size: usize) -> Option<Discove
     let node = fdt.find_node(path).ok()??;
 
     // `reg` → register block, decoded with the cell counts the `fdt` crate
-    // resolved for this node. Its decoder panics on counts outside these ranges,
-    // so reject them first.
+    // resolved for this node. Its decoder panics on counts outside these
+    // ranges, so reject them first.
     let cells = node.cell_sizes();
     if !matches!(cells.address_cells, 1 | 2) || cells.size_cells > 2 {
         return None;
@@ -140,7 +141,8 @@ pub fn physical_memory_regions<const N: usize>(
 
     let mut nodes = fdt.nodes()?;
     while let Some((depth, node)) = nodes.next()? {
-        // Left the reserved-memory subtree once we're back at or above its level.
+        // Left the reserved-memory subtree once we're back at or above its
+        // level.
         if reserved_root.is_some_and(|root| depth <= root) {
             reserved_root = None;
         }

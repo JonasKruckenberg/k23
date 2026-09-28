@@ -131,9 +131,9 @@ impl Table {
             return Ok(None);
         }
 
-        // we only support static tables that have all their memory reserved (not
-        // allocated) upfront this means resizing is as simple as just updating
-        // the size field
+        // we only support static tables that have all their memory reserved
+        // (not allocated) upfront this means resizing is as simple as
+        // just updating the size field
         self.size = new_size;
 
         self.fill(

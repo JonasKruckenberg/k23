@@ -27,9 +27,10 @@ pub fn page_table_entries_for<A: Arch>(
     debug_assert!(range.start.is_canonical::<A>() && range.end.is_canonical::<A>());
     debug_assert!(
         {
-            // `range` stays within one table at this level iff its first and last
-            // byte differ only below the table's span. Masking drops the sign-
-            // extension bits, so the whole-space root table always passes.
+            // `range` stays within one table at this level iff its first and
+            // last byte differ only below the table's span. Masking
+            // drops the sign- extension bits, so the whole-space
+            // root table always passes.
             let va_mask = (1usize << A::VIRTUAL_ADDRESS_BITS) - 1;
             let table_span = level.entries() as usize * level.page_size();
             ((range.start.get() ^ range.end.sub(1).get()) & va_mask) < table_span

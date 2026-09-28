@@ -150,8 +150,8 @@ impl WastContext {
         //     ctx.store,
         //     "spectest",
         //     "global_f64",
-        //     Global::new(ty, Value::F64(f64::from_bits(0x4084_d4cc_cccc_cccd))),
-        // )?;
+        //     Global::new(ty,
+        // Value::F64(f64::from_bits(0x4084_d4cc_cccc_cccd))), )?;
 
         // let ty = TableType {
         //     element_type: RefType::FUNCREF,
@@ -359,13 +359,13 @@ impl WastContext {
         let ty = func.ty(&inner.store);
         let this = self.0.clone();
 
-        // FIXME the virtual memory subsystem trap handling code will look for a current
-        // task  in order to find the current address space to resole page
-        // faults against. This is why  we need to wrap this call in a `spawn`
-        // that we immediately await (so the scheduling  subsystem tracks it as
-        // a task). Ideally we would get rid of this and have some other
-        //  mechanism of tracking the current address space...
-        // scheduler()
+        // FIXME the virtual memory subsystem trap handling code will look for a
+        // current task  in order to find the current address space to
+        // resole page faults against. This is why  we need to wrap this
+        // call in a `spawn` that we immediately await (so the
+        // scheduling  subsystem tracks it as a task). Ideally we would
+        // get rid of this and have some other  mechanism of tracking
+        // the current address space... scheduler()
         //     .spawn(async move {
         let mut results = vec![Val::I32(0); ty.results().len()];
 

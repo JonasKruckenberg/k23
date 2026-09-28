@@ -116,8 +116,8 @@ where
             let parent = unsafe { T::links(curr).as_ref() }.parent()?;
             let parent_links = unsafe { T::links(parent).as_ref() };
 
-            // if we have a parent, and we're not their right/greater child, that parent is
-            // our next node
+            // if we have a parent, and we're not their right/greater child,
+            // that parent is our next node
             if parent_links.right() != Some(curr) {
                 return Some(parent);
             }
@@ -143,8 +143,8 @@ where
             let parent = unsafe { T::links(curr).as_ref() }.parent()?;
             let parent_links = unsafe { T::links(parent).as_ref() };
 
-            // if we have a parent, and we're not their left/lesser child, that parent is
-            // our previous node
+            // if we have a parent, and we're not their left/lesser child, that
+            // parent is our previous node
             if parent_links.left() != Some(curr) {
                 return Some(parent);
             }

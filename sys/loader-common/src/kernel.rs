@@ -162,17 +162,18 @@ impl<S: ImageSource> Kernel<S> {
 
             assert!(!base.is_null());
 
-            // Safety: we just allocated the memory, `allocate_contiguous` ensures the
-            // memory range is valid and initialized
+            // Safety: we just allocated the memory, `allocate_contiguous`
+            // ensures the memory range is valid and initialized
             Ok(unsafe { slice::from_raw_parts_mut(base.as_mut_ptr(), size) })
         };
 
         let staging = alloc(self.image.size)?;
 
         for seg in &self.image.load {
-            // NB: explain the filesz<->memsz difference, BSS and how if the BSS ends before
-            // the page boundary we potentially end up with uninitialized memory being
-            // mapped which is of course not a great idea from a security POV.
+            // NB: explain the filesz<->memsz difference, BSS and how if the BSS
+            // ends before the page boundary we potentially end up
+            // with uninitialized memory being mapped which is of
+            // course not a great idea from a security POV.
             // We therefore just zero everything up to the next page boundary.
             let span = seg.unaligned_mem_range();
             let seg_end = span
@@ -275,9 +276,9 @@ impl StagedKernel {
     }
 
     fn parse_rela(&self) -> crate::Result<Option<RelaInfo>> {
-        // NB: not using `object`s `.dynamic` method here because we access the segment
-        // through the staging buffer which requires memory-offsets, not
-        // file-offsets like `.dynamic` uses.
+        // NB: not using `object`s `.dynamic` method here because we access the
+        // segment through the staging buffer which requires
+        // memory-offsets, not file-offsets like `.dynamic` uses.
         let fields = {
             let vaddr = usize::try_from(self.image.dynamic.p_vaddr(LittleEndian))?;
             let filesz = usize::try_from(self.image.dynamic.p_filesz(LittleEndian))?;
@@ -405,7 +406,8 @@ impl RelocatedKernel {
         // Safety: we just allocated with `allocate_contiguous`.
         let block = unsafe { slice::from_raw_parts_mut(block.as_mut_ptr(), tls_size) };
 
-        // `.tdata` lives at `image_offset` in the staged (and now relocated) image.
+        // `.tdata` lives at `image_offset` in the staged (and now relocated)
+        // image.
         let tdata = self
             .kernel
             .get(seg.image_offset..seg.image_offset + seg.file_size)

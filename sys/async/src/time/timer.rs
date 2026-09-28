@@ -310,24 +310,28 @@ impl Core {
                 break;
             }
 
-            // Note that we need to take _all_ of the entries off the list before
-            // processing any of them. This is important because it's possible that
-            // those entries might need to be reinserted into the same slot.
+            // Note that we need to take _all_ of the entries off the list
+            // before processing any of them. This is important
+            // because it's possible that those entries might need
+            // to be reinserted into the same slot.
             //
             // This happens only on the highest level, when an entry is inserted
-            // more than MAX_DURATION into the future. When this happens, we wrap
-            // around, and process some entries a multiple of MAX_DURATION before
-            // they actually need to be dropped down a level. We then reinsert them
-            // back into the same position; we must make sure we don't then process
+            // more than MAX_DURATION into the future. When this happens, we
+            // wrap around, and process some entries a multiple of
+            // MAX_DURATION before they actually need to be dropped
+            // down a level. We then reinsert them back into the
+            // same position; we must make sure we don't then process
             // those entries again, or we'll end up in an infinite loop.
             let entries = self.wheels[deadline.wheel].take_slot(deadline.slot);
             for entry in entries {
-                // Safety: upon registering the caller promised the entry is valid
+                // Safety: upon registering the caller promised the entry is
+                // valid
                 let entry_deadline = unsafe { entry.as_ref().deadline };
 
                 if entry_deadline > now {
                     // this timer was on the top-level wheel and needs to be
-                    // rescheduled on a lower-level wheel, rather than firing now.
+                    // rescheduled on a lower-level wheel, rather than firing
+                    // now.
                     debug_assert_ne!(
                         deadline.wheel, 0,
                         "if a timer is being rescheduled, it must not have been on the lowest-level wheel"
@@ -339,7 +343,8 @@ impl Core {
                     pending_reschedule.push_front(entry);
                 } else {
                     // otherwise, fire the timer
-                    // Safety: upon registering the caller promised the entry is valid
+                    // Safety: upon registering the caller promised the entry is
+                    // valid
                     unsafe {
                         expired += 1;
                         entry.as_ref().fire();

@@ -99,9 +99,10 @@ impl Filter {
                 }
 
                 // insert the directive into the vec of directives, ordered by
-                // specificity (length of target + number of field filters). this
-                // ensures that, when finding a directive to match a span or event, we
-                // search the directive set in most specific first order.
+                // specificity (length of target + number of field filters).
+                // this ensures that, when finding a directive
+                // to match a span or event, we search the
+                // directive set in most specific first order.
                 match enabled.binary_search(&directive) {
                     Ok(i) => enabled[i] = directive,
                     Err(i) => enabled.insert(i, directive),

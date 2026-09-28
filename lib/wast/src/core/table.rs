@@ -221,8 +221,8 @@ impl<'a> Parse<'a> for Elem<'a> {
         //
         // * `func 0 1 ...` - list of indices
         // * `<reftype> (ref.null func) ...` - list of expressions
-        // * `0 1 ...` - list of indices, only if the table was omitted for the legacy
-        //   way tables were printed.
+        // * `0 1 ...` - list of indices, only if the table was omitted for the
+        //   legacy way tables were printed.
         let indices = if parser.peek::<kw::func>()? {
             parser.parse::<kw::func>()?;
             true
@@ -304,7 +304,8 @@ where
             parser.parse()
         })
     } else {
-        // Without `T` this is "sugar" for a single instruction (still possibly folded).
+        // Without `T` this is "sugar" for a single instruction (still possibly
+        // folded).
         Ok(Expression::parse_folded_instruction(parser)?)
     }
 }

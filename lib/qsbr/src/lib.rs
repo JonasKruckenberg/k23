@@ -116,8 +116,8 @@ impl<const N: usize> Domain<N> {
 
     /// Opens a new epoch and returns the one that just closed.
     pub fn advance(&self) -> Epoch {
-        // Release: orders this thread's retires before the epoch other threads will
-        // acknowledge on the strength of.
+        // Release: orders this thread's retires before the epoch other threads
+        // will acknowledge on the strength of.
         Epoch(self.global_epoch.fetch_add(1, Ordering::Release))
     }
 
@@ -246,14 +246,16 @@ impl<'d, const MAX_threadS: usize> Local<'d, MAX_threadS> {
         );
 
         unsafe fn free<T: Reclaimable>(links: NonNull<Links>) {
-            // SAFETY: `retire` derived `links` from a `NonNull<T>` the same way.
+            // SAFETY: `retire` derived `links` from a `NonNull<T>` the same
+            // way.
             let node = unsafe { links.byte_sub(T::LINKS_OFFSET).cast::<T>() };
-            // SAFETY: the grace period elapsed, so no thread can still reach it.
+            // SAFETY: the grace period elapsed, so no thread can still reach
+            // it.
             drop(unsafe { T::from_ptr(node) });
         }
 
-        // Safety: the caller promised `LINKS_OFFSET` to be valid when implementing
-        // the trait.
+        // Safety: the caller promised `LINKS_OFFSET` to be valid when
+        // implementing the trait.
         let links = unsafe { node.byte_add(T::LINKS_OFFSET).cast::<Links>() };
 
         // Safety: see above.
@@ -319,7 +321,8 @@ impl<'d, const MAX_threadS: usize> Local<'d, MAX_threadS> {
         let local_epoch = self.epoch().load(Ordering::Relaxed);
         debug_assert_ne!(local_epoch, NO_EPOCH, "qsbr: quiescent on an idle thread");
 
-        // Acquire: make sure that we observe every Release from `advance`/`retire`
+        // Acquire: make sure that we observe every Release from
+        // `advance`/`retire`
         let global_epoch = self.domain.global_epoch.load(Ordering::Acquire);
         if local_epoch != global_epoch {
             // Release: pairs with the Acquire load in `Domain::poll`; orders
@@ -340,8 +343,9 @@ impl<'d, const MAX_threadS: usize> Local<'d, MAX_threadS> {
     /// obtained from one.
     #[inline]
     pub unsafe fn enter_idle(&self) {
-        // Release: as in `quiescent`, this is the thread's final report before it
-        // stops publishing, so its prior reads must not sink past it.
+        // Release: as in `quiescent`, this is the thread's final report before
+        // it stops publishing, so its prior reads must not sink past
+        // it.
         self.epoch().store(NO_EPOCH, Ordering::Release);
     }
 
@@ -556,12 +560,13 @@ mod tests {
         // SAFETY: not in a read section.
         unsafe { local.quiescent() };
         // This thread has passed a quiescent state since the epoch opened, but
-        // `holder` has not — one active thread is enough to hold the batch back.
+        // `holder` has not — one active thread is enough to hold the batch
+        // back.
         assert_eq!(local.reclaim(usize::MAX), 0);
         assert_eq!(drops.load(Ordering::Relaxed), 0);
 
-        // Hotplug: an offline thread releases the batch without ever reporting a
-        // quiescent state.
+        // Hotplug: an offline thread releases the batch without ever reporting
+        // a quiescent state.
         //
         // SAFETY: not in a read section.
         unsafe { holder.enter_idle() };
@@ -738,7 +743,8 @@ mod loom_tests {
             // SAFETY: never active, so not inside a read section.
             unsafe { local.exit_idle() };
 
-            // Unlink, then retire: a thread that wakes after this cannot reach it.
+            // Unlink, then retire: a thread that wakes after this cannot reach
+            // it.
             let unlinked = local.read(|guard| {
                 // SAFETY: as above.
                 unsafe { slot.swap(None, Ordering::AcqRel, guard) }.map(Shared::as_ptr)

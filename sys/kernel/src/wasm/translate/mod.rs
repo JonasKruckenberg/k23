@@ -481,11 +481,13 @@ impl Memory {
             IndexType::I32 => WASM32_MAX_SIZE,
             IndexType::I64 => {
                 // Note that the true maximum size of a 64-bit linear memory, in
-                // bytes, cannot be represented in a `u64`. That would require a u65
-                // to store `1<<64`. Despite that no system can actually allocate a
-                // full 64-bit linear memory so this is instead emulated as "what if
-                // the kernel fit in a single Wasm page of linear memory". Shouldn't
-                // ever actually be possible but it provides a number to serve as an
+                // bytes, cannot be represented in a `u64`. That would require a
+                // u65 to store `1<<64`. Despite that no system
+                // can actually allocate a full 64-bit linear
+                // memory so this is instead emulated as "what if
+                // the kernel fit in a single Wasm page of linear memory".
+                // Shouldn't ever actually be possible but it
+                // provides a number to serve as an
                 // effective maximum.
                 0_u64 - self.page_size()
             }

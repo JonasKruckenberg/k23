@@ -86,7 +86,8 @@ impl<'dt> Parser<'dt> {
     }
 
     pub fn advance_cstr(&mut self) -> Result<&'dt core::ffi::CStr, Error> {
-        // SAFETY: It is safe to reinterpret the stream data to a smaller integer size
+        // SAFETY: It is safe to reinterpret the stream data to a smaller
+        // integer size
         let bytes = unsafe {
             core::slice::from_raw_parts(
                 self.stream.0.as_ptr().cast::<u8>(),
@@ -159,8 +160,9 @@ impl<'dt> Parser<'dt> {
 
         let starting_data = self.data();
 
-        // The root has no parent, so its `cell_sizes` are the counts it provides
-        // to its children: its own declarations, or the spec defaults.
+        // The root has no parent, so its `cell_sizes` are the counts it
+        // provides to its children: its own declarations, or the spec
+        // defaults.
         let cell_sizes = self.child_cell_sizes(CellSizes::default())?;
 
         Ok(Node {
@@ -199,7 +201,8 @@ impl<'dt> Parser<'dt> {
     pub fn parse_raw_property(&mut self) -> Result<(usize, &'dt [u8]), Error> {
         match self.advance_token()? {
             BigEndianToken::PROP => {
-                // Properties are in the format: <data len> <name offset> <data...>
+                // Properties are in the format: <data len> <name offset>
+                // <data...>
                 let len = usize::try_from(self.advance_u32()?.to_ne())?;
                 let name_offset = usize::try_from(self.advance_u32()?.to_ne())?;
                 let data = self.byte_data().get(..len).ok_or(Error::UnexpectedEof)?;
