@@ -71,7 +71,7 @@ tracing-subscriber = { version = "0.3", optional = true }
 parking_lot = { version = "0.12.5",  optional = true }
 criterion = { version = "0.8.0", optional = true }
 libc = { version = "0.2.182", optional = true }
-loom = { version = "0.7",  default-features = false, optional = true }
+loom = { git = "https://github.com/JonasKruckenberg/loom", rev = "86a34aa91c547314145d7b566185337fb4dd15cb",  default-features = false, features = ["futures"], optional = true }
 test-log = { version = "0.2", optional = true }
 wat = { version = "1.219.1", optional = true }
 brie-tree = { version = "0.1.2", optional = true }

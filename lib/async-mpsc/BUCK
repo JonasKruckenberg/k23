@@ -1,0 +1,48 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load("//build:bench.bzl", "rust_benchmark")
+load("//build:loom.bzl", "rust_loom_test")
+
+_DEPS = [
+    "//lib/util:util",
+
+    "//third-party:cordyceps",
+    "//third-party:maitake-sync",
+    "//third-party:cfg-if",
+]
+
+rust_library(
+    name = "async-mpsc",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "async-mpsc",
+    deps = _DEPS,
+    visibility = ["PUBLIC"],
+    tests = [":async-mpsc_unittests", ":async-mpsc_loom_tests"],
+)
+
+rust_test(
+    name = "async-mpsc_unittests",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "async-mpsc",
+    deps = _DEPS,
+    target_compatible_with = [host_configuration.os, host_configuration.cpu],
+    visibility = ["PUBLIC"],
+)
+
+rust_loom_test(
+    name = "async-mpsc_loom_tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "async-mpsc",
+    deps = _DEPS + ["//third-party:loom"],
+)
+
+rust_benchmark(
+    name = "async-mpsc_benchmarks",
+    srcs = ["benches/channel.rs"],
+    crate_root = "benches/channel.rs",
+    deps = [
+        ":async-mpsc",
+        "//third-party:cordyceps",
+        "//third-party:criterion",
+    ],
+    visibility = ["PUBLIC"],
+)
