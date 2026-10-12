@@ -128,12 +128,13 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for IrqMutex<T> {
 
 #[cfg(test)]
 mod tests {
-    use fastrand::FastRand;
+    use fastrand::Xorshift64;
+    use util::Backoff;
 
     use super::*;
+    use crate::loom;
     use crate::loom::sync::atomic::{AtomicUsize, Ordering};
     use crate::loom::thread;
-    use crate::{Backoff, loom};
 
     /// Number of cycles to repeat concurrency tests for. Loom's state space
     /// blows up combinatorially — one cycle is enough to cover every
@@ -165,12 +166,12 @@ mod tests {
             let mut threads = Vec::new();
             for i in 0..THREADS {
                 threads.push(thread::spawn(move || {
-                    let mut rng = FastRand::from_seed(i as u64 + 1);
+                    let mut rng = Xorshift64::from_seed(i as u64 + 1);
                     for _ in 0..CYCLES {
                         M.with_lock(|buf| {
                             assert!(buf.iter().all(|b| *b == buf[0]));
 
-                            buf.fill(rng.fastrand().to_le_bytes()[0]);
+                            buf.fill(rng.next_u32().to_le_bytes()[0]);
                         });
 
                         #[cfg(loom)]

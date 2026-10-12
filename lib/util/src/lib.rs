@@ -9,9 +9,11 @@
 
 #![cfg_attr(not(test), no_std)]
 
+mod backoff;
 mod cache_padded;
 mod checked_maybe_uninit;
 mod loom;
 
+pub use backoff::Backoff;
 pub use cache_padded::{CACHE_LINE_SIZE, CachePadded};
 pub use checked_maybe_uninit::{CheckedMaybeUninit, MaybeUninitExt};

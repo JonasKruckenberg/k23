@@ -5,8 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::hint;
-
 /// An [exponential backoff] for spin loops.
 ///
 /// This is a helper struct for spinning in a busy loop, with an exponentially
@@ -71,14 +69,14 @@ impl Backoff {
         // blow past loom's branch limit in a few iterations.
         // See https://github.com/tokio-rs/loom/issues/162#issuecomment-665128979.
         #[cfg(loom)]
-        crate::loom::thread::yield_now();
+        loom::thread::yield_now();
 
         // Issue 2^exp pause instructions.
         #[cfg(not(loom))]
         {
             let spins = 1_u32 << self.exp;
             for _ in 0..spins {
-                hint::spin_loop();
+                core::hint::spin_loop();
             }
         }
 

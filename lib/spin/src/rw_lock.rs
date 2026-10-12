@@ -13,9 +13,8 @@
 use core::fmt;
 use core::ops::Deref;
 
-use util::loom_const_fn;
+use util::{Backoff, loom_const_fn};
 
-use crate::Backoff;
 use crate::loom::cell::UnsafeCell;
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 
