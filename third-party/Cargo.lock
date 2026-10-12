@@ -862,6 +862,7 @@ dependencies = [
  "object",
  "parking_lot",
  "pin-project",
+ "pin-project-lite",
  "proc-macro2",
  "proptest",
  "proptest-derive",
