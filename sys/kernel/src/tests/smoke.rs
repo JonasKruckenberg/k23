@@ -13,4 +13,5 @@ wast_tests!(
     hostfunc_rs "../../wast/tests/hostfunc_rs.wast",
     hostfunc_wat "../../wast/tests/hostfunc_wat.wast",
     trap "../../wast/tests/trap.wast",
+    check_stack_pointer "../../wast/tests/check_stack_pointer.wast",
 );
