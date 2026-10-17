@@ -176,7 +176,8 @@ impl<'a> FallibleIterator for BootCatalogIter<'a> {
                     let ext_indicator = self.parser.peek::<u8>()?;
 
                     if *ext_indicator != 0x44 {
-                        // Not an extension — send back to entries without consuming a count
+                        // Not an extension — send back to entries without
+                        // consuming a count
                         self.state = State::SectionEntries {
                             remaining: remaining_entries,
                             has_more_sections,

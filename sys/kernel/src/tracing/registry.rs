@@ -322,11 +322,12 @@ impl Default for DataInner {
 impl sharded_slab::Clear for DataInner {
     /// Clears the span's data in place, dropping the parent's reference count.
     fn clear(&mut self) {
-        // A span is not considered closed until all of its children have closed.
-        // Therefore, each span's `DataInner` holds a "reference" to the parent
-        // span, keeping the parent span open until all its children have closed.
-        // When we close a span, we must then decrement the parent's ref count
-        // (potentially, allowing it to close, if this child is the last reference
+        // A span is not considered closed until all of its children have
+        // closed. Therefore, each span's `DataInner` holds a
+        // "reference" to the parent span, keeping the parent span open
+        // until all its children have closed. When we close a span, we
+        // must then decrement the parent's ref count (potentially,
+        // allowing it to close, if this child is the last reference
         // to that span).
         // We have to actually unpack the option inside the `get_default`
         // closure, since it is a `FnMut`, but testing that there _is_ a value
@@ -335,10 +336,11 @@ impl sharded_slab::Clear for DataInner {
         if self.parent.is_some() {
             // Note that --- because `Layered::try_close` works by calling
             // `try_close` on the inner subscriber and using the return value to
-            // determine whether to call the subscriber's `on_close` callback ---
-            // we must call `try_close` on the entire subscriber stack, rather
-            // than just on the registry. If the registry called `try_close` on
-            // itself directly, the subscribers wouldn't see the close notification.
+            // determine whether to call the subscriber's `on_close` callback
+            // --- we must call `try_close` on the entire subscriber
+            // stack, rather than just on the registry. If the
+            // registry called `try_close` on itself directly, the
+            // subscribers wouldn't see the close notification.
             let subscriber = dispatch::get_default(Dispatch::clone);
             if let Some(parent) = self.parent.take() {
                 let _ = subscriber.try_close(parent);

@@ -207,8 +207,8 @@ fn instantiate_stack(
         reason = "`allocate` produces page-size aligned allocations (4KiB), so block is trivially aligned to u64"
     )]
     {
-        // Safety: we just allocated the memory, `allocate_pages` ensures the memory
-        // range is valid and initialized
+        // Safety: we just allocated the memory, `allocate_pages` ensures the
+        // memory range is valid and initialized
         let block = unsafe {
             slice::from_raw_parts_mut(
                 block.as_mut_ptr().cast::<u64>(),

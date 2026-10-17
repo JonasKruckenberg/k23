@@ -364,26 +364,27 @@ impl FallibleIterator for FrameIter {
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
         let mut ip = self.ip;
 
-        // The previous call to `Frame::unwind` set the return address to zero (meaning
-        // there was no information on how to restore the return address) this
-        // means we're done walking the stack. Reached end of stack
+        // The previous call to `Frame::unwind` set the return address to zero
+        // (meaning there was no information on how to restore the
+        // return address) this means we're done walking the stack.
+        // Reached end of stack
         if ip == 0 {
             return Ok(None);
         }
 
-        // RA points to the *next* instruction, so move it back 1 byte for the call
-        // instruction.
+        // RA points to the *next* instruction, so move it back 1 byte for the
+        // call instruction.
         if !self.signal {
             ip -= 1;
         }
 
-        // Construct the frame from the registers and instruction pointer, this will
-        // also look up all the required unwind information.
+        // Construct the frame from the registers and instruction pointer, this
+        // will also look up all the required unwind information.
         let frame = Frame::from_context(&self.regs, ip)?;
         // and then unwind the frame to obtain the next register context
         self.regs = frame.unwind()?;
-        // Use the return address as the next value of `pc` this essentially simulates a
-        // function return.
+        // Use the return address as the next value of `pc` this essentially
+        // simulates a function return.
         self.ip = self.regs[arch::RA];
 
         self.signal = frame.is_signal_trampoline();

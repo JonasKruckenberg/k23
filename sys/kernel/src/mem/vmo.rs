@@ -92,8 +92,8 @@ impl PagedVmo {
 
     pub fn require_owned_frame(&mut self, at_offset: usize) -> crate::Result<&mut Frame> {
         if let Some(old_frame) = self.frames.get(at_offset) {
-            // we already have a unique frame reference, a write page fault against it
-            // shouldn't happen
+            // we already have a unique frame reference, a write page fault
+            // against it shouldn't happen
             assert!(!old_frame.is_unique());
 
             tracing::trace!("require_owned_frame for resident frame, allocating new...");
@@ -102,8 +102,8 @@ impl PagedVmo {
                 .frame_alloc
                 .alloc_one_zeroed(self.frame_alloc.physmap)?;
 
-            // If `old_frame` is the zero frame we don't need to copy any data around, it's
-            // all zeroes anyway
+            // If `old_frame` is the zero frame we don't need to copy any data
+            // around, it's all zeroes anyway
             if !Frame::ptr_eq(old_frame, THE_ZERO_FRAME.frame()) {
                 tracing::trace!("performing copy-on-write...");
                 let src = old_frame.as_slice(self.frame_alloc.physmap);

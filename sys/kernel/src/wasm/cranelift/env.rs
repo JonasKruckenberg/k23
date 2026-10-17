@@ -201,11 +201,12 @@ impl<'module_env> TranslationEnvironment<'module_env> {
         } else if pointer_type.bits() > desired_type.bits() {
             pos.ins().ireduce(desired_type, val)
         } else {
-            // We have a 64-bit memory/table on a 32-bit host -- this combo doesn't
-            // really make a whole lot of sense to do from a user perspective
-            // but that is neither here nor there. We want to logically do an
-            // unsigned extend *except* when we are given the `-1` sentinel,
-            // which we must preserve as `-1` in the wider type.
+            // We have a 64-bit memory/table on a 32-bit host -- this combo
+            // doesn't really make a whole lot of sense to do from a
+            // user perspective but that is neither here nor there.
+            // We want to logically do an unsigned extend *except*
+            // when we are given the `-1` sentinel, which we must
+            // preserve as `-1` in the wider type.
             if single_byte_pages {
                 // For single-byte pages, we have to explicitly check for
                 // `-1` and choose whether to do an unsigned extension or
@@ -222,8 +223,9 @@ impl<'module_env> TranslationEnvironment<'module_env> {
                 // set then this must be the `-1` sentinel, which we want to
                 // preserve through the extension.
                 //
-                // When it comes to table, `single_byte_pages` should have always been set to
-                // false. Then we simply do a signed extension.
+                // When it comes to table, `single_byte_pages` should have
+                // always been set to false. Then we simply do a
+                // signed extension.
                 pos.ins().sextend(desired_type, val)
             }
         }
@@ -468,8 +470,8 @@ impl TranslationEnvironment<'_> {
     /// Is the given parameter of the given function a wasm parameter or
     /// an internal implementation-detail parameter?
     pub fn is_wasm_parameter(&self, index: usize) -> bool {
-        // The first two parameters are the function vmctx and caller vmctx. The rest
-        // are the wasm parameters.
+        // The first two parameters are the function vmctx and caller vmctx. The
+        // rest are the wasm parameters.
         index >= 2
     }
 
@@ -1391,8 +1393,8 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             .unwrap();
 
         if !self.env.module.is_imported_func(callee_index) {
-            // First append the callee vmctx address, which is the same as the caller vmctx
-            // in this case.
+            // First append the callee vmctx address, which is the same as the
+            // caller vmctx in this case.
             real_call_args.push(caller_vmctx);
 
             // Then append the caller vmctx address.
@@ -1404,8 +1406,9 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             // Finally, make the direct call!
             self.direct_call_inst(callee, &real_call_args)
         } else {
-            // Handle direct calls to imported functions. We use an indirect call
-            // so that we don't have to patch the code at runtime.
+            // Handle direct calls to imported functions. We use an indirect
+            // call so that we don't have to patch the code at
+            // runtime.
             let pointer_type = self.env.pointer_type();
             let sig_ref = self.builder.func.dfg.ext_funcs[callee].signature;
             let vmctx = self.env.vmctx(self.builder.func);
@@ -1522,10 +1525,10 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             "shared heap types not supported"
         );
 
-        // The function references and GC proposals complicate the typecheck here
-        // somewhat but essentially this all boils down to the "old" runtime
-        // signature check or a static signature check for typed function
-        // references.
+        // The function references and GC proposals complicate the typecheck
+        // here somewhat but essentially this all boils down to the
+        // "old" runtime signature check or a static signature check for
+        // typed function references.
         let expected_type = &self.env.module.tables[table_index].element_type;
         match expected_type.heap_type.inner {
             // This is the old "funcref" (ref null func) type. This means inserting code
@@ -1533,7 +1536,8 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             WasmHeapTypeInner::Func => {
                 let mem_flags = MemFlagsData::trusted().with_readonly();
 
-                // load the expected type id from the `VMContext` `type_ids` array
+                // load the expected type id from the `VMContext` `type_ids`
+                // array
                 let expected_type_id = {
                     let vmctx = self.env.vmctx_val(&mut self.builder.cursor());
                     let type_ids = self.builder.ins().load(
@@ -1575,13 +1579,17 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
                         may_be_null: table.element_type.nullable,
                     }
                 } else {
-                    // Otherwise this is either a pointer with the wrong type *or* a null
-                    // pointer. We need to trap in either case, but if the type is nullable
-                    // we insert a null check first to produce the correct trap code.
+                    // Otherwise this is either a pointer with the wrong type
+                    // *or* a null pointer. We need to trap
+                    // in either case, but if the type is nullable
+                    // we insert a null check first to produce the correct trap
+                    // code.
                     if table.element_type.nullable {
-                        // To check for a null pointer we just try to load its type index,
-                        // if that fails because of a null pointer we fail with the correct code
-                        // otherwise we fall through to the `TRAP_BAD_SIGNATURE` below.
+                        // To check for a null pointer we just try to load its
+                        // type index, if that fails
+                        // because of a null pointer we fail with the correct
+                        // code otherwise we fall
+                        // through to the `TRAP_BAD_SIGNATURE` below.
                         let mem_flags = MemFlagsData::trusted().with_readonly();
                         self.builder.ins().load(
                             sig_id_type,
@@ -1625,12 +1633,13 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
         callee_load_trap_code: Option<TrapCode>,
     ) -> (Value, Value) {
         let pointer_type = self.env.pointer_type();
-        // Dereference callee pointer (pointer to a `VMFuncRef`) to get the function
-        // address.
+        // Dereference callee pointer (pointer to a `VMFuncRef`) to get the
+        // function address.
         //
-        // Note that this trap if `callee` is null, and it is the callers responsibility
-        // to check whether `callee` is either already known to non-null or ay
-        // trap. Therefore the `Option<TrapCode>`.
+        // Note that this trap if `callee` is null, and it is the callers
+        // responsibility to check whether `callee` is either already
+        // known to non-null or ay trap. Therefore the
+        // `Option<TrapCode>`.
         let mem_flags = MemFlagsData::trusted().with_readonly();
         let func_addr = self.builder.ins().load(
             pointer_type,

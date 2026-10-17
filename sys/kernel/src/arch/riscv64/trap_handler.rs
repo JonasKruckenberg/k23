@@ -243,15 +243,15 @@ extern "C-unwind" fn default_trap_handler(frame: &mut unwind::Registers) {
         Trap::Exception(
             Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
         ) => {
-            // first attempt the page fault handler, can it recover us from this by fixing
-            // up mappings?
+            // first attempt the page fault handler, can it recover us from this
+            // by fixing up mappings?
             if crate::mem::handle_page_fault(cause, tval).is_break() {
                 IN_TRAP.set(false);
                 return;
             }
 
-            // if not attempt the wasm fault handler, is the current trap caused by a user
-            // program? if so can it kill the program?
+            // if not attempt the wasm fault handler, is the current trap caused
+            // by a user program? if so can it kill the program?
             if let ControlFlow::Break(saved) =
                 crate::wasm::trap_handler::handle_wasm_exception(epc, fp, tval)
             {
@@ -291,10 +291,10 @@ fn handle_kernel_exception(
     tval: VirtualAddress,
 ) -> ! {
     // let's go ahead and begin unwinding the stack that caused the fault
-    // Note: we use unwinding here to give kernel code the chance to catch this and
-    // recover from it. If the unwinding reaches the root `catch_unwind` in
-    // `main.rs` this will tear down the entire system causing all CPUs to shut
-    // down.
+    // Note: we use unwinding here to give kernel code the chance to catch this
+    // and recover from it. If the unwinding reaches the root `catch_unwind`
+    // in `main.rs` this will tear down the entire system causing all CPUs
+    // to shut down.
 
     tracing::error!("KERNEL TRAP {cause:?} epc={epc};tval={tval}");
 

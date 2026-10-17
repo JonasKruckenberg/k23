@@ -52,8 +52,8 @@ impl Val {
 
     // /// Returns the null function reference value.
     // ///
-    // /// The return value has type `(ref null extern)` aka `nullexternref` and is
-    // /// a subtype of all external references.
+    // /// The return value has type `(ref null extern)` aka `nullexternref` and
+    // is /// a subtype of all external references.
     // #[inline]
     // pub const fn null_extern_ref() -> Val {
     //     Val::ExternRef(None)

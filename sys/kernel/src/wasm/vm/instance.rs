@@ -95,12 +95,14 @@ impl InstanceHandle {
         imports: Imports,
         is_bulk_memory: bool,
     ) -> crate::Result<()> {
-        // Safety: we call the functions in the right order (initialize_vmctx) first
+        // Safety: we call the functions in the right order (initialize_vmctx)
+        // first
         unsafe {
             self.instance_mut().initialize_vmctx(store, imports, module);
 
             if !is_bulk_memory {
-                // Safety: see? we called `initialize_vmctx` before calling `check_init_bounds`!
+                // Safety: see? we called `initialize_vmctx` before calling
+                // `check_init_bounds`!
                 check_init_bounds(store, self.instance_mut(), module)?;
             }
 
@@ -395,9 +397,9 @@ impl Instance {
         let dropped_elements = module.translated().active_table_initializers.clone();
         let dropped_data = module.translated().active_memory_initializers.clone();
 
-        // Safety: we have to trust the caller that `NonNull<Instance>` got allocated
-        // using the correct `Instance::alloc_layout` and therefore has the
-        // right-sized vmctx memory
+        // Safety: we have to trust the caller that `NonNull<Instance>` got
+        // allocated using the correct `Instance::alloc_layout` and
+        // therefore has the right-sized vmctx memory
         unsafe {
             instance.write(Instance {
                 module,
@@ -658,7 +660,8 @@ impl Instance {
         let src = usize::try_from(src).map_err(|_| TrapKind::TableOutOfBounds)?;
         let len = usize::try_from(len).map_err(|_| TrapKind::TableOutOfBounds)?;
 
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         let table = unsafe { self.defined_or_imported_table(table_index).as_mut() };
 
         match elements {
@@ -680,7 +683,8 @@ impl Instance {
                     .top();
                 assert!(!shared);
 
-                // Safety: the implementation promises that vmctx is correctly initialized
+                // Safety: the implementation promises that vmctx is correctly
+                // initialized
                 let mut context = unsafe { ConstEvalContext::new(self) };
 
                 match heap_top_ty {
@@ -727,7 +731,8 @@ impl Instance {
     }
 
     pub(crate) fn set_store(&mut self, store: Option<NonNull<StoreOpaque>>) {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             self.store = store;
 
@@ -774,7 +779,8 @@ impl Instance {
     // }
 
     pub(crate) fn set_callee(&mut self, callee: Option<NonNull<VMFunctionBody>>) {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             let callee = callee.map(VmPtr::from);
             self.vmctx_plus_offset_mut::<Option<VmPtr<VMFunctionBody>>>(
@@ -835,7 +841,8 @@ impl Instance {
 
     #[inline]
     pub fn vm_store_context(&mut self) -> NonNull<Option<VmPtr<VMStoreContext>>> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_store_context())).unwrap()
         }
@@ -844,7 +851,8 @@ impl Instance {
     /// Return a pointer to the global epoch counter used by this instance.
     #[cfg(target_has_atomic = "64")]
     pub fn epoch_ptr(&mut self) -> NonNull<Option<VmPtr<AtomicU64>>> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_epoch_ptr())).unwrap()
         }
@@ -852,7 +860,8 @@ impl Instance {
 
     /// Return a pointer to the GC heap base pointer.
     pub fn gc_heap_base(&mut self) -> NonNull<Option<VmPtr<u8>>> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_base())).unwrap()
         }
@@ -860,7 +869,8 @@ impl Instance {
 
     /// Return a pointer to the GC heap bound.
     pub fn gc_heap_bound(&mut self) -> NonNull<usize> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_bound())).unwrap()
         }
@@ -868,7 +878,8 @@ impl Instance {
 
     /// Return a pointer to the collector-specific heap data.
     pub fn gc_heap_data(&mut self) -> NonNull<Option<VmPtr<u8>>> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_data())).unwrap()
         }
@@ -876,46 +887,54 @@ impl Instance {
 
     /// Return the indexed `VMFunctionImport`.
     fn imported_function(&self, index: FuncIndex) -> &VMFunctionImport {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmfunction_import(index)) }
     }
     /// Return the index `VMTable`.
     fn imported_table(&self, index: TableIndex) -> &VMTableImport {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmtable_import(index)) }
     }
     /// Return the indexed `VMMemoryImport`.
     fn imported_memory(&self, index: MemoryIndex) -> &VMMemoryImport {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmmemory_import(index)) }
     }
     /// Return the indexed `VMGlobalImport`.
     fn imported_global(&self, index: GlobalIndex) -> &VMGlobalImport {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmglobal_import(index)) }
     }
     /// Return the indexed `VMTagImport`.
     fn imported_tag(&self, index: TagIndex) -> &VMTagImport {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmtag_import(index)) }
     }
 
     fn table_ptr(&mut self, index: DefinedTableIndex) -> NonNull<VMTableDefinition> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmtable_definition(index)))
                 .unwrap()
         }
     }
     fn memory_ptr(&mut self, index: DefinedMemoryIndex) -> NonNull<VMMemoryDefinition> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         let ptr = unsafe {
             *self.vmctx_plus_offset::<VmPtr<_>>(self.vmshape().vmctx_vmmemory_pointer(index))
         };
         ptr.as_non_null()
     }
     fn global_ptr(&mut self, index: DefinedGlobalIndex) -> NonNull<VMGlobalDefinition> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             NonNull::new(
                 self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmglobal_definition(index)),
@@ -924,7 +943,8 @@ impl Instance {
         }
     }
     fn tag_ptr(&mut self, index: DefinedTagIndex) -> NonNull<VMTagDefinition> {
-        // Safety: the implementation promises that vmctx is correctly initialized
+        // Safety: the implementation promises that vmctx is correctly
+        // initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmtag_definition(index)))
                 .unwrap()
@@ -950,7 +970,8 @@ impl Instance {
             f(defined_table_index, self)
         } else {
             let import = self.imported_table(index);
-            // Safety: the VMTableImport needs should be correct. TODO test & verify
+            // Safety: the VMTableImport needs should be correct. TODO test &
+            // verify
             unsafe {
                 Instance::from_vmctx(import.vmctx.as_non_null(), |foreign_instance| {
                     let foreign_table_def = import.from.as_ptr();
@@ -1023,8 +1044,8 @@ impl Instance {
     ) {
         let vmshape = module.vmshape();
 
-        // Safety: there is no safety, we just have to trust that the entire vmctx
-        // memory range we need was correctly allocated
+        // Safety: there is no safety, we just have to trust that the entire
+        // vmctx memory range we need was correctly allocated
         unsafe {
             // initialize vmctx magic
             tracing::trace!("initializing vmctx magic");
@@ -1125,10 +1146,11 @@ impl Instance {
             }
 
             // Initialize the defined memories. This fills in both the
-            // `defined_memories` table and the `owned_memories` table at the same
-            // time. Entries in `defined_memories` hold a pointer to a definition
-            // (all memories) whereas the `owned_memories` hold the actual
-            // definitions of memories owned (not shared) in the module.
+            // `defined_memories` table and the `owned_memories` table at the
+            // same time. Entries in `defined_memories` hold a
+            // pointer to a definition (all memories) whereas the
+            // `owned_memories` hold the actual definitions of
+            // memories owned (not shared) in the module.
             tracing::trace!("initializing defined memories");
             for (def_index, desc) in
                 module
@@ -1162,10 +1184,10 @@ impl Instance {
                 }
             }
 
-            // Zero-initialize the globals so that nothing is uninitialized memory
-            // after this function returns. The globals are actually initialized
-            // with their const expression initializers after the instance is fully
-            // allocated.
+            // Zero-initialize the globals so that nothing is uninitialized
+            // memory after this function returns. The globals are
+            // actually initialized with their const expression
+            // initializers after the instance is fully allocated.
             tracing::trace!("initializing defined globals");
             for (index, _init) in &module.translated().global_initializers {
                 self.global_ptr(index).write(VMGlobalDefinition::new());
@@ -1193,7 +1215,8 @@ impl Instance {
     /// called **after** calling `Instance::initialize_vmctx`
     #[tracing::instrument(level = "debug", skip(self, module))]
     unsafe fn initialize_vmfunc_refs(&mut self, imports: &Imports, module: &Module) {
-        // Safety: the caller pinky-promised that the vmctx is correctly initialized
+        // Safety: the caller pinky-promised that the vmctx is correctly
+        // initialized
         unsafe {
             let vmshape = module.vmshape();
 
@@ -1257,7 +1280,8 @@ impl Instance {
             let index = self.translated_module().global_index(def_index);
             let ty = self.translated_module().globals[index].content_type;
 
-            // Safety: the caller pinky-promised that the vmctx is correctly initialized
+            // Safety: the caller pinky-promised that the vmctx is correctly
+            // initialized
             unsafe {
                 self.global_ptr(def_index)
                     .write(VMGlobalDefinition::from_vmval(store, ty, vmval)?);
@@ -1295,7 +1319,8 @@ impl Instance {
                         .eval(store, ctx, expr)
                         .expect("const expression should be valid");
 
-                    // Safety: the caller pinky-promised that the vmctx is correctly initialized
+                    // Safety: the caller pinky-promised that the vmctx is
+                    // correctly initialized
                     let table = unsafe { self.get_defined_table(def_index).as_mut() };
 
                     match heap_top_ty {
@@ -1356,7 +1381,8 @@ impl Instance {
                 }
             };
 
-            // Safety: the caller pinky-promised that the vmctx is correctly initialized
+            // Safety: the caller pinky-promised that the vmctx is correctly
+            // initialized
             let memory = unsafe {
                 self.defined_or_imported_memory(initializer.memory_index)
                     .as_mut()

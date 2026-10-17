@@ -65,8 +65,8 @@ pub trait Compiler {
         index: DefinedFuncIndex,
     ) -> crate::Result<CompiledFunction>;
 
-    // Compile a trampoline for calling the  a(host-defined) function through the
-    // array
+    // Compile a trampoline for calling the  a(host-defined) function through
+    // the array
     /// calling convention used to by WASM to call into host code.
     fn compile_wasm_to_array_trampoline(
         &self,
@@ -159,9 +159,9 @@ impl<'a> CompileInputs<'a> {
                 })
             }));
 
-            // Compile a host->wasm trampoline for every function that are flags as
-            // "escaping" and could therefore theoretically be called by native
-            // code.
+            // Compile a host->wasm trampoline for every function that are flags
+            // as "escaping" and could therefore theoretically be
+            // called by native code.
             let func_index = translation.module.func_index(def_func_index);
             if translation.module.functions[func_index].is_escaping() {
                 inputs.push(Box::new(move |compiler| {

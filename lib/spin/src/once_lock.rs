@@ -169,8 +169,9 @@ impl<T> OnceLock<T> {
             self.once = Once::new();
             self.data.with(|data| {
                 // SAFETY: `self.value` is initialized and contains a valid `T`.
-                // `self.once` is reset, so `is_initialized()` will be false again
-                // which prevents the value from being read twice.
+                // `self.once` is reset, so `is_initialized()` will be false
+                // again which prevents the value from being
+                // read twice.
                 Some(unsafe { MaybeUninit::assume_init_read(&*data) })
             })
         } else {
@@ -309,9 +310,10 @@ unsafe impl<#[may_dangle] T> Drop for OnceLock<T> {
     fn drop(&mut self) {
         if self.is_initialized() {
             self.data.with_mut(|data| {
-                // SAFETY: The cell is initialized and being dropped, so it can't
-                // be accessed again. We also don't touch the `T` other than
-                // dropping it, which validates our usage of #[may_dangle].
+                // SAFETY: The cell is initialized and being dropped, so it
+                // can't be accessed again. We also don't touch
+                // the `T` other than dropping it, which
+                // validates our usage of #[may_dangle].
                 unsafe { MaybeUninit::assume_init_drop(&mut *data) }
             });
         }

@@ -27,7 +27,8 @@ pub(crate) const fn max_height<I: RangeTreeInteger>() -> usize {
             break;
         }
 
-        // Otherwise assume a worst case with all internal nodes being half-full.
+        // Otherwise assume a worst case with all internal nodes being
+        // half-full.
         nodes = nodes.div_ceil(I::B / 2);
     }
 

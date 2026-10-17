@@ -247,11 +247,13 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
     ) -> Option<PhysicalAddress> {
         let current_arena_hint = self.current_arena_hint;
 
-        // NB: we know this method is called when the "current region" (as indicated by
-        // the current region hint) is exhausted. We therefore begin our search
-        // at the next region (offset 1..) wrapping around at the end to
-        // double-check previous regions (they might have capacity still). But we still
-        // don't double-check the "current region" as we know it cant fit `layout`.
+        // NB: we know this method is called when the "current region" (as
+        // indicated by the current region hint) is exhausted. We
+        // therefore begin our search at the next region (offset 1..)
+        // wrapping around at the end to double-check previous regions
+        // (they might have capacity still). But we still
+        // don't double-check the "current region" as we know it cant fit
+        // `layout`.
         for offset in 1..self.arenas.len() {
             let i = (current_arena_hint + offset) % self.arenas.len();
 
@@ -298,8 +300,8 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
                 }
             }
 
-            // if - through this loop iteration - we fully allocated the required memory
-            // return the blocks
+            // if - through this loop iteration - we fully allocated the
+            // required memory return the blocks
             if remaining_bytes == 0 {
                 return Some(blocks);
             }
@@ -317,9 +319,10 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
                 .collect::<ArrayVec<_, MAX_REGIONS>>()
         );
 
-        // if we've gone through all regions without fully allocating the required
-        // memory we cant satisfy this allocation request.
-        // we might have allocated some blocks though, so lets go and clean them up now
+        // if we've gone through all regions without fully allocating the
+        // required memory we cant satisfy this allocation request.
+        // we might have allocated some blocks though, so lets go and clean them
+        // up now
 
         for block in blocks {
             let Some(region) = self
@@ -327,8 +330,8 @@ impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
                 .iter_mut()
                 .find(|region| region.region.overlaps(&block))
             else {
-                // every block was just allocated from one of these arenas, so this is
-                // unreachable
+                // every block was just allocated from one of these arenas, so
+                // this is unreachable
                 debug_assert!(
                     false,
                     "block {block:?} must belong to an arena. this is a bug!"
@@ -421,7 +424,8 @@ impl Arena {
         let aligned_ptr = match layout.align().cmp(&min_align.get()) {
             Ordering::Less => {
                 // the requested alignment is smaller than our minimum alignment
-                // we need to round up the requested size to our minimum alignment
+                // we need to round up the requested size to our minimum
+                // alignment
                 let aligned_size = round_up_to(layout.size(), min_align.get())?;
 
                 if self.capacity() < aligned_size {
@@ -433,8 +437,9 @@ impl Arena {
             Ordering::Equal => {
                 // the requested alignment is equal to our minimum alignment
 
-                // round up the layout size to be a multiple of the layout's alignment
-                // Safety: `Layout` guarantees that rounding the size up to its align cannot
+                // round up the layout size to be a multiple of the layout's
+                // alignment Safety: `Layout` guarantees that
+                // rounding the size up to its align cannot
                 // overflow
                 let aligned_size = unsafe { round_up_to_unchecked(layout.size(), layout.align()) };
 
@@ -447,15 +452,17 @@ impl Arena {
             Ordering::Greater => {
                 // the requested alignment is greater than our minimum alignment
 
-                // round up the layout size to be a multiple of the layout's alignment.
-                // Safety: `Layout` guarantees that rounding the size up to its align cannot
+                // round up the layout size to be a multiple of the layout's
+                // alignment. Safety: `Layout` guarantees that
+                // rounding the size up to its align cannot
                 // overflow
                 let aligned_size = unsafe { round_up_to_unchecked(layout.size(), layout.align()) };
 
                 let aligned_ptr = self.ptr.align_down(layout.align());
 
-                // NB: we're not using .capacity() here because we actually care about the
-                // capacity that's left *after* aligning the bump pointer down
+                // NB: we're not using .capacity() here because we actually care
+                // about the capacity that's left *after*
+                // aligning the bump pointer down
                 let capacity = aligned_ptr.offset_from_unsigned(self.region.start);
 
                 if aligned_ptr < self.region.start || capacity < aligned_size {
@@ -854,8 +861,8 @@ mod proptests {
 
     use super::{BumpAllocator, DEFAULT_MAX_REGIONS};
 
-    // The enclosing `mod proptests` is already `#[cfg(not(miri))]`, so all three
-    // paging modes run here — no per-arch Miri gating needed.
+    // The enclosing `mod proptests` is already `#[cfg(not(miri))]`, so all
+    // three paging modes run here — no per-arch Miri gating needed.
     for_arch!(A in [Riscv64Sv39, Riscv64Sv48, Riscv64Sv57] {
         proptest! {
             #[test_log::test]

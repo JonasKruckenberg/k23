@@ -327,8 +327,8 @@ impl Mmap {
 
 impl Drop for Mmap {
     fn drop(&mut self) {
-        // A `None` means the Mmap got created through `Mmap::new_empty` so there is
-        // nothing to unmap
+        // A `None` means the Mmap got created through `Mmap::new_empty` so
+        // there is nothing to unmap
         if let Some(aspace) = &self.aspace {
             aspace.with_lock(|aspace| aspace.unmap(self.range).unwrap());
         }

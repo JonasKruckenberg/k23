@@ -132,7 +132,8 @@ impl Cpus {
     pub fn cpu_id(&self, hartid: usize) -> Option<LogicalCpuId> {
         // A scan of at most `MAX_CPUS` words, walked only when a CPU crosses
         // the hardware boundary. A reverse table would have to be indexed by a
-        // sparse, unbounded hart id — the very thing `LogicalCpuId` exists to avoid.
+        // sparse, unbounded hart id — the very thing `LogicalCpuId` exists to
+        // avoid.
         self.iter().find(|&(_, h)| h == hartid).map(|(id, _)| id)
     }
 
@@ -228,7 +229,8 @@ mod tests {
 
     #[test::test]
     async fn harts_past_max_cpus_are_dropped_not_fatal() {
-        // Sparse hart ids, so the ones that overflow are also the far-away ones.
+        // Sparse hart ids, so the ones that overflow are also the far-away
+        // ones.
         let cpus = cpus(0, (1..).map(|h| h * 3).take(MAX_CPUS * 2));
 
         assert_eq!(cpus.len(), MAX_CPUS);

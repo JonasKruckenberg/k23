@@ -267,7 +267,8 @@ where
     pub(crate) fn new() -> Self {
         let mut shards = Vec::with_capacity(C::MAX_SHARDS);
         for _ in 0..C::MAX_SHARDS {
-            // XXX(eliza): T_T this could be avoided with maybeuninit or something...
+            // XXX(eliza): T_T this could be avoided with maybeuninit or
+            // something...
             shards.push(Ptr::null());
         }
         Self {
@@ -331,12 +332,13 @@ where
 
 impl<T, C: cfg::Config> Drop for Array<T, C> {
     fn drop(&mut self) {
-        // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper for std
-        // atomics to change `get_mut` to `with_mut`...
+        // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper
+        // for std atomics to change `get_mut` to `with_mut`...
         let max = self.max.load(Ordering::Acquire);
         for shard in &self.shards[0..=max] {
-            // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper for std
-            // atomics to change `get_mut` to `with_mut`...
+            // XXX(eliza): this could be `with_mut` if we wanted to impl a
+            // wrapper for std atomics to change `get_mut` to
+            // `with_mut`...
             let ptr = shard.0.load(Ordering::Acquire);
             if ptr.is_null() {
                 continue;

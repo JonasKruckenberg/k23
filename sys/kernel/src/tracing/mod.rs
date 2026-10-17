@@ -100,7 +100,8 @@ pub fn init(filter: Filter) {
 
     // tracing-core 0.1.x has no `Dispatch::from_static`, so we wrap the static
     // subscriber in a ZST that delegates to it. `Dispatch::new` allocates via
-    // `Arc::new`, which is why this is deferred until after the allocator is up.
+    // `Arc::new`, which is why this is deferred until after the allocator is
+    // up.
     dispatch::set_global_default(Dispatch::new(StaticSub)).unwrap();
 }
 

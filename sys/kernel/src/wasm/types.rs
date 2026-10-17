@@ -1482,8 +1482,8 @@ impl FuncType {
         let mut wasm_params = Vec::with_capacity({
             let size_hint = params.size_hint();
             let cap = size_hint.1.unwrap_or(size_hint.0);
-            // Only reserve space if we have a supertype, as that is the only time
-            // that this vec is used.
+            // Only reserve space if we have a supertype, as that is the only
+            // time that this vec is used.
             usize::from(supertype.is_some()) * cap
         });
 

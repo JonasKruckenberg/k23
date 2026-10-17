@@ -141,14 +141,16 @@ impl Plic {
             })
         });
 
-        // Specifies how many external interrupts are supported by this controller.
+        // Specifies how many external interrupts are supported by this
+        // controller.
         let ndev = dev.property(devtree, "riscv,ndev").unwrap().as_usize()?;
 
         let regs: *mut PlicRegs = mmio_region.start.as_ptr().cast_mut().cast();
 
         // set the threshold so interrupts can actually be delivered
-        // Safety: we do our best to check this is valid, but at the end of the day,
-        // this is writing to an MMIO region, so it's inherently unsafe.
+        // Safety: we do our best to check this is valid, but at the end of the
+        // day, this is writing to an MMIO region, so it's inherently
+        // unsafe.
         unsafe { regs.as_mut().unwrap().set_priority_threshold(context, 0) };
 
         Ok(Plic {
@@ -161,23 +163,23 @@ impl Plic {
 
 impl InterruptController for Plic {
     fn irq_claim(&mut self) -> Option<IrqClaim> {
-        // Safety: constructor ensures this is valid, but at the end of the day, this is
-        // writing to an MMIO region, so it's inherently unsafe.
+        // Safety: constructor ensures this is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.claim(self.context)
     }
 
     fn irq_complete(&mut self, claim: IrqClaim) {
-        // Safety: constructor ensures this is valid, but at the end of the day, this is
-        // writing to an MMIO region, so it's inherently unsafe.
+        // Safety: constructor ensures this is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.complete(self.context, claim);
     }
 
     fn irq_mask(&mut self, irq_num: u32) {
         assert!(irq_num > 0 && irq_num as usize <= self.ndev);
-        // Safety: constructor ensures this is valid, but at the end of the day, this is
-        // writing to an MMIO region, so it's inherently unsafe.
+        // Safety: constructor ensures this is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.set_priority(NonZero::new(irq_num as usize).unwrap(), 1);
         regs.enable(self.context, NonZero::new(irq_num as usize).unwrap(), false);
@@ -185,8 +187,8 @@ impl InterruptController for Plic {
 
     fn irq_unmask(&mut self, irq_num: u32) {
         assert!(irq_num as usize <= self.ndev);
-        // Safety: constructor ensures this is valid, but at the end of the day, this is
-        // writing to an MMIO region, so it's inherently unsafe.
+        // Safety: constructor ensures this is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.set_priority(NonZero::new(irq_num as usize).unwrap(), 1);
         regs.enable(self.context, NonZero::new(irq_num as usize).unwrap(), true);
@@ -197,9 +199,9 @@ impl PlicRegs {
     /// Sets the priority of the given interrupt source.
     pub fn set_priority(&mut self, irq: NonZero<usize>, priority: u32) {
         assert!(priority < 8);
-        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the
-        // end of the day, this is writing to an MMIO region, so it's inherently
-        // unsafe.
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but
+        // at the end of the day, this is writing to an MMIO region, so
+        // it's inherently unsafe.
         unsafe {
             self.source_priority[irq.get()].write(priority);
         }
@@ -210,9 +212,9 @@ impl PlicRegs {
     /// interrupts are pending.
     pub fn pending(&self, irq_lane: usize) -> u32 {
         debug_assert!(irq_lane < 32);
-        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the
-        // end of the day, this is writing to an MMIO region, so it's inherently
-        // unsafe.
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but
+        // at the end of the day, this is writing to an MMIO region, so
+        // it's inherently unsafe.
         unsafe { self.pending[irq_lane].read() }
     }
 
@@ -221,9 +223,9 @@ impl PlicRegs {
         assert!(irq.get() <= 1023 && context < MAX_CONTEXTS);
         let irq_lane = irq.get() / 32;
         let irq = irq.get() % 32;
-        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the
-        // end of the day, this is writing to an MMIO region, so it's inherently
-        // unsafe.
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but
+        // at the end of the day, this is writing to an MMIO region, so
+        // it's inherently unsafe.
         unsafe {
             self.enable[context][irq_lane].set_bits(1u32 << irq, enable);
         }
@@ -234,9 +236,9 @@ impl PlicRegs {
     /// will be masked.
     pub fn set_priority_threshold(&mut self, context: usize, priority: u32) {
         assert!(context < MAX_CONTEXTS && priority <= 7);
-        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the
-        // end of the day, this is writing to an MMIO region, so it's inherently
-        // unsafe.
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but
+        // at the end of the day, this is writing to an MMIO region, so
+        // it's inherently unsafe.
         unsafe {
             self.thresholds_claims[context].threshold.write(priority);
         }
@@ -248,11 +250,12 @@ impl PlicRegs {
     /// if no interrupts where pending for the target context.
     pub fn claim(&mut self, context: usize) -> Option<IrqClaim> {
         assert!(context < MAX_CONTEXTS);
-        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the
-        // end of the day, this is writing to an MMIO region, so it's inherently
-        // unsafe.
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but
+        // at the end of the day, this is writing to an MMIO region, so
+        // it's inherently unsafe.
         let claim = unsafe { self.thresholds_claims[context].claim_complete.read() };
-        // Safety: we just obtained the value from the MMIO register, so it's valid.
+        // Safety: we just obtained the value from the MMIO register, so it's
+        // valid.
         NonZero::new(claim).map(|raw| unsafe { IrqClaim::from_raw(raw) })
     }
 
@@ -265,9 +268,9 @@ impl PlicRegs {
     /// `[claim`] method.
     pub fn complete(&mut self, context: usize, claim: IrqClaim) {
         assert!(context < MAX_CONTEXTS);
-        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the
-        // end of the day, this is writing to an MMIO region, so it's inherently
-        // unsafe.
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but
+        // at the end of the day, this is writing to an MMIO region, so
+        // it's inherently unsafe.
         unsafe {
             self.thresholds_claims[context]
                 .claim_complete

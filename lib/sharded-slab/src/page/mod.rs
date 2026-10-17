@@ -26,18 +26,18 @@ impl<C: cfg::Config> Addr<C> {
     const NULL: usize = Self::BITS + 1;
 
     pub(crate) fn index(self) -> usize {
-        // Since every page is twice as large as the previous page, and all page sizes
-        // are powers of two, we can determine the page index that contains a given
-        // address by counting leading zeros, which tells us what power of two
-        // the offset fits into.
+        // Since every page is twice as large as the previous page, and all page
+        // sizes are powers of two, we can determine the page index that
+        // contains a given address by counting leading zeros, which
+        // tells us what power of two the offset fits into.
         //
         // First, we must shift down to the smallest page size, so that the last
         // offset on the first page becomes 0.
         let shifted = (self.addr + C::INITIAL_SZ) >> C::ADDR_INDEX_SHIFT;
         // Now, we can  determine the number of twos places by counting the
         // number of leading  zeros (unused twos places) in the number's binary
-        // representation, and subtracting that count from the total number of bits in a
-        // word.
+        // representation, and subtracting that count from the total number of
+        // bits in a word.
         usize::BITS as usize - shifted.leading_zeros() as usize
     }
 
@@ -308,9 +308,10 @@ where
         let mut slab = Vec::with_capacity(self.size);
         slab.extend((1..self.size).map(Slot::new));
         slab.push(Slot::new(Self::NULL));
-        // safety: this mut access is safe — it only occurs to initially allocate the
-        // page, which only happens on this thread; if the page has not yet been
-        // allocated, other threads will not try to access it yet.
+        // safety: this mut access is safe — it only occurs to initially
+        // allocate the page, which only happens on this thread; if the
+        // page has not yet been allocated, other threads will not try
+        // to access it yet.
         unsafe {
             *self.slab.get() = Some(slab.into_boxed_slice());
         }

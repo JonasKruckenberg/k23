@@ -96,8 +96,9 @@ impl<T, F> LazyLock<T, F> {
     fn get(&self) -> Option<&T> {
         if self.once.is_completed() {
             self.data.with(|data| {
-                // Safety: The closure has been run successfully, so `value` has been
-                // initialized and will not be modified again.
+                // Safety: The closure has been run successfully, so `value` has
+                // been initialized and will not be modified
+                // again.
                 Some(unsafe { &*(*data).value })
             })
         } else {
@@ -124,15 +125,15 @@ impl<T, F> Drop for LazyLock<T, F> {
         match self.once.state() {
             ExclusiveState::Incomplete => {
                 self.data.with_mut(|data| {
-                    // Safety: complete means self.data still contains the init function, the other
-                    // code upholds this
+                    // Safety: complete means self.data still contains the init
+                    // function, the other code upholds this
                     unsafe { ManuallyDrop::drop(&mut (*data).f) }
                 });
             }
             ExclusiveState::Complete => {
                 self.data.with_mut(|data| {
-                    // Safety: complete means self.data still contains the init function, the other
-                    // code upholds this
+                    // Safety: complete means self.data still contains the init
+                    // function, the other code upholds this
                     unsafe { ManuallyDrop::drop(&mut (*data).value) }
                 });
             }

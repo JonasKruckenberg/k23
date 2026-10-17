@@ -62,8 +62,9 @@ impl EhInfo {
 }
 
 pub static EH_INFO: LazyLock<EhInfo> = LazyLock::new(|| {
-    // Safety: The start is valid by construction (ensured by the linker) and gimli
-    // takes care to never read more than the required bytes from the slice
+    // Safety: The start is valid by construction (ensured by the linker) and
+    // gimli takes care to never read more than the required bytes from the
+    // slice
     #[allow(static_mut_refs, reason = "TODO remove")]
     let eh_frame_hdr = unsafe { get_unlimited_slice(EH_FRAME_HDR.as_ptr()) };
 
@@ -76,8 +77,9 @@ pub static EH_INFO: LazyLock<EhInfo> = LazyLock::new(|| {
 
             (Some(hdr), eh_frame)
         } else {
-            // Safety: The start is valid by construction (ensured by the linker) and gimli
-            // takes care to never read more than the required bytes from the slice
+            // Safety: The start is valid by construction (ensured by the
+            // linker) and gimli takes care to never read more than
+            // the required bytes from the slice
             #[allow(static_mut_refs, reason = "TODO remove")]
             let eh_frame = unsafe { EH_FRAME.as_ptr() };
 
@@ -86,8 +88,9 @@ pub static EH_INFO: LazyLock<EhInfo> = LazyLock::new(|| {
 
     bases = bases.set_eh_frame(eh_frame as u64);
 
-    // Safety: The start is valid by construction (ensured by the linker) and gimli
-    // takes care to never read more than the required bytes from the slice
+    // Safety: The start is valid by construction (ensured by the linker) and
+    // gimli takes care to never read more than the required bytes from the
+    // slice
     let eh_frame = EhFrame::new(unsafe { get_unlimited_slice(eh_frame) }, NativeEndian);
 
     EhInfo {

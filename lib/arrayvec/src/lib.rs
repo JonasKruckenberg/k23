@@ -113,14 +113,14 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         // 1. pointee is a contiguous, aligned buffer of size `len` containing
         //    properly-initialized `T`s.
         // 2. Data must not be mutated for the returned lifetime.
-        // 3. Further, `len * size_of::<T>` <= `isize::MAX`, and allocation does not
-        //    "wrap" through overflowing memory addresses.
+        // 3. Further, `len * size_of::<T>` <= `isize::MAX`, and allocation does
+        //    not "wrap" through overflowing memory addresses.
         //
         // The ArrayVec API guarantees properly-initialized items within 0..len
-        // and the backing store being a Rust array guarantees correct alignment and
-        // contiguity.
-        // 3. Is also guaranteed by construction (can't express a type that's too large)
-        //    and we
+        // and the backing store being a Rust array guarantees correct alignment
+        // and contiguity.
+        // 3. Is also guaranteed by construction (can't express a type that's
+        //    too large) and we
         // since we borrow self here 2. is upheld as well.
         unsafe { slice::from_raw_parts(self.as_ptr(), self.len) }
     }
@@ -131,14 +131,14 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         // 1. pointee is a contiguous, aligned buffer of size `len` containing
         //    properly-initialized `T`s.
         // 2. Data must not be mutated for the returned lifetime.
-        // 3. Further, `len * size_of::<T>` <= `isize::MAX`, and allocation does not
-        //    "wrap" through overflowing memory addresses.
+        // 3. Further, `len * size_of::<T>` <= `isize::MAX`, and allocation does
+        //    not "wrap" through overflowing memory addresses.
         //
         // The ArrayVec API guarantees properly-initialized items within 0..len
-        // and the backing store being a Rust array guarantees correct alignment and
-        // contiguity.
-        // 3. Is also guaranteed by construction (can't express a type that's too large)
-        //    and we
+        // and the backing store being a Rust array guarantees correct alignment
+        // and contiguity.
+        // 3. Is also guaranteed by construction (can't express a type that's
+        //    too large) and we
         // since we borrow self here 2. is upheld as well.
         unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len) }
     }
@@ -195,8 +195,9 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         if self.len == 0 {
             None
         } else {
-            // Safety: we have checked `len` is NOT zero above, which means there
-            // must be at least one element in the vec at the `len - 1` index.
+            // Safety: we have checked `len` is NOT zero above, which means
+            // there must be at least one element in the vec at the
+            // `len - 1` index.
             unsafe {
                 self.len -= 1;
                 core::hint::assert_unchecked(self.len < self.capacity());
@@ -243,7 +244,8 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         let len = self.len;
         self.len = 0;
         for elt in self.data.iter_mut().take(len) {
-            // Safety: ArrayVec API guarantees properly-initialized items within 0..len
+            // Safety: ArrayVec API guarantees properly-initialized items within
+            // 0..len
             unsafe { MaybeUninit::assume_init_drop(elt) };
         }
     }
@@ -268,7 +270,8 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         impl<T, const CAP: usize> Drop for BackshiftOnDrop<'_, T, CAP> {
             fn drop(&mut self) {
                 if self.deleted_cnt > 0 {
-                    // Safety: Trailing unchecked items must be valid since we never touch them.
+                    // Safety: Trailing unchecked items must be valid since we
+                    // never touch them.
                     unsafe {
                         ptr::copy(
                             self.v.as_ptr().add(self.processed_len),
@@ -306,9 +309,9 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
                 return false;
             }
             if DELETED {
-                // Safety: `deleted_cnt` > 0, so the hole slot must not overlap with current
-                // element. We use copy for move, and never touch this element
-                // again.
+                // Safety: `deleted_cnt` > 0, so the hole slot must not overlap
+                // with current element. We use copy for move,
+                // and never touch this element again.
                 unsafe {
                     let hole_slot = cur.sub(g.deleted_cnt);
                     ptr::copy_nonoverlapping(cur, hole_slot, 1);
@@ -359,8 +362,9 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         // Memory safety
         //
         // When the Drain is first created, it shortens the length of
-        // the source vector to make sure no uninitialized or moved-from elements
-        // are accessible at all if the Drain's destructor never gets to run.
+        // the source vector to make sure no uninitialized or moved-from
+        // elements are accessible at all if the Drain's destructor
+        // never gets to run.
         //
         // Drain will ptr::read out the values to remove.
         // When finished, remaining tail of the vec is copied back to cover
@@ -380,9 +384,9 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
 
         // set our length to start, to be safe in case Drain is leaked
         self.len = start;
-        // Safety: ArrayVec API guarantees properly-initialized items within 0..len
-        // Note: we do this unsafe slicing here because we also need to mutably borrow
-        // self (for backshifting the tail)
+        // Safety: ArrayVec API guarantees properly-initialized items within
+        // 0..len Note: we do this unsafe slicing here because we also
+        // need to mutably borrow self (for backshifting the tail)
         let range_slice = unsafe { slice::from_raw_parts(self.as_ptr().add(start), end - start) };
 
         Drain {
@@ -400,9 +404,9 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
     pub fn truncate(&mut self, new_len: usize) {
         let len = self.len();
         if new_len < len {
-            // Safety: ArrayVec API guarantees properly-initialized items within 0..len
-            // we have checked that new_len is less than len so all elements within
-            // 0..new_len must be initialized
+            // Safety: ArrayVec API guarantees properly-initialized items within
+            // 0..len we have checked that new_len is less than len
+            // so all elements within 0..new_len must be initialized
             unsafe {
                 self.len = new_len;
                 let tail = slice::from_raw_parts_mut(self.as_mut_ptr().add(new_len), len - new_len);
@@ -643,7 +647,8 @@ impl<T, const CAP: usize> Drop for IntoIter<T, CAP> {
         let len = self.vec.len();
         self.vec.len = 0;
         for elt in &mut self.vec.data[self.index..len] {
-            // Safety: ArrayVec API guarantees properly-initialized items within 0..len
+            // Safety: ArrayVec API guarantees properly-initialized items within
+            // 0..len
             unsafe { MaybeUninit::assume_init_drop(elt) };
         }
     }
@@ -667,7 +672,8 @@ impl<T, const CAP: usize> Iterator for IntoIter<T, CAP> {
         } else {
             let elt = mem::replace(&mut self.vec.data[self.index], MaybeUninit::uninit());
             self.index += 1;
-            // Safety: ArrayVec API guarantees properly-initialized items within 0..len
+            // Safety: ArrayVec API guarantees properly-initialized items within
+            // 0..len
             Some(unsafe { MaybeUninit::assume_init(elt) })
         }
     }
@@ -684,7 +690,8 @@ impl<T, const CAP: usize> DoubleEndedIterator for IntoIter<T, CAP> {
         } else {
             let elt = mem::replace(&mut self.vec.data[self.vec.len - 1], MaybeUninit::uninit());
             self.vec.len -= 1;
-            // Safety: ArrayVec API guarantees properly-initialized items within 0..len
+            // Safety: ArrayVec API guarantees properly-initialized items within
+            // 0..len
             Some(unsafe { MaybeUninit::assume_init(elt) })
         }
     }
@@ -708,7 +715,8 @@ impl<T, const CAP: usize> Iterator for Drain<'_, T, CAP> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|elt| {
-            // Safety: ArrayVec API guarantees properly-initialized items within 0..len
+            // Safety: ArrayVec API guarantees properly-initialized items within
+            // 0..len
             unsafe { ptr::read(ptr::from_ref(elt)) }
         })
     }
@@ -721,7 +729,8 @@ impl<T, const CAP: usize> Iterator for Drain<'_, T, CAP> {
 impl<T, const CAP: usize> DoubleEndedIterator for Drain<'_, T, CAP> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.iter.next_back().map(|elt| {
-            // Safety: ArrayVec API guarantees properly-initialized items within 0..len
+            // Safety: ArrayVec API guarantees properly-initialized items within
+            // 0..len
             unsafe { ptr::read(ptr::from_ref(elt)) }
         })
     }
@@ -750,8 +759,10 @@ impl<T, const CAP: usize> Drop for Drain<'_, T, CAP> {
                         let start = source_vec.len();
                         let tail = self.0.tail_start;
                         if tail != start {
-                            // as_mut_ptr creates a &mut, invalidating other pointers.
-                            // This pattern avoids calling it with a pointer already present.
+                            // as_mut_ptr creates a &mut, invalidating other
+                            // pointers.
+                            // This pattern avoids calling it with a pointer
+                            // already present.
                             let ptr = source_vec.as_mut_ptr();
                             let src = ptr.add(tail);
                             let dst = ptr.add(start);
@@ -966,7 +977,8 @@ mod tests {
 
             assert_eq!(DROP_COUNT.load(Ordering::SeqCst), 2);
         }
-        // All 3 elements should be dropped: 1 consumed, 1 remaining in drain, 1 in vec
+        // All 3 elements should be dropped: 1 consumed, 1 remaining in drain, 1
+        // in vec
         assert_eq!(DROP_COUNT.load(Ordering::SeqCst), 3);
     }
 
@@ -1080,9 +1092,9 @@ mod tests {
         iter.next();
         let _ = std::panic::catch_unwind(|| drop(iter));
 
-        // Note we don't see enough drop counts, essentially every element after the
-        // panic is leaked but at least we don't access uninitialized elements
-        // and trigger UB
+        // Note we don't see enough drop counts, essentially every element after
+        // the panic is leaked but at least we don't access
+        // uninitialized elements and trigger UB
         assert_eq!(DROP_COUNT.load(Ordering::SeqCst), 1);
     }
 

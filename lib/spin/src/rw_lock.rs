@@ -173,7 +173,8 @@ impl<T: ?Sized> RwLock<T> {
         }
         let _release = ReleaseRead(self);
 
-        // Safety: this thread holds a read reference, so no writer can be active.
+        // Safety: this thread holds a read reference, so no writer can be
+        // active.
         self.data.with(|ptr| f(unsafe { &*ptr }))
     }
 
@@ -202,7 +203,8 @@ impl<T: ?Sized> RwLock<T> {
         }
         let _release = ReleaseRead(self);
 
-        // Safety: this thread holds a read reference, so no writer can be active.
+        // Safety: this thread holds a read reference, so no writer can be
+        // active.
         Some(self.data.with(|ptr| f(unsafe { &*ptr })))
     }
 
@@ -322,7 +324,8 @@ impl<T: ?Sized> RwLock<T> {
     /// ```
     #[inline]
     pub fn get_mut(&mut self) -> &mut T {
-        // Safety: exclusive borrow of self means no critical section can be running.
+        // Safety: exclusive borrow of self means no critical section can be
+        // running.
         self.data.with_mut(|ptr| unsafe { &mut *ptr })
     }
 
@@ -389,7 +392,8 @@ impl<T: ?Sized> RwLock<T> {
     /// far enough below `usize::MAX` that the overflow is caught long before it
     /// could wrap into the `WRITER`/`UPGRADED` bits.
     fn acquire_reader(&self) -> usize {
-        // An arbitrary cap that allows us to catch overflows long before they happen
+        // An arbitrary cap that allows us to catch overflows long before they
+        // happen
         const MAX_READERS: usize = usize::MAX / READER / 2;
 
         let value = self.lock.fetch_add(READER, Ordering::Acquire);
@@ -408,8 +412,9 @@ impl<T: ?Sized> RwLock<T> {
     fn raw_try_read(&self) -> bool {
         let value = self.acquire_reader();
 
-        // We check the UPGRADED bit here so that new readers are prevented when an
-        // UPGRADED lock is held. This helps reduce writer starvation.
+        // We check the UPGRADED bit here so that new readers are prevented when
+        // an UPGRADED lock is held. This helps reduce writer
+        // starvation.
         if value & (WRITER | UPGRADED) != 0 {
             // Lock is taken, undo.
             self.lock.fetch_sub(READER, Ordering::Release);
@@ -461,8 +466,8 @@ impl<T: ?Sized> RwLock<T> {
         debug_assert_eq!(self.lock.load(Ordering::Relaxed) & WRITER, WRITER);
 
         // Writer is responsible for clearing both WRITER and UPGRADED bits.
-        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while
-        // this lock is held.
+        // The UPGRADED bit may be set if an upgradeable lock attempts an
+        // upgrade while this lock is held.
         self.lock.fetch_and(!(WRITER | UPGRADED), Ordering::Release);
     }
 
@@ -684,7 +689,8 @@ impl<'a, T: ?Sized> Upgradeable<'a, T> {
 
         let _release = ReleaseRead(lock);
 
-        // Safety: this thread holds a read reference, so no writer can be active.
+        // Safety: this thread holds a read reference, so no writer can be
+        // active.
         lock.data.with(|ptr| f(unsafe { &*ptr }))
     }
 

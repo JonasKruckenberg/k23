@@ -24,8 +24,9 @@ impl<'a> Parse<'a> for Wast<'a> {
         let mut directives = Vec::new();
 
         parser.with_standard_annotations_registered(|parser| {
-            // If it looks like a directive token is in the stream then we parse a
-            // bunch of directives, otherwise assume this is an inline module.
+            // If it looks like a directive token is in the stream then we parse
+            // a bunch of directives, otherwise assume this is an
+            // inline module.
             if parser.peek2::<WastDirectiveToken>()? {
                 while !parser.is_empty() {
                     directives.push(parser.parens(|p| p.parse())?);

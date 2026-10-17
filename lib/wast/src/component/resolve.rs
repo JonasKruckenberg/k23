@@ -142,9 +142,10 @@ impl<'a> Resolver<'a> {
             fields.splice(i..i, self.aliases_to_insert.drain(..).map(T::from));
             i += amt;
 
-            // Definitions can't refer to themselves or to definitions that appear
-            // later in the format. Now that we're done resolving this field,
-            // assign it an index for later definitions to refer to.
+            // Definitions can't refer to themselves or to definitions that
+            // appear later in the format. Now that we're done
+            // resolving this field, assign it an index for later
+            // definitions to refer to.
             register(self.current(), &fields[i])?;
 
             i += 1;
@@ -599,8 +600,8 @@ impl<'a> Resolver<'a> {
     fn core_ty(&mut self, field: &mut CoreType<'a>) -> Result<(), Error> {
         match &mut field.def {
             CoreTypeDef::Def(ty) => {
-                // See comments in `module_type` for why registration of ids happens
-                // here for core types early.
+                // See comments in `module_type` for why registration of ids
+                // happens here for core types early.
                 self.current().core_types.register(field.id, "core type")?;
                 self.current().resolve_type_def(ty)?;
                 assert!(self.aliases_to_insert.is_empty());
@@ -810,10 +811,11 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_ns(&mut self, idx: &mut Index<'a>, ns: Ns) -> Result<u32, Error> {
-        // Perform resolution on a local clone walking up the stack of components
-        // that we have. Note that a local clone is used since we don't want to use
-        // the parent's resolved index if a parent matches, instead we want to use
-        // the index of the alias that we will automatically insert.
+        // Perform resolution on a local clone walking up the stack of
+        // components that we have. Note that a local clone is used
+        // since we don't want to use the parent's resolved index if a
+        // parent matches, instead we want to use the index of the alias
+        // that we will automatically insert.
         let mut idx_clone = *idx;
         for (depth, resolver) in self.stack.iter_mut().rev().enumerate() {
             let depth = depth as u32;
@@ -823,8 +825,8 @@ impl<'a> Resolver<'a> {
                 Err(_) => continue,
             };
 
-            // If this is the current component then no extra alias is necessary, so
-            // return success.
+            // If this is the current component then no extra alias is
+            // necessary, so return success.
             if depth == 0 {
                 *idx = idx_clone;
                 return Ok(found);
@@ -867,8 +869,8 @@ impl<'a> Resolver<'a> {
             return Ok(local_index);
         }
 
-        // If resolution in any parent failed then simply return the error from our
-        // local namespace
+        // If resolution in any parent failed then simply return the error from
+        // our local namespace
         self.current().resolve(ns, idx)?;
         unreachable!()
     }

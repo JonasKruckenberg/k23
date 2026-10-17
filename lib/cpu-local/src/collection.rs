@@ -682,9 +682,10 @@ mod tests {
         }
         let dropped = Arc::new(AtomicUsize::new(0));
 
-        // We use a high `id` here to guarantee that a lazily allocated bucket somewhere
-        // in the middle is used. Neither iteration nor `Drop` must early-return
-        // on `null` buckets that are used for lower `buckets`.
+        // We use a high `id` here to guarantee that a lazily allocated bucket
+        // somewhere in the middle is used. Neither iteration nor `Drop`
+        // must early-return on `null` buckets that are used for lower
+        // `buckets`.
         let cpu = Cpu::new(1234);
         assert!(cpu.bucket > 1);
 

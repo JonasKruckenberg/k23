@@ -228,9 +228,9 @@ impl Compiler for CraneliftCompiler {
         types: &ModuleTypes,
         index: DefinedFuncIndex,
     ) -> crate::Result<CompiledFunction> {
-        // This function has a special calling convention where all arguments and return
-        // values are passed through an array in memory (so we can have dynamic
-        // function signatures in rust)
+        // This function has a special calling convention where all arguments
+        // and return values are passed through an array in memory (so
+        // we can have dynamic function signatures in rust)
         let pointer_type = self.isa.pointer_type();
         let index = translation.module.func_index(index);
         let sig_index = translation.module.functions[index]
@@ -291,9 +291,9 @@ impl Compiler for CraneliftCompiler {
             values_vec_len,
         );
 
-        // Array-call functions signal traps through a boolean return value. If we
-        // reached this point Wasm executed without issue, so we need to return
-        // a "true" value.
+        // Array-call functions signal traps through a boolean return value. If
+        // we reached this point Wasm executed without issue, so we need
+        // to return a "true" value.
         let true_return = builder.ins().iconst(ir::types::I8, 1);
         builder.ins().return_(&[true_return]);
         builder.finalize();

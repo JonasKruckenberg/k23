@@ -276,23 +276,23 @@ impl TaskRef {
         let poll_join_fn = self.header().vtable.poll_join;
         let mut slot = CheckedMaybeUninit::<Result<T, JoinError<T>>>::uninit();
 
-        // Safety: This is called through the Vtable and as long as the caller makes
-        // sure that the `T` is the right type, this call is safe
+        // Safety: This is called through the Vtable and as long as the caller
+        // makes sure that the `T` is the right type, this call is safe
         let result = unsafe { poll_join_fn(self.0, NonNull::from(&mut slot).cast::<()>(), cx) };
 
         result.map(|result| {
             if let Err(e) = result {
                 let output = if e.is_completed() {
-                    // Safety: if the task completed before being canceled, we can still
-                    // take its output.
+                    // Safety: if the task completed before being canceled, we
+                    // can still take its output.
                     Some(unsafe { slot.assume_init_read() }?)
                 } else {
                     None
                 };
                 Err(e.with_output(output))
             } else {
-                // Safety: if the poll function returned `Ok`, we get to take the
-                // output!
+                // Safety: if the poll function returned `Ok`, we get to take
+                // the output!
                 unsafe { slot.assume_init_read() }
             }
         })
@@ -307,8 +307,8 @@ impl TaskRef {
     /// on the type of the scheduler, binding a task to a differently typed
     /// scheduler will therefore cause invalid memory accesses.
     pub(crate) fn bind_scheduler(&self, scheduler: &'static Scheduler) {
-        // Safety: the repr(C) on Schedulable ensures the layout matches and this cast
-        // is safe
+        // Safety: the repr(C) on Schedulable ensures the layout matches and
+        // this cast is safe
         unsafe {
             self.0
                 .as_ref()
@@ -454,10 +454,11 @@ impl TaskRef {
         //
         // The #[inline(always)] is to ensure that raw_waker and clone_waker are
         // always generated in the same code generation unit as one another, and
-        // therefore that the structurally identical const-promoted RawWakerVTable
-        // within both functions is deduplicated at LLVM IR code generation time.
-        // This allows optimizing Waker::will_wake to a single pointer comparison of
-        // the vtable pointers, rather than comparing all four function pointers
+        // therefore that the structurally identical const-promoted
+        // RawWakerVTable within both functions is deduplicated at LLVM
+        // IR code generation time. This allows optimizing
+        // Waker::will_wake to a single pointer comparison of the vtable
+        // pointers, rather than comparing all four function pointers
         // within the vtables.
         #[inline(always)]
         unsafe fn clone_waker(waker: *const ()) -> RawWaker {
@@ -486,7 +487,8 @@ impl TaskRef {
             task.wake();
         }
 
-        // Wake by reference, wrap the waker in ManuallyDrop to avoid dropping it
+        // Wake by reference, wrap the waker in ManuallyDrop to avoid dropping
+        // it
         unsafe fn wake_by_ref(waker: *const ()) {
             // Safety: ensured by VTable
             let task = unsafe { ManuallyDrop::new(TaskRef::from_raw(waker.cast::<Header>())) };
@@ -564,7 +566,8 @@ impl Drop for TaskRef {
         }
 
         let deallocate = self.header().vtable.deallocate;
-        // Safety: as long as we're constructed from a NonNull<Header> this is safe
+        // Safety: as long as we're constructed from a NonNull<Header> this is
+        // safe
         unsafe {
             deallocate(self.0);
         }
@@ -648,10 +651,11 @@ impl<F: Future, M> Task<F, M> {
                 }
             }
 
-            // wrap the waker in `ManuallyDrop` because we're converting it from an
-            // existing task ref, rather than incrementing the task ref count. if
-            // this waker is consumed during the poll, we don't want to decrement
-            // its ref count when the poll ends.
+            // wrap the waker in `ManuallyDrop` because we're converting it from
+            // an existing task ref, rather than incrementing the
+            // task ref count. if this waker is consumed during the
+            // poll, we don't want to decrement its ref count when
+            // the poll ends.
             let waker = {
                 let raw = TaskRef(ptr).into_raw_waker();
                 ManuallyDrop::new(Waker::from_raw(raw))
@@ -666,8 +670,8 @@ impl<F: Future, M> Task<F, M> {
 
             let result = this.state().end_poll(poll.is_ready());
 
-            // if the task is ready and has a `JoinHandle` to wake, wake the join
-            // waker now.
+            // if the task is ready and has a `JoinHandle` to wake, wake the
+            // join waker now.
             if result == PollResult::ReadyJoined {
                 this.wake_join_waker();
             }
@@ -716,8 +720,9 @@ impl<F: Future, M> Task<F, M> {
                     return Poll::Ready(Ok(()));
                 }
                 JoinAction::Canceled { completed } => {
-                    // if the task has completed before it was canceled, also try to
-                    // read the output, so that it can be returned in the `JoinError`.
+                    // if the task has completed before it was canceled, also
+                    // try to read the output, so that it
+                    // can be returned in the `JoinError`.
                     if completed {
                         // safety: if the state transition returned `Canceled`
                         // with `completed` set, this indicates that we have
@@ -820,8 +825,9 @@ impl<F: Future, M> Task<F, M> {
                 match mem::replace(&mut *stage, Stage::Consumed) {
                     Stage::Ready(output) => {
                         // let output = self.stage.take_output();
-                        // safety: the caller is responsible for ensuring that this
-                        // points to a `MaybeUninit<F::Output>`.
+                        // safety: the caller is responsible for ensuring that
+                        // this points to a
+                        // `MaybeUninit<F::Output>`.
                         let dst = dst
                             .cast::<CheckedMaybeUninit<Result<F::Output, JoinError<F::Output>>>>()
                             .as_mut();
@@ -871,7 +877,8 @@ where
 
             // Safety: caller has to ensure mutual exclusion
             let Stage::Pending(future) = guard.stage else {
-                // TODO this will be caught by the `catch_unwind` which isn't great
+                // TODO this will be caught by the `catch_unwind` which isn't
+                // great
                 unreachable!("unexpected stage");
             };
 

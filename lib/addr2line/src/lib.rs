@@ -237,8 +237,8 @@ impl<R: gimli::Reader> Context<R> {
 }
 
 impl<R: gimli::Reader> Context<R> {
-    // Find the unit containing the given offset, and convert the offset into a unit
-    // offset.
+    // Find the unit containing the given offset, and convert the offset into a
+    // unit offset.
     fn find_unit(
         &self,
         offset: gimli::DebugInfoOffset<R::Offset>,

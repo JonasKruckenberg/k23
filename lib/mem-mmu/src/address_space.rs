@@ -111,9 +111,9 @@ impl<A: Arch> HardwareAddressSpace<A> {
         // Safety: ensured by caller
         unsafe { arch.set_active_table(root_page_table.address()) };
 
-        // NB: this is load-bearing. We need to ensure to flush the entire address space
-        // with all CPUs so that it correctly takes effect (especially so if the
-        // address space ID was reused).
+        // NB: this is load-bearing. We need to ensure to flush the entire
+        // address space with all CPUs so that it correctly takes effect
+        // (especially so if the address space ID was reused).
         arch.fence_all();
     }
 
@@ -136,14 +136,15 @@ impl<A: Arch> HardwareAddressSpace<A> {
             if entry.is_table() {
                 debug_assert!((table.depth() as usize + 1) < A::LEVELS.len());
 
-                // Safety: We checked the entry is a table above (1.) know the depth is correct
-                // (2.).
+                // Safety: We checked the entry is a table above (1.) know the
+                // depth is correct (2.).
                 table = unsafe { Table::from_raw_parts(entry.address(), table.depth() + 1) };
             } else if entry.is_leaf() {
                 let lower_bits = virt.get() & (level.page_size() - 1);
 
-                // `entry.address()` is aligned to `level.page_size()` on all supported
-                // architectures meaning the lower bits must already be zero
+                // `entry.address()` is aligned to `level.page_size()` on all
+                // supported architectures meaning the lower
+                // bits must already be zero
                 return Some((
                     PhysicalAddress::new(entry.address().get() | lower_bits),
                     entry.attributes(),
@@ -633,11 +634,13 @@ where
 
         for _ in 0..count {
             // Precondition: the range is unmapped, so every slot is vacant.
-            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            // Safety: `entry_virt` is within the covered run, in-bounds and
+            // aligned.
             debug_assert!(unsafe { arch.read::<A::PageTableEntry>(entry_virt) }.is_vacant());
 
             let leaf = A::PageTableEntry::new_leaf(phys, self.attributes);
-            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            // Safety: `entry_virt` is within the covered run, in-bounds and
+            // aligned.
             unsafe { arch.write(entry_virt, leaf) };
 
             entry_virt = entry_virt.add(size_of::<A::PageTableEntry>());
@@ -647,8 +650,8 @@ where
         self.phys = phys;
 
         // TODO fence(modified pages, 0) if attributes includes GLOBAL
-        // TODO we can omit the fence here and lazily change the mapping in the fault
-        // handler
+        // TODO we can omit the fence here and lazily change the mapping in the
+        // fault handler
         self.flush
             .invalidate(Range::from_start_len(va, count as usize * S::BYTES));
 
@@ -682,7 +685,8 @@ where
         let mut phys = self.phys;
 
         for _ in 0..count {
-            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            // Safety: `entry_virt` is within the covered run, in-bounds and
+            // aligned.
             let old = unsafe { arch.read::<A::PageTableEntry>(entry_virt) };
             debug_assert!(
                 old.is_leaf(),
@@ -691,7 +695,8 @@ where
             );
 
             let new = A::PageTableEntry::new_leaf(phys, old.attributes());
-            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            // Safety: `entry_virt` is within the covered run, in-bounds and
+            // aligned.
             unsafe { arch.write(entry_virt, new) };
 
             entry_virt = entry_virt.add(size_of::<A::PageTableEntry>());
@@ -733,7 +738,8 @@ where
         let mut entry_virt = table.entry_address(first, physmap);
 
         for _ in 0..count {
-            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            // Safety: `entry_virt` is within the covered run, in-bounds and
+            // aligned.
             let old = unsafe { arch.read::<A::PageTableEntry>(entry_virt) };
             debug_assert!(
                 old.is_leaf(),
@@ -742,15 +748,17 @@ where
             );
 
             let new = A::PageTableEntry::new_leaf(old.address(), self.attributes);
-            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            // Safety: `entry_virt` is within the covered run, in-bounds and
+            // aligned.
             unsafe { arch.write(entry_virt, new) };
 
             entry_virt = entry_virt.add(size_of::<A::PageTableEntry>());
         }
 
         // TODO fence(modified pages, 0) if attributes includes GLOBAL
-        // TODO we can omit the fence here IF the attributes are MORE PERMISSIVE than
-        // before and  lazily change the mapping in the fault handler
+        // TODO we can omit the fence here IF the attributes are MORE PERMISSIVE
+        // than before and  lazily change the mapping in the fault
+        // handler
         self.flush
             .invalidate(Range::from_start_len(va, count as usize * S::BYTES));
 
@@ -781,11 +789,12 @@ where
         physmap: &PhysMap,
         arch: &A,
     ) -> Result<(), Infallible> {
-        // `ascend` is called after we may have run `fill` to free all its pages on the
-        // subtable. If its empty now, clear and free the table itself.
+        // `ascend` is called after we may have run `fill` to free all its pages
+        // on the subtable. If its empty now, clear and free the table
+        // itself.
 
-        // Safety: `child_base`/`child_depth` name the just-visited child table, and we
-        // inherit `table`'s mutable access to the tree.
+        // Safety: `child_base`/`child_depth` name the just-visited child table,
+        // and we inherit `table`'s mutable access to the tree.
         let child: Table<A, marker::Mut<'_>> =
             unsafe { Table::from_raw_parts(child_base, child_depth) };
 
@@ -793,8 +802,9 @@ where
             // Safety: the walk only ascends through in-bounds indices.
             unsafe { table.set(index, A::PageTableEntry::VACANT, physmap, arch) };
 
-            // Safety: tables are always allocated through the frame allocator, and are
-            // always exactly one frame in size. `child_base` is that frame.
+            // Safety: tables are always allocated through the frame allocator,
+            // and are always exactly one frame in size.
+            // `child_base` is that frame.
             unsafe {
                 self.frame_allocator
                     .deallocate(child_base, A::GRANULE_LAYOUT);
@@ -826,7 +836,8 @@ where
                 S::BYTES,
             );
 
-            // Safety: `entry_virt` is within the covered run, in-bounds and aligned.
+            // Safety: `entry_virt` is within the covered run, in-bounds and
+            // aligned.
             unsafe { arch.write(entry_virt, A::PageTableEntry::VACANT) };
 
             entry_virt = entry_virt.add(size_of::<A::PageTableEntry>());

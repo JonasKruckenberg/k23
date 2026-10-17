@@ -73,17 +73,20 @@ impl CraneliftMemory {
         match addr {
             Reachability::Unreachable => Reachability::Unreachable,
             Reachability::Reachable(addr) => {
-                // Note that we don't set `is_aligned` here, even if the load instruction's
-                // alignment immediate may say it's aligned, because WebAssembly's
-                // immediate field is just a hint, while Cranelift's aligned flag needs a
-                // guarantee. WebAssembly memory accesses are always little-endian.
+                // Note that we don't set `is_aligned` here, even if the load
+                // instruction's alignment immediate may say
+                // it's aligned, because WebAssembly's immediate
+                // field is just a hint, while Cranelift's aligned flag needs a
+                // guarantee. WebAssembly memory accesses are always
+                // little-endian.
                 let mut flags = MemFlagsData::new();
                 flags.set_endianness(ir::Endianness::Little);
 
                 // The access occurs to the `heap` disjoint category of abstract
-                // state. This may allow alias analysis to merge redundant loads,
-                // etc. when heap accesses occur interleaved with other (table,
-                // vmctx, stack) accesses.
+                // state. This may allow alias analysis to merge redundant
+                // loads, etc. when heap accesses occur
+                // interleaved with other (table, vmctx, stack)
+                // accesses.
                 flags.set_alias_region(Some(heap_alias_region(builder.func)));
 
                 Reachability::Reachable((flags, index, addr))
@@ -103,15 +106,16 @@ impl CraneliftMemory {
         env: &mut TranslationEnvironment,
     ) -> Reachability<(MemFlagsData, Value, Value)> {
         // Atomic addresses must all be aligned correctly, and for now we check
-        // alignment before we check out-of-bounds-ness. The order of this check may
-        // need to be updated depending on the outcome of the official threads
-        // proposal itself.
+        // alignment before we check out-of-bounds-ness. The order of this check
+        // may need to be updated depending on the outcome of the
+        // official threads proposal itself.
         //
-        // Note that with an offset>0 we generate an `iadd_imm` where the result is
-        // thrown away after the offset check. This may truncate the offset and the
-        // result may overflow as well, but those conditions won't affect the
-        // alignment check itself. This can probably be optimized better and we
-        // should do so in the future as well.
+        // Note that with an offset>0 we generate an `iadd_imm` where the result
+        // is thrown away after the offset check. This may truncate the
+        // offset and the result may overflow as well, but those
+        // conditions won't affect the alignment check itself. This can
+        // probably be optimized better and we should do so in the
+        // future as well.
         if loaded_bytes > 1 {
             let effective_addr = if memarg.offset == 0 {
                 index
@@ -163,8 +167,9 @@ impl CraneliftMemory {
         );
 
         if offset_and_size > self.bound {
-            // 1. First special case: trap immediately if `offset + access_size > bound`,
-            //    since we will end up being out-of-bounds regardless of the given `index`.
+            // 1. First special case: trap immediately if `offset + access_size
+            //    > bound`, since we will end up being out-of-bounds regardless
+            //    of the given `index`.
             builder.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
             Reachability::Unreachable
         } else if index_type_to_ir_type(self.index_type) == ir::types::I32
@@ -174,8 +179,8 @@ impl CraneliftMemory {
                     .saturating_add(self.offset_guard_size)
                     .saturating_add(offset_and_size)
         {
-            // 2. Second special case for when we can completely omit explicit bounds checks
-            //    for 32-bit static memories.
+            // 2. Second special case for when we can completely omit explicit
+            //    bounds checks for 32-bit static memories.
             //
             //    First, let's rewrite our comparison to move all the constants
             //    to one side:
@@ -183,35 +188,37 @@ impl CraneliftMemory {
             //            index + offset + access_size > bound
             //        ==> index > bound - (offset + access_size)
             //
-            //    We know the subtraction on the right-hand side won't wrap because
-            //    we didn't hit the first special case.
+            //    We know the subtraction on the right-hand side won't wrap
+            // because    we didn't hit the first special case.
             //
-            //    Additionally, we add our guard pages (if any) to the right-hand
-            //    side, since we can rely on the virtual memory subsystem at runtime
-            //    to catch out-of-bound accesses within the range `bound .. bound +
+            //    Additionally, we add our guard pages (if any) to the
+            // right-hand    side, since we can rely on the virtual
+            // memory subsystem at runtime    to catch out-of-bound
+            // accesses within the range `bound .. bound +
             //    guard_size`. So now we are dealing with
             //
             //        index > bound + guard_size - (offset + access_size)
             //
             //    Note that `bound + guard_size` cannot overflow for
-            //    correctly-configured heaps, as otherwise the heap wouldn't fit in
-            //    a 64-bit memory space.
+            //    correctly-configured heaps, as otherwise the heap wouldn't fit
+            // in    a 64-bit memory space.
             //
-            //    The complement of our should-this-trap comparison expression is
-            //    the should-this-not-trap comparison expression:
+            //    The complement of our should-this-trap comparison expression
+            // is    the should-this-not-trap comparison expression:
             //
             //        index <= bound + guard_size - (offset + access_size)
             //
             //    If we know the right-hand side is greater than or equal to
             //    `u32::MAX`, then
             //
-            //        index <= u32::MAX <= bound + guard_size - (offset + access_size)
+            //        index <= u32::MAX <= bound + guard_size - (offset +
+            // access_size)
             //
             //    This expression is always true when the heap is indexed with
             //    32-bit integers because `index` cannot be larger than
-            //    `u32::MAX`. This means that `index` is always either in bounds or
-            //    within the guard page region, neither of which require emitting an
-            //    explicit bounds check.
+            //    `u32::MAX`. This means that `index` is always either in bounds
+            // or    within the guard page region, neither of which
+            // require emitting an    explicit bounds check.
 
             Reachability::Reachable(self.compute_addr(
                 &mut builder.cursor(),
@@ -228,11 +235,11 @@ impl CraneliftMemory {
             //
             //    and trap if so.
             //
-            //    Since we have to emit explicit bounds checks, we might as well be
-            //    precise, not rely on the virtual memory subsystem at all, and not
-            //    factor in the guard pages here.
-            // NB: this subtraction cannot wrap because we didn't hit the first
-            // special case.
+            //    Since we have to emit explicit bounds checks, we might as well
+            // be    precise, not rely on the virtual memory
+            // subsystem at all, and not    factor in the guard
+            // pages here. NB: this subtraction cannot wrap because
+            // we didn't hit the first special case.
             let adjusted_bound = self.bound.checked_sub(offset_and_size).unwrap();
             let adjusted_bound_value = builder
                 .ins()
@@ -298,8 +305,8 @@ impl CraneliftMemory {
         } else {
             // NB: The addition of the offset immediate must happen *before* the
             // `select_spectre_guard`, if any. If it happens after, then we
-            // potentially are letting speculative execution read the whole first
-            // 4GiB of memory.
+            // potentially are letting speculative execution read the whole
+            // first 4GiB of memory.
             let offset_val = pos.ins().iconst(addr_ty, i64::from(offset));
             pos.ins().iadd(base_and_index, offset_val)
         }
