@@ -18,7 +18,7 @@ use crate::wasm::indices::VMSharedTypeIndex;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::translate::EntityType;
 use crate::wasm::types::{GlobalType, MemoryType, TableType, TagType};
-use crate::wasm::vm::{ConstExprEvaluator, Imports};
+use crate::wasm::vm::{ConstExprEvaluator, Imports, InstanceLimits};
 use crate::wasm::{Engine, Extern, Func, Global, Instance, Memory, Module, Store, Table, Tag};
 
 /// A dynamic linker for WebAssembly modules.
@@ -146,7 +146,28 @@ impl<T> Linker<T> {
         Ok(self)
     }
 
-    /// Instantiate the provided `module`.
+    /// Instantiate the provided `module` with no host-imposed resource limits.
+    ///
+    /// Equivalent to [`Self::instantiate_with_limits`] with
+    /// [`InstanceLimits::default()`].
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::instantiate_with_limits`].
+    ///
+    /// # Panics
+    ///
+    /// See [`Self::instantiate_with_limits`].
+    pub fn instantiate(
+        &self,
+        store: &mut Store<T>,
+        const_eval: &mut ConstExprEvaluator,
+        module: &Module,
+    ) -> crate::Result<Instance> {
+        self.instantiate_with_limits(store, const_eval, module, InstanceLimits::default())
+    }
+
+    /// Instantiate the provided `module` under host-imposed resource `limits`.
     ///
     /// This step resolve the modules imports using definitions from this
     /// linker, then pass them on to `Instance::new_unchecked` for
@@ -157,16 +178,19 @@ impl<T> Linker<T> {
     ///
     /// # Errors
     ///
-    /// TODO
+    /// Returns an error if an import is missing, if allocation fails, or if a
+    /// memory's declared minimum cannot be satisfied under `limits`.
     ///
     /// # Panics
     ///
-    /// TODO
-    pub fn instantiate(
+    /// Panics if a resolved import has a different kind than the module
+    /// expects (TODO: this should be a type-check error).
+    pub fn instantiate_with_limits(
         &self,
         store: &mut Store<T>,
         const_eval: &mut ConstExprEvaluator,
         module: &Module,
+        limits: InstanceLimits,
     ) -> crate::Result<Instance> {
         let mut imports = Imports::with_capacity_for(module.translated());
 
@@ -212,7 +236,7 @@ impl<T> Linker<T> {
         }
 
         // Safety: we have typechecked the imports above.
-        unsafe { Instance::new_unchecked(store, const_eval, module.clone(), imports) }
+        unsafe { Instance::new_unchecked(store, const_eval, module.clone(), imports, limits) }
     }
 
     pub fn func_wrap<Params, Results>(

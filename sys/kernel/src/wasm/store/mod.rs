@@ -24,8 +24,8 @@ pub use stored::{Stored, StoredData};
 
 use crate::wasm::trap_handler::WasmFault;
 use crate::wasm::vm::{
-    InstanceAllocator, InstanceHandle, VMContext, VMFuncRef, VMGlobalDefinition, VMStoreContext,
-    VMTableDefinition, VMVal,
+    InstanceAllocator, InstanceHandle, InstanceLimits, VMContext, VMFuncRef, VMGlobalDefinition,
+    VMStoreContext, VMTableDefinition, VMVal,
 };
 use crate::wasm::{Engine, Module, vm};
 
@@ -60,10 +60,12 @@ impl<T> Store<T> {
         });
 
         inner.opaque.default_caller = {
+            // The stub module defines no memories or tables, so no limits can
+            // apply to it.
             let mut instance = inner
                 .opaque
                 .alloc
-                .allocate_module(Module::new_stub(engine.clone()))
+                .allocate_module(Module::new_stub(engine.clone()), InstanceLimits::default())
                 .expect("failed to allocate default callee");
 
             instance

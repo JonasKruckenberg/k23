@@ -46,7 +46,7 @@ pub use trap::TrapKind;
 #[cfg(test)]
 pub use values::Val;
 #[cfg(test)]
-pub use vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
+pub use vm::{ConstExprEvaluator, InstanceLimits, PlaceholderAllocatorDontUse};
 
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
