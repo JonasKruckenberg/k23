@@ -55,6 +55,15 @@ impl Memory {
         self.len
     }
 
+    /// The effective maximum size of this memory, in bytes.
+    ///
+    /// This is the module's declared maximum intersected with any host cap
+    /// that was in force when the memory was allocated. `None` means no bound
+    /// could be represented and only the index type limits growth.
+    pub fn maximum_byte_size(&self) -> Option<usize> {
+        self.maximum
+    }
+
     pub fn wasm_accessible(&self) -> Range<VirtualAddress> {
         self.mmap.range()
     }

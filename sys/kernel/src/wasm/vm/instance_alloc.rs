@@ -9,7 +9,7 @@ use core::alloc::Allocator;
 use core::ptr::NonNull;
 use core::{cmp, mem};
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use cranelift_entity::PrimaryMap;
 
 use crate::mem::Mmap;
@@ -21,6 +21,19 @@ use crate::wasm::vm::instance::Instance;
 use crate::wasm::vm::mmap_vec::MmapVec;
 use crate::wasm::vm::{InstanceHandle, TableElement, VMShape};
 use crate::wasm::{MEMORY_MAX, TABLE_MAX, translate, vm};
+
+/// Host-imposed caps for one instantiation.
+///
+/// Limits travel with the instantiation request rather than living in
+/// allocator state because the [`InstanceAllocator`] is `'static` and shared
+/// by every store. They only ever tighten what the module declares.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InstanceLimits {
+    /// Hard cap on the byte size of every memory the instance defines.
+    ///
+    /// `None` means only the module's declared maximum applies.
+    pub max_memory_bytes: Option<usize>,
+}
 
 /// A type that knows how to allocate backing memory for instance resources.
 pub trait InstanceAllocator {
@@ -34,7 +47,8 @@ pub trait InstanceAllocator {
     ///
     /// # Errors
     ///
-    /// Returns an error if any of the allocations fail.
+    /// Returns an error if any of the allocations fail or if the memory's
+    /// declared minimum cannot be satisfied under `limits`.
     ///
     /// # Safety
     ///
@@ -44,6 +58,7 @@ pub trait InstanceAllocator {
         &self,
         memory: &translate::Memory,
         memory_index: DefinedMemoryIndex,
+        limits: &InstanceLimits,
     ) -> crate::Result<vm::Memory>;
 
     /// Deallocate an instance's previously allocated memory.
@@ -97,12 +112,13 @@ pub trait InstanceAllocator {
         &self,
         module: &TranslatedModule,
         memories: &mut PrimaryMap<DefinedMemoryIndex, vm::Memory>,
+        limits: &InstanceLimits,
     ) -> crate::Result<()> {
         for (index, plan) in &module.memories {
             if let Some(def_index) = module.defined_memory_index(index) {
                 let new_def_index =
                     // Safety: caller has to ensure safety
-                    memories.push(unsafe { self.allocate_memory(plan, def_index)? });
+                    memories.push(unsafe { self.allocate_memory(plan, def_index, limits)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -191,9 +207,13 @@ pub trait InstanceAllocator {
     ///
     /// # Errors
     ///
-    /// Returns an error if any of the allocations fail. In this case, the
-    /// resources are cleaned up automatically.
-    fn allocate_module(&self, module: Module) -> crate::Result<InstanceHandle> {
+    /// Returns an error if any of the allocations fail or `limits` cannot be
+    /// honoured. In this case, the resources are cleaned up automatically.
+    fn allocate_module(
+        &self,
+        module: Module,
+        limits: InstanceLimits,
+    ) -> crate::Result<InstanceHandle> {
         let mut tables = PrimaryMap::with_capacity(
             usize::try_from(module.translated().num_defined_tables()).unwrap(),
         );
@@ -204,7 +224,7 @@ pub trait InstanceAllocator {
         // Safety: TODO
         match (|| unsafe {
             self.allocate_tables(module.translated(), &mut tables)?;
-            self.allocate_memories(module.translated(), &mut memories)?;
+            self.allocate_memories(module.translated(), &mut memories, &limits)?;
             self.allocate_instance_and_vmctx(module.vmshape())
         })() {
             // Safety: we crated the instance handle and memories/tables from the same module
@@ -254,20 +274,20 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         &self,
         memory: &translate::Memory,
         _memory_index: DefinedMemoryIndex,
+        limits: &InstanceLimits,
     ) -> crate::Result<vm::Memory> {
         // TODO we could call out to some resource management instance here to obtain
         //  dynamic "minimum" and "maximum" values that reflect the state of the real
         // systems  memory consumption
 
         // If the minimum memory size overflows the size of our own address
-        // space, then we can't satisfy this request, but defer the error to
-        // later so the `store` can be informed that an effective oom is
-        // happening.
+        // space we can't satisfy this request. This runs on the WASM hot path,
+        // so it is an instantiation error, not a panic (critical invariant 8).
         let minimum = memory
             .minimum_byte_size()
             .ok()
             .and_then(|m| usize::try_from(m).ok())
-            .expect("memory minimum size exceeds memory limits");
+            .context("memory minimum size exceeds addressable memory")?;
 
         // The plan stores the maximum size in units of wasm pages, but we
         // use units of bytes. Unlike for the `minimum` size we silently clamp
@@ -275,10 +295,22 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         // maximum size exceeds `usize` or `u64` then there's no need to further
         // keep track of it as some sort of runtime limit will kick in long
         // before we reach the statically declared maximum size.
-        let maximum = memory
+        let declared_maximum = memory
             .maximum_byte_size()
             .ok()
             .and_then(|m| usize::try_from(m).ok());
+
+        // The host cap only ever tightens the declared maximum. The minimum is
+        // left alone because `memory.size` is guest-observable.
+        let maximum = match (declared_maximum, limits.max_memory_bytes) {
+            (Some(declared), Some(cap)) => Some(declared.min(cap)),
+            (declared, cap) => declared.or(cap),
+        };
+        if let Some(maximum) = maximum
+            && minimum > maximum
+        {
+            bail!("memory minimum size {minimum} bytes exceeds host limit of {maximum} bytes");
+        }
 
         let offset_guard_bytes = usize::try_from(memory.offset_guard_size).unwrap();
         // Ensure that our guard regions are multiples of the host page size.

@@ -12,7 +12,7 @@ use crate::util::zip_eq::IteratorExt;
 use crate::wasm::indices::EntityIndex;
 use crate::wasm::module::Module;
 use crate::wasm::store::{StoreOpaque, Stored};
-use crate::wasm::vm::{ConstExprEvaluator, Imports, InstanceHandle};
+use crate::wasm::vm::{ConstExprEvaluator, Imports, InstanceHandle, InstanceLimits};
 use crate::wasm::{Extern, Func, Global, Memory, Table};
 
 /// An instantiated WebAssembly module.
@@ -49,6 +49,11 @@ pub struct Export<'instance> {
 impl Instance {
     /// Instantiates a new `Instance`.
     ///
+    /// # Errors
+    ///
+    /// Returns an error if allocation fails, if `limits` cannot be honoured,
+    /// or if initialization of the instance fails.
+    ///
     /// # Safety
     ///
     /// This functions assumes the provided `imports` have already been
@@ -59,8 +64,9 @@ impl Instance {
         const_eval: &mut ConstExprEvaluator,
         module: Module,
         imports: Imports,
+        limits: InstanceLimits,
     ) -> crate::Result<Self> {
-        let mut handle = store.alloc_mut().allocate_module(module.clone())?;
+        let mut handle = store.alloc_mut().allocate_module(module.clone(), limits)?;
 
         let is_bulk_memory = module.required_features().bulk_memory();
 
