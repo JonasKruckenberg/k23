@@ -56,8 +56,8 @@ preflight targets="" *buck2_args:
     t='{{ targets }}'; [ -n "$t" ] || { "$j" changed-targets > "$f"; t=$(cat "$f"); }
     "$j" typos; "$j" check-fmt "$t"; "$j" check-license-headers
     for a in riscv64 aarch64 x86_64; do "$j" platform=//platforms:$a clippy "$t" {{ buck2_args }}; done
-    for r in unittests miri loom selftests; do "$j" $r "$t" {{ buck2_args }}; done
-    "$j" buck2-audit; "$j" reindeer-clean; "$j" cargo-deny
+    for r in doc unittests miri loom selftests; do "$j" $r "$t" {{ buck2_args }}; done
+    "$j" buck2-audit; "$j" reindeer-clean; "$j" unused-third-party; "$j" cargo-deny
 
 # run linters on a crate or the entire workspace.
 lint targets="//..." *buck2_args: (clippy targets buck2_args) (check-fmt targets buck2_args) typos

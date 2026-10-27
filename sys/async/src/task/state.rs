@@ -301,8 +301,9 @@ impl State {
     #[tracing::instrument(level = "trace")]
     pub(super) fn wake_by_val(&self) -> WakeByValAction {
         self.transition(|s| {
-            // If the task was woken *during* a poll, it will be re-queued by the
-            // scheduler at the end of the poll if needed, so don't enqueue it now.
+            // If the task was woken *during* a poll, it will be re-queued by
+            // the scheduler at the end of the poll if needed, so
+            // don't enqueue it now.
             if s.get(Snapshot::POLLING) {
                 return WakeByValAction::Drop;
             }
@@ -397,8 +398,8 @@ impl State {
     #[tracing::instrument(level = "trace")]
     pub(super) fn cancel(&self) -> bool {
         self.transition(|s| {
-            // you can't cancel a task that has already been canceled, that doesn't make
-            // sense.
+            // you can't cancel a task that has already been canceled, that
+            // doesn't make sense.
             if s.get(Snapshot::CANCELLED) {
                 return false;
             }

@@ -173,8 +173,8 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
     where
         Self: Sized,
     {
-        // Safety: we just allocated the page and we're only accessing the upper half of
-        // it
+        // Safety: we just allocated the page and we're only accessing the upper
+        // half of it
         let src = unsafe {
             let satp = satp::read();
             let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
@@ -251,27 +251,29 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             "physical address must be aligned to at least 4KiB page size {phys:?}"
         );
 
-        // To map out contiguous chunk of physical memory into the virtual address space
-        // efficiently we'll attempt to map as much of the chunk using as large
-        // of a page size as possible.
+        // To map out contiguous chunk of physical memory into the virtual
+        // address space efficiently we'll attempt to map as much of the
+        // chunk using as large of a page size as possible.
         //
-        // We'll follow the page table down starting at the root page table entry (PTE)
-        // and check at every level if we can map there. This is dictated by the
-        // combination of virtual and physical address alignment as well as
-        // chunk size. If we can map at the current level well subtract the page
+        // We'll follow the page table down starting at the root page table
+        // entry (PTE) and check at every level if we can map there.
+        // This is dictated by the combination of virtual and physical
+        // address alignment as well as chunk size. If we can map at the
+        // current level well subtract the page
         // size from `remaining_bytes`, advance the current virtual and physical
-        // addresses by the page size and repeat the process until there are no more
-        // bytes to map.
+        // addresses by the page size and repeat the process until there are no
+        // more bytes to map.
         //
-        // IF we can't map at a given level, we'll either allocate a new PTE or follow
-        // and existing PTE to the next level (and therefore smaller page size)
-        // until we reach a level that we can map at. Note that, because we
-        // require a minimum alignment and size of PAGE_SIZE, we will always be
-        // able to map a chunk using level 0 pages.
+        // IF we can't map at a given level, we'll either allocate a new PTE or
+        // follow and existing PTE to the next level (and therefore
+        // smaller page size) until we reach a level that we can map at.
+        // Note that, because we require a minimum alignment and size of
+        // PAGE_SIZE, we will always be able to map a chunk using level
+        // 0 pages.
         //
-        // In effect this algorithm will map the start and ends of chunks using smaller
-        // page sizes while mapping the vast majority of the middle of a chunk
-        // using larger page sizes.
+        // In effect this algorithm will map the start and ends of chunks using
+        // smaller page sizes while mapping the vast majority of the
+        // middle of a chunk using larger page sizes.
         'outer: while remaining_bytes > 0 {
             let mut pgtable: NonNull<PageTableEntry> =
                 self.pgtable_ptr_from_phys(physmap, self.root_pgtable);
@@ -282,14 +284,16 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                 // Safety: index is always within one page
                 let pte = unsafe { pgtable.add(index).as_mut() };
 
-                // Let's check if we can map at this level of the page table given our
-                // current virtual and physical address as well as the number of remaining
+                // Let's check if we can map at this level of the page table
+                // given our current virtual and physical
+                // address as well as the number of remaining
                 // bytes.
                 if can_map_at_level(virt, phys, remaining_bytes, lvl) {
                     let page_size = page_size_for_level(lvl);
 
                     // This PTE is vacant AND we can map at this level
-                    // mark this PTE as a valid leaf node pointing to the physical frame
+                    // mark this PTE as a valid leaf node pointing to the
+                    // physical frame
                     pte.replace_address_and_flags(phys, PTEFlags::VALID | flags);
 
                     flush.extend_range(self.asid, Range::from(virt..virt.add(page_size)))?;
@@ -298,15 +302,19 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                     remaining_bytes -= page_size;
                     continue 'outer;
                 } else if pte.is_valid() && !pte.is_leaf() {
-                    // This PTE is an internal node pointing to another page table
+                    // This PTE is an internal node pointing to another page
+                    // table
                     pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
                 } else {
-                    // The current PTE is vacant, but we couldn't map at this level (because the
-                    // page size was too large, or the request wasn't sufficiently aligned or
-                    // because the architecture just can't map at this level). This means
-                    // we need to allocate a new sub-table and retry.
-                    // allocate a new physical frame to hold the next level table and
-                    // mark this PTE as a valid internal node pointing to that sub-table.
+                    // The current PTE is vacant, but we couldn't map at this
+                    // level (because the page size was too
+                    // large, or the request wasn't sufficiently aligned or
+                    // because the architecture just can't map at this level).
+                    // This means we need to allocate a new
+                    // sub-table and retry. allocate a new
+                    // physical frame to hold the next level table and
+                    // mark this PTE as a valid internal node pointing to that
+                    // sub-table.
                     let frame = frame_alloc.alloc_one_zeroed(physmap)?;
 
                     mb();
@@ -347,9 +355,10 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             "virtual address must be aligned to at least 4KiB page size"
         );
 
-        // The algorithm below is essentially the same as `remap_contiguous` but with
-        // the difference that we don't replace the PTEs address but instead the
-        // PTEs flags ensuring that the caller can't increase the permissions.
+        // The algorithm below is essentially the same as `remap_contiguous` but
+        // with the difference that we don't replace the PTEs address
+        // but instead the PTEs flags ensuring that the caller can't
+        // increase the permissions.
         'outer: while remaining_bytes > 0 {
             let mut pgtable = self.pgtable_ptr_from_phys(physmap, self.root_pgtable);
 
@@ -362,10 +371,12 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                 let page_size = page_size_for_level(lvl);
 
                 if pte.is_valid() && pte.is_leaf() {
-                    // We reached the previously mapped leaf node that we want to edit
-                    // firstly, ensure that this operation only removes permissions never adds any
-                    // and secondly mask out the old permissions replacing them with the new. This
-                    // must ensure we retain any other flags in the process.
+                    // We reached the previously mapped leaf node that we want
+                    // to edit firstly, ensure that this
+                    // operation only removes permissions never adds any
+                    // and secondly mask out the old permissions replacing them
+                    // with the new. This must ensure we
+                    // retain any other flags in the process.
                     let rwx_mask = PTEFlags::READ | PTEFlags::WRITE | PTEFlags::EXECUTE;
 
                     let new_flags = rwx_mask & new_flags;
@@ -381,7 +392,8 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                     remaining_bytes -= page_size;
                     continue 'outer;
                 } else if pte.is_valid() {
-                    // This PTE is an internal node pointing to another page table
+                    // This PTE is an internal node pointing to another page
+                    // table
                     pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
                 } else {
                     remaining_bytes = remaining_bytes.saturating_sub(page_size);
@@ -411,11 +423,12 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             "virtual address must be aligned to at least 4KiB page size"
         );
 
-        // The algorithm of this function is different from the others, it processes the
-        // requested range in an iterative fashion, but will not traverse the
-        // page table levels iteratively instead doing so recursively. The
-        // reason for this is that after unmapping a page we need to check if by
-        // doing so the parent has become empty in which case we also need to unmap the
+        // The algorithm of this function is different from the others, it
+        // processes the requested range in an iterative fashion, but
+        // will not traverse the page table levels iteratively instead
+        // doing so recursively. The reason for this is that after
+        // unmapping a page we need to check if by doing so the parent
+        // has become empty in which case we also need to unmap the
         // parent.
         while remaining_bytes > 0 {
             self.unmap_inner(
@@ -455,8 +468,9 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                 // This PTE is an internal node pointing to another page table
                 pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
             } else {
-                // This PTE is vacant, which means at whatever level we're at, there is no
-                // point at doing any more work since this address cannot be mapped to anything
+                // This PTE is vacant, which means at whatever level we're at,
+                // there is no point at doing any more work
+                // since this address cannot be mapped to anything
                 // anyway.
 
                 return None;
@@ -509,8 +523,8 @@ impl AddressSpace {
             let pgtable = self.pgtable_ptr_from_phys(physmap, pte.get_address_and_flags().0);
             self.unmap_inner(pgtable, virt, remaining_bytes, lvl - 1, physmap, flush)?;
 
-            // The recursive descend above might have unmapped the last child of this PTE in
-            // which case we need to unmap it as well
+            // The recursive descend above might have unmapped the last child of
+            // this PTE in which case we need to unmap it as well
 
             // TODO optimize this
             let is_still_populated = (0..PAGE_TABLE_ENTRIES)
@@ -632,8 +646,8 @@ impl From<crate::mem::Permissions> for PTEFlags {
     fn from(flags: crate::mem::Permissions) -> Self {
         use crate::mem::Permissions;
 
-        // we currently don't use the accessed & dirty bits and, it's recommended to set
-        // them if unused
+        // we currently don't use the accessed & dirty bits and, it's
+        // recommended to set them if unused
         let mut out = Self::VALID | Self::ACCESSED | Self::DIRTY;
 
         for flag in flags {

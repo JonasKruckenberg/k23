@@ -41,10 +41,10 @@ fn main() -> anyhow::Result<()> {
     let input = fs::File::open(&args.input)
         .with_context(|| format!("Failed to open file '{}'", args.input.display()))?;
 
-    // Safety: yes the file *could* be modified while we hold it, BUT: doing that is
-    // something the user has to deliberately do (stupid) and will at-worst
-    // result in a corrupted output. Re-running the build will fix this, so not
-    // a big deal.
+    // Safety: yes the file *could* be modified while we hold it, BUT: doing
+    // that is something the user has to deliberately do (stupid) and will
+    // at-worst result in a corrupted output. Re-running the build will fix
+    // this, so not a big deal.
     let in_data = unsafe {
         memmap2::Mmap::map(&input)
             .with_context(|| format!("Failed to map file '{}'", args.input.display()))?
@@ -136,11 +136,11 @@ fn scan_layout<Elf: FileHeader<Endian = Endianness>>(
 }
 
 struct Relocations {
-    pe_relocs: Vec<(u32, u16)>,
+    pe_relocs: Vec<(u32, pe::BaseRelocationType)>,
     // For absolute RELA relocations we need to patch the target slot with the
     // addend when copying section bytes — otherwise UEFI's PE loader will
     // "relocate" a zeroed slot and every pointer lands at the image base.
-    rela_addends: HashMap<u32, (i64, u16)>,
+    rela_addends: HashMap<u32, (i64, pe::BaseRelocationType)>,
 }
 
 fn collect_relocations<Elf: FileHeader<Endian = Endianness>>(
@@ -148,8 +148,8 @@ fn collect_relocations<Elf: FileHeader<Endian = Endianness>>(
     in_data: &[u8],
     endian: Endianness,
 ) -> anyhow::Result<Relocations> {
-    let mut pe_relocs: Vec<(u32, u16)> = Vec::new();
-    let mut rela_addends: HashMap<u32, (i64, u16)> = HashMap::new();
+    let mut pe_relocs: Vec<(u32, pe::BaseRelocationType)> = Vec::new();
+    let mut rela_addends: HashMap<u32, (i64, pe::BaseRelocationType)> = HashMap::new();
 
     for in_section in in_sections.iter() {
         if in_section.rel(endian, in_data)?.is_some() {
@@ -164,7 +164,7 @@ fn collect_relocations<Elf: FileHeader<Endian = Endianness>>(
         // Static rela sections have sh_info pointing at the target section.
         // Dynamic rela sections (.rela.dyn, .rela.plt) are SHF_ALLOC and
         // target virtual addresses across the whole image.
-        let dynamic = in_section.sh_flags(endian).into() & u64::from(elf::SHF_ALLOC) != 0;
+        let dynamic = in_section.sh_flags(endian).contains(elf::SHF_ALLOC);
         let (info_addr, info_data): (u64, &[u8]) = if dynamic {
             (0, &[])
         } else {
@@ -388,7 +388,7 @@ fn copy_file<Elf: FileHeader<Endian = Endianness>>(in_data: &[u8]) -> anyhow::Re
         major_subsystem_version: 0,
         minor_subsystem_version: 0,
         subsystem: pe::IMAGE_SUBSYSTEM_EFI_APPLICATION,
-        dll_characteristics: 0,
+        dll_characteristics: pe::DllFlags(0),
         size_of_stack_reserve: 0,
         size_of_stack_commit: 0,
         size_of_heap_reserve: 0,
@@ -428,7 +428,7 @@ fn copy_file<Elf: FileHeader<Endian = Endianness>>(in_data: &[u8]) -> anyhow::Re
     }
     writer.write_reloc_section();
 
-    debug_assert_eq!(writer.reserved_len() as usize, writer.len());
+    debug_assert_eq!(writer.reserved_len(), writer.len());
 
     Ok(out_data)
 }
@@ -443,21 +443,21 @@ fn is_runtime_section<S: SectionHeader>(s: &S, endian: S::Endian) -> bool {
 }
 
 fn is_text<S: SectionHeader>(s: &S, endian: S::Endian) -> bool {
-    let flags = s.sh_flags(endian).into();
+    let flags = s.sh_flags(endian);
     is_runtime_section(s, endian)
-        && flags & u64::from(elf::SHF_ALLOC) != 0
-        && (flags & u64::from(elf::SHF_EXECINSTR) != 0 || flags & u64::from(elf::SHF_WRITE) == 0)
+        && flags.contains(elf::SHF_ALLOC)
+        && (flags.contains(elf::SHF_EXECINSTR) || !flags.contains(elf::SHF_WRITE))
 }
 
 fn is_data<S: SectionHeader>(s: &S, endian: S::Endian) -> bool {
-    let flags = s.sh_flags(endian).into();
+    let flags = s.sh_flags(endian);
     is_runtime_section(s, endian)
-        && flags & u64::from(elf::SHF_ALLOC) != 0
-        && flags & u64::from(elf::SHF_EXECINSTR) == 0
-        && flags & u64::from(elf::SHF_WRITE) != 0
+        && flags.contains(elf::SHF_ALLOC)
+        && !flags.contains(elf::SHF_EXECINSTR)
+        && flags.contains(elf::SHF_WRITE)
 }
 
 fn is_alloc<S: SectionHeader>(s: &S, endian: S::Endian) -> bool {
-    let flags = s.sh_flags(endian).into();
-    is_runtime_section(s, endian) && flags & u64::from(elf::SHF_ALLOC) != 0
+    let flags = s.sh_flags(endian);
+    is_runtime_section(s, endian) && flags.contains(elf::SHF_ALLOC)
 }

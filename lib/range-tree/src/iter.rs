@@ -65,8 +65,8 @@ impl<I: RangeTreeInteger> RawIter<I> {
             // First, try to move to the next element in the current leaf.
             self.pos = self.pos.next();
 
-            // If we reached the end of the leaf then we need to advance to the next
-            // leaf node.
+            // If we reached the end of the leaf then we need to advance to the
+            // next leaf node.
             // Safety: iterators only operate on leaf nodes
             if self.is_end(leaf_pool) {
                 // If we've reached the end of the tree then we can leave the
@@ -75,8 +75,9 @@ impl<I: RangeTreeInteger> RawIter<I> {
                     self.node = next_leaf;
                     self.pos = NodePos::ZERO;
 
-                    // Safety: The tree invariants guarantee that leaf nodes are always at least
-                    // half full, except if this is the root node. However this can't be the
+                    // Safety: The tree invariants guarantee that leaf nodes are
+                    // always at least half full, except if
+                    // this is the root node. However this can't be the
                     // root node since there is more than one node.
                     hint::assert_unchecked(!self.is_end(leaf_pool));
                 }
@@ -184,11 +185,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for IntoIter<I, V, A> {
     fn drop(&mut self) {
         // Ensure all remaining elements are dropped.
         if mem::needs_drop::<V>() {
-            // Safety: `IntoIter` was created from a `RangeTree` so the allocators always
-            // match
+            // Safety: `IntoIter` was created from a `RangeTree` so the
+            // allocators always match
             while let Some((_pivot, value_ptr)) = unsafe { self.raw.next(&self.tree.leaf) } {
-                // Safety: `RawIter` yields only entries where `pivot` is non-max, meaning the
-                // value is present and initialized.
+                // Safety: `RawIter` yields only entries where `pivot` is
+                // non-max, meaning the value is present and
+                // initialized.
                 unsafe {
                     value_ptr.drop_in_place();
                 }
@@ -196,8 +198,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for IntoIter<I, V, A> {
         }
 
         // Then release the allocations for the tree without dropping elements.
-        // Safety: `IntoIter` was created from a `RangeTree` so the allocators always
-        // match
+        // Safety: `IntoIter` was created from a `RangeTree` so the allocators
+        // always match
         unsafe {
             let tree = &mut *self.tree;
             tree.internal.clear_and_free(&tree.alloc);
@@ -478,8 +480,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         search: <I::Int as RangeTreeInteger>::Raw,
     ) -> RawIter<I::Int> {
         // Go down the tree, at each internal node selecting the first sub-tree
-        // with pivot greater than or equal to the search pivot. This sub-tree will
-        // only contain pivots less than or equal to its pivot.
+        // with pivot greater than or equal to the search pivot. This sub-tree
+        // will only contain pivots less than or equal to its pivot.
         let mut height = self.height;
         let mut node = self.root;
         while let Some(down) = height.down() {
@@ -487,8 +489,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
             let pivots = unsafe { node.pivots(&self.internal) };
             // Safety: ensured by `RangeTreeInteger` trait
             let pos = unsafe { I::Int::search(pivots, search) };
-            // Safety: `height > LEAF` so this MUST be an internal node AND `pos` returned
-            // by `search` points to an initialized entry.
+            // Safety: `height > LEAF` so this MUST be an internal node AND
+            // `pos` returned by `search` points to an initialized
+            // entry.
             node = unsafe { node.value(pos, &self.internal).assume_init_read().0 };
             height = down;
         }

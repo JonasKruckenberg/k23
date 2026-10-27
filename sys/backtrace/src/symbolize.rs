@@ -160,7 +160,8 @@ impl<'ctx> FallibleIterator for SymbolsIter<'_, 'ctx> {
             }))
         } else if !self.anything {
             self.anything = true;
-            // the iterator didn't produce any frames, so let's try the symbol table
+            // the iterator didn't produce any frames, so let's try the symbol
+            // table
             if let Some(name) = self.search_symtab() {
                 Ok(Some(Symbol::Symtab { name }))
             } else {

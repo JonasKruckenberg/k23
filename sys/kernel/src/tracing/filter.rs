@@ -40,9 +40,10 @@ impl fmt::Display for Error {
                 writeln!(f, "too many '=' in filter directive, expected 0 or 1")
             }
             // Error::TooManyFieldListBegins => {
-            //     writeln!(f, "too many '[{{' in filter directive, expected 0 or 1")
-            // }
-            // Error::MissingFieldListEnd => writeln!(f, "expected fields list to end with '}}]'"),
+            //     writeln!(f, "too many '[{{' in filter directive, expected 0
+            // or 1") }
+            // Error::MissingFieldListEnd => writeln!(f, "expected fields list
+            // to end with '}}]'"),
             Error::InvalidLevelFilter => writeln!(f, "encountered invalid level filter str"),
         }
     }
@@ -99,9 +100,10 @@ impl Filter {
                 }
 
                 // insert the directive into the vec of directives, ordered by
-                // specificity (length of target + number of field filters). this
-                // ensures that, when finding a directive to match a span or event, we
-                // search the directive set in most specific first order.
+                // specificity (length of target + number of field filters).
+                // this ensures that, when finding a directive
+                // to match a span or event, we search the
+                // directive set in most specific first order.
                 match enabled.binary_search(&directive) {
                     Ok(i) => enabled[i] = directive,
                     Err(i) => enabled.insert(i, directive),

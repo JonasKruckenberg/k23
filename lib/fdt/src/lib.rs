@@ -113,7 +113,8 @@ impl<'dt> Fdt<'dt> {
         let strings_start = header.strings_offset as usize;
         let strings_end = strings_start + header.strings_size as usize;
 
-        // Safety: we have to trust the FDT header that the strings block is valid
+        // Safety: we have to trust the FDT header that the strings block is
+        // valid
         let strings = StringsBlock(unsafe {
             slice::from_raw_parts(data.as_ptr().cast(), size_of_val(data))
                 .get(strings_start..strings_end)
@@ -198,7 +199,8 @@ impl<'dt> Fdt<'dt> {
             parser.parse_raw_property()?;
         }
 
-        // Seed depth 0 with the root's child cells so depth-1 nodes inherit them.
+        // Seed depth 0 with the root's child cells so depth-1 nodes inherit
+        // them.
         let mut cells_stack = [CellSizes::default(); MAX_TRACKED_DEPTH];
         cells_stack[0] = self.root.cell_sizes;
 

@@ -9,8 +9,8 @@
 platform(
     name = "riscv64",
     constraint_values = [
-        "prelude//os/constraints:none",
-        "prelude//cpu/constraints:riscv64",
+        "prelude//os/constraints:os[none]",
+        "prelude//cpu/constraints:cpu[riscv64]",
         "constraints//:rust-std[source]",
     ],
     visibility = ["PUBLIC"],
@@ -19,8 +19,8 @@ platform(
 platform(
     name = "aarch64",
     constraint_values = [
-        "prelude//os/constraints:none",
-        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:os[none]",
+        "prelude//cpu/constraints:cpu[arm64]",
         "constraints//:rust-std[source]",
     ],
     visibility = ["PUBLIC"],
@@ -29,8 +29,8 @@ platform(
 platform(
     name = "x86_64",
     constraint_values = [
-        "prelude//os/constraints:none",
-        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:os[none]",
+        "prelude//cpu/constraints:cpu[x86_64]",
         "constraints//:rust-std[source]",
     ],
     visibility = ["PUBLIC"],

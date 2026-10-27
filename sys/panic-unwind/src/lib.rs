@@ -97,8 +97,8 @@ fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 
     log::error!("CPU {info}");
 
-    // FIXME 32 seems adequate for unoptimized builds where the callstack can get
-    // quite deep  but (at least at the moment) is absolute overkill for
+    // FIXME 32 seems adequate for unoptimized builds where the callstack can
+    // get quite deep  but (at least at the moment) is absolute overkill for
     // optimized builds. Sadly there  is no good way to do conditional
     // compilation based on the opt-level.
     const MAX_BACKTRACE_FRAMES: usize = 32;
@@ -132,8 +132,9 @@ fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 #[inline(never)]
 #[unsafe(no_mangle)]
 fn rust_panic(regs: unwind::Registers, pc: usize) -> ! {
-    // NB: `PANIC_EXCEPTION` is actually treated as immutable, nothing ever writes
-    // through this but the rustc `intrinsics::catch_unwind` require a mut ptr.
+    // NB: `PANIC_EXCEPTION` is actually treated as immutable, nothing ever
+    // writes through this but the rustc `intrinsics::catch_unwind` require
+    // a mut ptr.
     let exception = ptr::from_ref(&PANIC_EXCEPTION).cast_mut();
 
     // Safety: `PANIC_EXCEPTION` is a static, it trivially outlives the unwind.

@@ -206,21 +206,23 @@ impl ConstExprEvaluator {
                 ConstOp::StructNew {
                     struct_type_index: _,
                 } => {
-                    // let interned_type_index = ctx.instance.env_module().types[*struct_type_index]
+                    // let interned_type_index =
+                    // ctx.instance.env_module().types[*struct_type_index]
                     //     .unwrap_engine_type_index();
-                    // let len = ctx.struct_fields_len(&mut store, interned_type_index);
+                    // let len = ctx.struct_fields_len(&mut store,
+                    // interned_type_index);
                     //
                     // if self.stack.len() < len {
                     //     bail!(
-                    //         "const expr evaluation error: expected at least {len} values on the
-                    // stack, found {}",         self.stack.len()
-                    //     )
+                    //         "const expr evaluation error: expected at least
+                    // {len} values on the stack, found {}",
+                    // self.stack.len()     )
                     // }
                     //
                     // let start = self.stack.len() - len;
                     // let s = unsafe {
-                    //     ctx.struct_new(&mut store, interned_type_index, &self.stack[start..])?
-                    // };
+                    //     ctx.struct_new(&mut store, interned_type_index,
+                    // &self.stack[start..])? };
                     // self.stack.truncate(start);
                     // self.stack.push(s);
 
@@ -229,7 +231,8 @@ impl ConstExprEvaluator {
                 ConstOp::StructNewDefault {
                     struct_type_index: _,
                 } => {
-                    // let ty = ctx.instance.env_module().types[*struct_type_index]
+                    // let ty = ctx.instance.env_module().types[*
+                    // struct_type_index]
                     //     .unwrap_engine_type_index();
                     // self.stack.push(ctx.struct_new_default(&mut store, ty)?);
 
@@ -238,9 +241,11 @@ impl ConstExprEvaluator {
                 ConstOp::ArrayNew {
                     array_type_index: _,
                 } => {
-                    // let ty = ctx.instance.env_module().types[*array_type_index]
+                    // let ty = ctx.instance.env_module().types[*
+                    // array_type_index]
                     //     .unwrap_engine_type_index();
-                    // let ty = ArrayType::from_shared_type_index(store.engine(), ty);
+                    // let ty = ArrayType::from_shared_type_index(store.
+                    // engine(), ty);
                     //
                     // #[allow(clippy::cast_sign_loss)]
                     // let len = self.pop()?.get_i32() as u32;
@@ -249,31 +254,38 @@ impl ConstExprEvaluator {
                     // ty.element_type().unpack());
                     //
                     // let pre = ArrayRefPre::_new(&mut store, ty);
-                    // let array = ArrayRef::_new(&mut store, &pre, &elem, len)?;
+                    // let array = ArrayRef::_new(&mut store, &pre, &elem,
+                    // len)?;
                     //
                     // self.stack
-                    //     .push(VMVal::anyref(array.to_anyref()._to_raw(&mut store)?));
+                    //     .push(VMVal::anyref(array.to_anyref()._to_raw(&mut
+                    // store)?));
 
                     todo!()
                 }
                 ConstOp::ArrayNewDefault {
                     array_type_index: _,
                 } => {
-                    // let ty = ctx.instance.env_module().types[*array_type_index]
+                    // let ty = ctx.instance.env_module().types[*
+                    // array_type_index]
                     //     .unwrap_engine_type_index();
-                    // let ty = ArrayType::from_shared_type_index(store.engine(), ty);
+                    // let ty = ArrayType::from_shared_type_index(store.
+                    // engine(), ty);
                     //
                     // #[allow(clippy::cast_sign_loss)]
                     // let len = self.pop()?.get_i32() as u32;
                     //
-                    // let elem = Val::default_for_ty(ty.element_type().unpack())
+                    // let elem =
+                    // Val::default_for_ty(ty.element_type().unpack())
                     //     .expect("type should have a default value");
                     //
                     // let pre = ArrayRefPre::_new(&mut store, ty);
-                    // let array = ArrayRef::_new(&mut store, &pre, &elem, len)?;
+                    // let array = ArrayRef::_new(&mut store, &pre, &elem,
+                    // len)?;
                     //
                     // self.stack
-                    //     .push(VMVal::anyref(array.to_anyref()._to_raw(&mut store)?));
+                    //     .push(VMVal::anyref(array.to_anyref()._to_raw(&mut
+                    // store)?));
 
                     todo!()
                 }
@@ -281,15 +293,18 @@ impl ConstExprEvaluator {
                     array_type_index: _,
                     array_size: _,
                 } => {
-                    // let ty = ctx.instance.env_module().types[*array_type_index]
+                    // let ty = ctx.instance.env_module().types[*
+                    // array_type_index]
                     //     .unwrap_engine_type_index();
-                    // let ty = ArrayType::from_shared_type_index(store.engine(), ty);
+                    // let ty = ArrayType::from_shared_type_index(store.
+                    // engine(), ty);
                     //
                     // let array_size = usize::try_from(*array_size).unwrap();
                     // if self.stack.len() < array_size {
                     //     bail!(
-                    //         "const expr evaluation error: expected at least {array_size} values
-                    // on the stack, found {}",         self.stack.len()
+                    //         "const expr evaluation error: expected at least
+                    // {array_size} values on the stack,
+                    // found {}",         self.stack.len()
                     //     )
                     // }
                     //
@@ -305,10 +320,12 @@ impl ConstExprEvaluator {
                     //     .collect::<SmallVec<[_; 8]>>();
                     //
                     // let pre = ArrayRefPre::_new(&mut store, ty);
-                    // let array = ArrayRef::_new_fixed(&mut store, &pre, &elems)?;
+                    // let array = ArrayRef::_new_fixed(&mut store, &pre,
+                    // &elems)?;
                     //
                     // self.stack
-                    //     .push(VMVal::anyref(array.to_anyref()._to_raw(&mut store)?));
+                    //     .push(VMVal::anyref(array.to_anyref()._to_raw(&mut
+                    // store)?));
 
                     todo!()
                 }
@@ -320,8 +337,8 @@ impl ConstExprEvaluator {
             Ok(self.stack.pop().unwrap())
         } else {
             let len = self.stack.len();
-            // we need to correctly clear the stack here for the next time we try to use the
-            // const eval
+            // we need to correctly clear the stack here for the next time we
+            // try to use the const eval
             self.stack.clear();
             bail!("const expr evaluation error: expected 1 resulting value, found {len}",)
         }

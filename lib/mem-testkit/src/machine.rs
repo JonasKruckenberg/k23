@@ -95,13 +95,15 @@ impl<A: Arch> Machine<A> {
         let mut flush = Flush::new();
 
         // Map the physmap at the translation granule: every test memory region
-        // is granule-aligned, so the smallest leaf size always covers them exactly.
+        // is granule-aligned, so the smallest leaf size always covers them
+        // exactly.
         for region_phys in memory_regions {
             // NB: use the desired physmap (ie the one used after bootstrapping)
             let region_virt = chosen_physmap.phys_to_virt_range(region_phys);
 
-            // Safety: we just created the address space and `BootstrapAllocator` checks its
-            // regions to not be overlapping (1.). It will also align regions to
+            // Safety: we just created the address space and
+            // `BootstrapAllocator` checks its regions to not be
+            // overlapping (1.). It will also align regions to
             // at least page size (2., 3.).
             unsafe {
                 address_space.map_contiguous::<S>(
@@ -118,9 +120,9 @@ impl<A: Arch> Machine<A> {
         // bootstrapping. No need to flush in between.
         unsafe { flush.ignore() };
 
-        // Safety: we just created the address space, so don't have any pointers into
-        // it. In hosted tests the programs memory and CPU registers are outside
-        // the address space anyway.
+        // Safety: we just created the address space, so don't have any pointers
+        // into it. In hosted tests the programs memory and CPU
+        // registers are outside the address space anyway.
         unsafe { address_space.activate() };
 
         (address_space, frame_allocator, chosen_physmap)
@@ -561,8 +563,9 @@ impl<A: Arch> Cpu<A> {
             };
 
             if entry.is_table() {
-                // Safety: `entry.address()` is the frame this table descriptor points at; its
-                // validity is guaranteed by this function's own contract.
+                // Safety: `entry.address()` is the frame this table descriptor
+                // points at; its validity is guaranteed by this
+                // function's own contract.
                 unsafe {
                     self.reload_map(asid, range, depth + 1, entry.address(), memory);
                 }

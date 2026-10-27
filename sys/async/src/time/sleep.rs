@@ -153,8 +153,9 @@ mod tests {
     use crate::loom::sync::atomic::{AtomicBool, Ordering};
     use crate::time::test_util::MockClock;
 
-    // loom is not happy about this test. For whatever reason it triggers the "too
-    // many branches" error. But both the regular test AND miri are fine with it
+    // loom is not happy about this test. For whatever reason it triggers the
+    // "too many branches" error. But both the regular test AND miri are
+    // fine with it
     #[test]
     #[cfg(not(loom))]
     fn sleep_basically_works() {
@@ -203,25 +204,27 @@ mod tests {
             clock.advance(Duration::from_millis(250));
 
             // Tick 2:
-            //  We expect nothing to happen during this tick, since the task is still not
-            // ready yet  (we're only at 250ms not 500ms).
+            //  We expect nothing to happen during this tick, since the task is
+            // still not ready yet  (we're only at 250ms not 500ms).
             let tick = worker.tick();
             assert_eq!(tick.polled, 0); // the task isn't in the workers queue, so no tasks should be polled
             assert_eq!(tick.completed, 0); // and also no tasks completed of course
 
-            // turning the timer here should produce the same result: nothing should happen
+            // turning the timer here should produce the same result: nothing
+            // should happen
             let (expired, next_deadline) = TIMER.turn();
             assert_eq!(expired, 0);
             assert!(next_deadline.is_some());
             assert!(!th.is_complete());
 
-            // advance the clock another 250 milliseconds (the task should be ready now!)
+            // advance the clock another 250 milliseconds (the task should be
+            // ready now!)
             clock.advance(Duration::from_millis(250));
 
             // Tick 3:
-            //  Polling right now should still technically do nothing, since the timer
-            // hasn't been  turned yet, and therefore the task hasn't been
-            // woken.
+            //  Polling right now should still technically do nothing, since the
+            // timer hasn't been  turned yet, and therefore the task
+            // hasn't been woken.
             let tick = worker.tick();
             assert_eq!(tick.polled, 0);
             assert_eq!(tick.completed, 0);
@@ -232,8 +235,8 @@ mod tests {
             assert!(next_deadline.is_none()); // consequently no deadline to wait for anymore
 
             // Tick 4:
-            //  Polling now should complete the task since we're at 500ms AND we turned the
-            // timer  to wake the task!
+            //  Polling now should complete the task since we're at 500ms AND we
+            // turned the timer  to wake the task!
             let tick = worker.tick();
             assert_eq!(tick.polled, 1); // we expect the task to have been in the work queue
             assert_eq!(tick.completed, 1); // and it should be ready now

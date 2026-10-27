@@ -272,12 +272,22 @@ macro_rules! impl_address {
                 Self(unsafe { core::iter::Step::forward_unchecked(start.0, count) })
             }
 
+            fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+                let (addr, overflowed) = core::iter::Step::forward_overflowing(start.0, count);
+                (Self(addr), overflowed)
+            }
+
             fn backward_checked(start: Self, count: usize) -> Option<Self> {
                 core::iter::Step::backward_checked(start.0, count).map(Self)
             }
 
             fn backward(start: Self, count: usize) -> Self {
                 Self(core::iter::Step::backward(start.0, count))
+            }
+
+            fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+                let (addr, overflowed) = core::iter::Step::backward_overflowing(start.0, count);
+                (Self(addr), overflowed)
             }
 
             unsafe fn backward_unchecked(start: Self, count: usize) -> Self {

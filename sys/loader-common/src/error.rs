@@ -14,7 +14,7 @@ pub enum Error {
     Fdt(fdt::Error),
     /// A `PT_LOAD` segment carries a `p_flags` combination the loader does not
     /// support (anything other than `R`, `R|W`, or `R|X`).
-    InvalidSegmentFlags(u32),
+    InvalidSegmentFlags(object::elf::ProgramFlags),
     TooManyRegions,
     MissingSegment,
     FieldOutOfRange,
@@ -52,7 +52,7 @@ impl Display for Error {
             Error::Fdt(err) => write!(f, "FDT parse error: {err}"),
             Error::InvalidSegmentFlags(flags) => write!(
                 f,
-                "kernel ELF has a PT_LOAD segment with unsupported flags {flags:#x}"
+                "kernel ELF has a PT_LOAD segment with unsupported flags {flags:?}"
             ),
             Error::Alloc(_) => write!(
                 f,

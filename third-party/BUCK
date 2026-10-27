@@ -3077,24 +3077,24 @@ buildscript_run(
 
 alias(
     name = "object",
-    actual = ":object-0.39",
+    actual = ":object-0.40",
     visibility = ["PUBLIC"],
 )
 
 http_archive(
-    name = "object-0.39.1.crate",
-    sha256 = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b",
-    strip_prefix = "object-0.39.1",
-    urls = ["https://static.crates.io/crates/object/0.39.1/download"],
+    name = "object-0.40.0.crate",
+    sha256 = "dd229a0361b9d0d4396176e02d65897f487eebeab7caa6d443855ee152ca0b9c",
+    strip_prefix = "object-0.40.0",
+    urls = ["https://static.crates.io/crates/object/0.40.0/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "object-0.39",
-    srcs = [":object-0.39.1.crate"],
+    name = "object-0.40",
+    srcs = [":object-0.40.0.crate"],
     crate = "object",
-    crate_root = "object-0.39.1.crate/src/lib.rs",
-    edition = "2018",
+    crate_root = "object-0.40.0.crate/src/lib.rs",
+    edition = "2024",
     features = [
         "elf",
         "read_core",
@@ -3120,7 +3120,7 @@ cargo.rust_library(
                 ":flate2-1",
                 ":hashbrown-0.17",
                 ":indexmap-2",
-                ":ruzstd-0.8",
+                ":ruzstd-0.9",
             ],
         ),
         "linux-x86_64": dict(
@@ -3143,7 +3143,7 @@ cargo.rust_library(
                 ":flate2-1",
                 ":hashbrown-0.17",
                 ":indexmap-2",
-                ":ruzstd-0.8",
+                ":ruzstd-0.9",
             ],
         ),
         "macos-arm64": dict(
@@ -3166,7 +3166,7 @@ cargo.rust_library(
                 ":flate2-1",
                 ":hashbrown-0.17",
                 ":indexmap-2",
-                ":ruzstd-0.8",
+                ":ruzstd-0.9",
             ],
         ),
         "macos-x86_64": dict(
@@ -3189,7 +3189,7 @@ cargo.rust_library(
                 ":flate2-1",
                 ":hashbrown-0.17",
                 ":indexmap-2",
-                ":ruzstd-0.8",
+                ":ruzstd-0.9",
             ],
         ),
     },
@@ -3605,35 +3605,6 @@ cargo.rust_library(
         ":rusty-fork-0.3",
         ":tempfile-3",
         ":unarray-0.1",
-    ],
-)
-
-alias(
-    name = "proptest-derive",
-    actual = ":proptest-derive-0.8",
-    visibility = ["PUBLIC"],
-)
-
-http_archive(
-    name = "proptest-derive-0.8.0.crate",
-    sha256 = "c57924a81864dddafba92e1bf92f9bf82f97096c44489548a60e888e1547549b",
-    strip_prefix = "proptest-derive-0.8.0",
-    urls = ["https://static.crates.io/crates/proptest-derive/0.8.0/download"],
-    visibility = [],
-)
-
-cargo.rust_library(
-    name = "proptest-derive-0.8",
-    srcs = [":proptest-derive-0.8.0.crate"],
-    crate = "proptest_derive",
-    crate_root = "proptest-derive-0.8.0.crate/src/lib.rs",
-    edition = "2021",
-    proc_macro = True,
-    visibility = [],
-    deps = [
-        ":proc-macro2-1",
-        ":quote-1",
-        ":syn-2",
     ],
 )
 
@@ -4247,18 +4218,18 @@ cargo.rust_library(
 )
 
 http_archive(
-    name = "ruzstd-0.8.3.crate",
-    sha256 = "a7c1c839d570d835527c9a5e4db7cb2198683a988cb9d7293fc8674e6bd58fc8",
-    strip_prefix = "ruzstd-0.8.3",
-    urls = ["https://static.crates.io/crates/ruzstd/0.8.3/download"],
+    name = "ruzstd-0.9.1.crate",
+    sha256 = "69e4ce4a039f42bf25920b95667e4d789e98749ab11bbb8d2c2936f788421bb5",
+    strip_prefix = "ruzstd-0.9.1",
+    urls = ["https://static.crates.io/crates/ruzstd/0.9.1/download"],
     visibility = [],
 )
 
 cargo.rust_library(
-    name = "ruzstd-0.8",
-    srcs = [":ruzstd-0.8.3.crate"],
+    name = "ruzstd-0.9",
+    srcs = [":ruzstd-0.9.1.crate"],
     crate = "ruzstd",
-    crate_root = "ruzstd-0.8.3.crate/src/lib.rs",
+    crate_root = "ruzstd-0.9.1.crate/src/lib.rs",
     edition = "2018",
     features = [
         "default",
@@ -4763,7 +4734,6 @@ cargo.rust_library(
         "parsing",
         "printing",
         "proc-macro",
-        "visit",
         "visit-mut",
     ],
     visibility = [],

@@ -157,12 +157,14 @@ impl<R: gimli::Reader> Functions<R> {
 
         // The binary search requires the addresses to be sorted.
         //
-        // It also requires them to be non-overlapping.  In practice, overlapping
-        // function ranges are unlikely, so we don't try to handle that yet.
+        // It also requires them to be non-overlapping.  In practice,
+        // overlapping function ranges are unlikely, so we don't try to
+        // handle that yet.
         //
-        // It's possible for multiple functions to have the same address range if the
-        // compiler can detect and remove functions with identical code.  In that case
-        // we'll nondeterministically return one of them.
+        // It's possible for multiple functions to have the same address range
+        // if the compiler can detect and remove functions with
+        // identical code.  In that case we'll nondeterministically
+        // return one of them.
         addresses.sort_by_key(|x| x.range.begin);
 
         Ok(Functions {
@@ -227,16 +229,17 @@ impl<R: gimli::Reader> Function<R> {
         };
         Function::parse_children(&mut state, depth, 0)?;
 
-        // Sort ranges in "breadth-first traversal order", i.e. first by call_depth
-        // and then by range.begin. This allows finding the range containing an
-        // address at a certain depth using binary search.
-        // Note: Using DFS order, i.e. ordering by range.begin first and then by
-        // call_depth, would not work! Consider the two examples
-        // "[0..10 at depth 0], [0..2 at depth 1], [6..8 at depth 1]"  and
-        // "[0..5 at depth 0], [0..2 at depth 1], [5..10 at depth 0], [6..8 at depth
-        // 1]". In this example, if you want to look up address 7 at depth 0,
-        // and you encounter [0..2 at depth 1], are you before or after the
-        // target range? You don't know.
+        // Sort ranges in "breadth-first traversal order", i.e. first by
+        // call_depth and then by range.begin. This allows finding the
+        // range containing an address at a certain depth using binary
+        // search. Note: Using DFS order, i.e. ordering by range.begin
+        // first and then by call_depth, would not work! Consider the
+        // two examples "[0..10 at depth 0], [0..2 at depth 1], [6..8 at
+        // depth 1]"  and "[0..5 at depth 0], [0..2 at depth 1], [5..10
+        // at depth 0], [6..8 at depth 1]". In this example, if you want
+        // to look up address 7 at depth 0, and you encounter [0..2 at
+        // depth 1], are you before or after the target range? You don't
+        // know.
         state.addresses.sort_by(|r1, r2| {
             if r1.call_depth < r2.call_depth {
                 Ordering::Less
@@ -318,9 +321,10 @@ impl<R: gimli::Reader> Function<R> {
         loop {
             let current_depth = inlined_functions.len();
             // Look up (probe, current_depth) in inline_ranges.
-            // `inlined_addresses` is sorted in "breadth-first traversal order", i.e.
-            // by `call_depth` first, and then by `range.begin`. See the comment at
-            // the sort call for more information about why.
+            // `inlined_addresses` is sorted in "breadth-first traversal order",
+            // i.e. by `call_depth` first, and then by
+            // `range.begin`. See the comment at the sort call for
+            // more information about why.
             let search = inlined_addresses.binary_search_by(|range| {
                 if range.call_depth > current_depth {
                     Ordering::Greater
@@ -397,15 +401,16 @@ impl<R: gimli::Reader> InlinedFunction<R> {
                     }
                 }
                 gimli::DW_AT_call_file => {
-                    // There is a spec issue [1] with how DW_AT_call_file is specified in DWARF 5.
-                    // Before, a file index of 0 would indicate no source file, however in
+                    // There is a spec issue [1] with how DW_AT_call_file is
+                    // specified in DWARF 5. Before, a file
+                    // index of 0 would indicate no source file, however in
                     // DWARF 5 this could be a valid index into the file table.
                     //
-                    // Implementations such as LLVM generates a file index of 0 when DWARF 5 is
-                    // used.
+                    // Implementations such as LLVM generates a file index of 0
+                    // when DWARF 5 is used.
                     //
-                    // Thus, if we see a version of 5 or later, treat a file index of 0 as such.
-                    // [1]: http://wiki.dwarfstd.org/index.php?title=DWARF5_Line_Table_File_Numbers
+                    // Thus, if we see a version of 5 or later, treat a file
+                    // index of 0 as such. [1]: http://wiki.dwarfstd.org/index.php?title=DWARF5_Line_Table_File_Numbers
                     if let gimli::AttributeValue::FileIndex(fi) = attr.value()
                         && (fi > 0 || unit.header.version() >= 5)
                     {

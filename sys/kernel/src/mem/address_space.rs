@@ -228,10 +228,10 @@ impl AddressSpace {
         );
 
         // ensure the entire range is mapped and doesn't cover any holes
-        // `for_each_region_in_range` covers the last half so we just need to check that
-        // the regions aren't smaller than the requested range.
-        // We do that by adding up their sizes checking that their total size is at
-        // least as large as the requested range.
+        // `for_each_region_in_range` covers the last half so we just need to
+        // check that the regions aren't smaller than the requested
+        // range. We do that by adding up their sizes checking that
+        // their total size is at least as large as the requested range.
         let mut bytes_seen = 0;
         self.for_each_region_in_range(range, |region| {
             bytes_seen += region.range.len();
@@ -286,12 +286,12 @@ impl AddressSpace {
         ensure!(new_permissions.is_valid());
 
         // ensure the entire range is mapped and doesn't cover any holes
-        // `for_each_region_in_range` covers the last half so we just need to check that
-        // the regions aren't smaller than the requested range.
-        // We do that by adding up their sizes checking that their total size is at
-        // least as large as the requested range.
-        // Along the way we also check for each region that the new permissions are a
-        // subset of the current ones.
+        // `for_each_region_in_range` covers the last half so we just need to
+        // check that the regions aren't smaller than the requested
+        // range. We do that by adding up their sizes checking that
+        // their total size is at least as large as the requested range.
+        // Along the way we also check for each region that the new permissions
+        // are a subset of the current ones.
         let mut bytes_seen = 0;
         self.for_each_region_in_range(range, |region| {
             bytes_seen += region.range.len();
@@ -519,7 +519,8 @@ impl AddressSpace {
     /// `candidate_spot_count > 0`.
     fn find_spot(&mut self, layout: Layout, entropy: u8) -> crate::Result<VirtualAddress> {
         // behaviour:
-        // - find the leftmost gap that satisfies the size and alignment requirements
+        // - find the leftmost gap that satisfies the size and alignment
+        //   requirements
         //      - starting at the root,
         // tracing::trace!("finding spot for {layout:?} entropy {entropy}");
 
@@ -536,7 +537,8 @@ impl AddressSpace {
             Ok(spot) => spot,
             Err(0) => bail!("out of virtual memory"),
             Err(candidate_spot_count) => {
-                // tracing::trace!("couldn't find spot in first attempt (max_candidate_spaces
+                // tracing::trace!("couldn't find spot in first attempt
+                // (max_candidate_spaces
                 // {max_candidate_spaces}), retrying with (candidate_spot_count
                 // {candidate_spot_count})");
                 let selected_index: usize = self
@@ -568,10 +570,10 @@ impl AddressSpace {
                     && aligned.end.is_aligned_to(layout.align())
             );
 
-            // ranges passed in here can become empty for a number of reasons (aligning
-            // might produce ranges where end > start, or the range might be
-            // empty to begin with) in either case an empty range means no spots
-            // are available
+            // ranges passed in here can become empty for a number of reasons
+            // (aligning might produce ranges where end > start, or
+            // the range might be empty to begin with) in either
+            // case an empty range means no spots are available
             if aligned.is_empty() {
                 return 0;
             }
@@ -604,8 +606,8 @@ impl AddressSpace {
             target_index -= spot_count;
         }
 
-        // see if there is a suitable gap between the start of the address space and the
-        // first mapping
+        // see if there is a suitable gap between the start of the address space
+        // and the first mapping
         if let Some(root) = self.regions.root().get() {
             let aligned_gap =
                 Range::from(self.max_range.start..root.max_range.start).align_in(layout.align());
@@ -675,8 +677,8 @@ impl AddressSpace {
             maybe_node = node.links.parent().map(|ptr| unsafe { ptr.as_ref() });
         }
 
-        // see if there is a suitable gap between the end of the last mapping and the
-        // end of the address space
+        // see if there is a suitable gap between the end of the last mapping
+        // and the end of the address space
         if let Some(root) = self.regions.root().get() {
             let aligned_gap =
                 Range::from(root.max_range.end..self.max_range.last).align_in(layout.align());

@@ -42,5 +42,5 @@ arch-locked (e.g. `lib/riscv`, the kernel, the loader) declares the
 inverse:
 
 ```python
-target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+target_compatible_with = ["prelude//cpu:riscv64"],
 ```

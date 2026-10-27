@@ -5,7 +5,7 @@ _DEPS = [
     "//third-party:mycelium-bitfield",
     "//third-party:cfg-if",
 ] + select({
-    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+    "prelude//cpu:riscv64": ["//lib/riscv:riscv"],
     "DEFAULT": [],
 })
 

@@ -20,7 +20,7 @@ _DEPS = [
     # `loader-common` is bare-metal-only, and the host-side `frame-alloc-tests`
     # reuses `_DEPS`; riding the riscv64 loader branch (next to `riscv`) keeps it out
     # of the host build, where it would be incompatible and is unused anyway.
-    "prelude//cpu/constraints:riscv64": [
+    "prelude//cpu:riscv64": [
         "//sys/loader-common:loader-common",
         "//lib/riscv:riscv",
     ],
@@ -42,7 +42,7 @@ rust_binary(
         "KERNEL": "$(location //sys/kernel:kernel)",
         "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel[debuginfo])"
     },
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    target_compatible_with = ["prelude//cpu:riscv64"],
     incoming_transition = "//build:loader",
     visibility = ["PUBLIC"],
     tests = [":frame-alloc-tests"],
@@ -59,7 +59,7 @@ rust_binary(
         "KERNEL": "$(location //sys/kernel:kernel-tests)",
         "KERNEL_DEBUGINFO": "$(location //sys/kernel:kernel-tests[debuginfo])"
     },
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    target_compatible_with = ["prelude//cpu:riscv64"],
     incoming_transition = "//build:loader",
     visibility = ["PUBLIC"],
 )

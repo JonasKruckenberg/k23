@@ -244,9 +244,9 @@ impl Activation {
         let mut state = Some(self);
         core::iter::from_fn(move || {
             let this = state?;
-            // Safety: `prev` is always either a null ptr (indicating the end of the list)
-            // or a valid pointer to a `CallThreadState`. This is ensured by the
-            // `push` method.
+            // Safety: `prev` is always either a null ptr (indicating the end of
+            // the list) or a valid pointer to a `CallThreadState`.
+            // This is ensured by the `push` method.
             state = unsafe { this.prev.get().as_ref() };
             Some(this)
         })
@@ -282,9 +282,9 @@ impl Activation {
             // in the first place since this is a Rust problem rather than a
             // Wasm problem.
             UnwindReason::Panic => None,
-            // // And if we are just propagating an existing trap that already has
-            // // a backtrace attached to it, then there is no need to capture a
-            // // new backtrace either.
+            // // And if we are just propagating an existing trap that already
+            // has // a backtrace attached to it, then there is no need to
+            // capture a // new backtrace either.
             // UnwindReason::Trap(TrapReason::User(err))
             // if err.downcast_ref::<RawBacktrace>().is_some() =>
             //     {
@@ -525,8 +525,8 @@ impl RawBacktrace {
 
             let (last_wasm_exit_pc, last_wasm_exit_fp) = match trap_pc_and_fp {
                 // If we exited Wasm by catching a trap, then the Wasm-to-host
-                // trampoline did not get a chance to save the last Wasm PC and FP,
-                // and we need to use the plumbed-through values instead.
+                // trampoline did not get a chance to save the last Wasm PC and
+                // FP, and we need to use the plumbed-through values instead.
                 Some((pc, fp)) => {
                     assert!(ptr::eq(
                         vm_store_context,
@@ -534,8 +534,8 @@ impl RawBacktrace {
                     ));
                     (pc, fp)
                 }
-                // Either there is no Wasm currently on the stack, or we exited Wasm
-                // through the Wasm-to-host trampoline.
+                // Either there is no Wasm currently on the stack, or we exited
+                // Wasm through the Wasm-to-host trampoline.
                 None => {
                     let pc = *(*vm_store_context).last_wasm_exit_pc.get();
                     let fp = *(*vm_store_context).last_wasm_exit_fp.get();

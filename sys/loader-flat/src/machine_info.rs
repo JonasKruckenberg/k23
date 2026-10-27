@@ -39,11 +39,13 @@ pub(crate) fn from_dtb<const N: usize>(
     );
 
     let minfo = MachineInfo {
-        // try to obtain the boot hart ID from UEFI first, then fall back to the FDT
+        // try to obtain the boot hart ID from UEFI first, then fall back to the
+        // FDT
         boot_hart_id,
         // try to obtain the RNG seed from UEFI first, then fall back to FDT
         rng_seed: loader_common::fdt::rng_seed(chosen.as_ref().unwrap()).ok_or(Error::NoRngSeed)?,
-        // the only mechanism we have to discover the UART port is through FDT...
+        // the only mechanism we have to discover the UART port is through
+        // FDT...
         uart: loader_common::fdt::stdout_uart(&fdt, chosen.as_ref().unwrap(), granule_size),
         firmware_tables: FirmwareTables {
             raw_fdt: Some(raw_fdt),
@@ -57,7 +59,8 @@ pub(crate) fn from_dtb<const N: usize>(
     // make sure the FDT is excluded so we don't accidentally override it with
     apply_fdt_reservation(&mut memory_regions, &fdt)?;
 
-    // make sure the loader itself is also excluded, this will be no fun otherwise
+    // make sure the loader itself is also excluded, this will be no fun
+    // otherwise
     apply_loader_reservation(&mut memory_regions, granule_size)?;
 
     Ok((minfo, memory_regions))

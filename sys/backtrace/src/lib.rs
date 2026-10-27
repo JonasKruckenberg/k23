@@ -70,8 +70,9 @@ impl BacktraceInfo {
     fn new(boot_info: &'static BootInfo, backtrace_style: BacktraceStyle) -> Self {
         BacktraceInfo {
             kernel_virt_base: boot_info.kernel_virt.start.get() as u64,
-            // The kernel itself is always stripped with  DWARF and `.symtab` info
-            // living in a separate debuginfo ELF that the loader points us at.
+            // The kernel itself is always stripped with  DWARF and `.symtab`
+            // info living in a separate debuginfo ELF that the loader points us
+            // at.
             //
             // Safety: we have to trust the loaders BootInfo here
             debuginfo: unsafe {
@@ -180,22 +181,23 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
 
         let mut omitted_count: usize = 0;
         let mut first_omit = true;
-        // If we're using a short backtrace, ignore all frames until we're told to start
-        // printing.
+        // If we're using a short backtrace, ignore all frames until we're told
+        // to start printing.
         let mut print = style != BacktraceStyle::Short;
 
         for ip in &self.frames {
             let mut any = false; // did we print any symbols?
 
-            // if the symbolication state isn't setup, yet we can't print symbols the
-            // addresses will have to suffice...
+            // if the symbolication state isn't setup, yet we can't print
+            // symbols the addresses will have to suffice...
             if let Some(symbolize_ctx) = self.symbolize_ctx {
                 let mut syms = symbolize_ctx.resolve_unsynchronized(*ip as u64).unwrap();
 
                 while let Some(sym) = syms.next().unwrap() {
                     any = true;
-                    // `__rust_end_short_backtrace` means we are done hiding symbols
-                    // for now. Print until we see `__rust_begin_short_backtrace`.
+                    // `__rust_end_short_backtrace` means we are done hiding
+                    // symbols for now. Print until we see
+                    // `__rust_begin_short_backtrace`.
                     if style == BacktraceStyle::Short
                         && let Some(sym) = sym.name().map(|s| s.as_raw_str())
                     {
@@ -215,7 +217,8 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
                     if print {
                         if omitted_count > 0 {
                             debug_assert!(style == BacktraceStyle::Short);
-                            // only print the message between the middle of frames
+                            // only print the message between the middle of
+                            // frames
                             if !first_omit {
                                 let _ = writeln!(
                                     bt_fmt.formatter(),

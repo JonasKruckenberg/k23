@@ -86,7 +86,7 @@ deps = [
     "//lib/util:util",
     "//third-party:cfg-if",
 ] + select({
-    "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"], # if the riscv64 constraint matches, add the riscv dependency
+    "prelude//cpu:riscv64": ["//lib/riscv:riscv"], # if the riscv64 constraint matches, add the riscv dependency
     "DEFAULT": [] # otherwise nothing
 })
 ```
@@ -106,7 +106,7 @@ mark the library itself incompatible with the other arches so cross-arch
 preflight lanes skip it instead of failing to build:
 
 ```starlark
-target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+target_compatible_with = ["prelude//cpu:riscv64"],
 ```
 
 ## Removing a crate

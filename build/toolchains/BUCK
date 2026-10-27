@@ -163,15 +163,12 @@ rust_toolchain(
     clippy_toml = ":clippy.toml",
     rustdoc = ":rust_toolchain[rustdoc]",
     miri_driver = ":rust_toolchain[miri]",
-    miri_sysroot_path = ":miri_sysroot",
+    miri_rustc_flags = ["--sysroot=$(location :miri_sysroot)"],
     # Forwarded into miri tests that set this var in their target `env`
     # (mem-core uses it to disable proptest's getcwd-based persistence).
     miri_flags = ["-Zmiri-env-forward=PROPTEST_DISABLE_FAILURE_PERSISTENCE", "-Zmiri-env-set=PROPTEST_CASES=16"],
     default_edition = "2024",
-    nightly_features = select({
-        "constraints//:rust-std[bootstrap]": True,
-        "DEFAULT": False,
-    }),
+    nightly_features = True,
     panic_runtime = select({
         "constraints//:env[loader]": "abort",
         "DEFAULT": "unwind",
@@ -338,11 +335,11 @@ qemu_toolchain(
         "DEFAULT": []
     }),
     firmware_code_path = select({
-        "prelude//cpu/constraints:riscv64": "share/qemu/edk2-riscv-code.fd",
+        "prelude//cpu:riscv64": "share/qemu/edk2-riscv-code.fd",
         "DEFAULT": None
     }),
     firmware_vars_path = select({
-        "prelude//cpu/constraints:riscv64": "share/qemu/edk2-riscv-vars.fd",
+        "prelude//cpu:riscv64": "share/qemu/edk2-riscv-vars.fd",
         "DEFAULT": None
     }),
     visibility = ["PUBLIC"],

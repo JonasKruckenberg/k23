@@ -189,8 +189,8 @@ fn table_copy(
     // Notice that this actually *doesn't* go through instance like the other
     // table_* builtins This is because copy needs to borrow two tables mutably
     // at the same time (they might be the same table too) which of course is
-    // horrifically incompatible with Rusts borrow rules. This (plus passing *mut
-    // Table instead of &mut Table) is our way of working around this
+    // horrifically incompatible with Rusts borrow rules. This (plus passing
+    // *mut Table instead of &mut Table) is our way of working around this
     Table::copy(dst_table.as_ptr(), src_table.as_ptr(), dst, src, len)
 }
 

@@ -75,29 +75,29 @@
               targets = {
                 "aarch64-darwin" = {
                   target = "aarch64-apple-darwin";
-                  hash = "sha256:4c5e084193ee57a6db9dd21501f7d41e6f59cf90f4172c7c3e1399153885164f";
+                  hash = "sha256:e43db992790715f26d5ca4a34e5cc89fbb0d2bd182e36882aa2275743005ea0b";
                 };
                 "x86_64-darwin" = {
                   target = "x86_64-apple-darwin";
-                  hash = "sha256:ed6797240fc3e597ff13d4449dba7e4efd04243afc7a264c272ae410280cf241";
+                  hash = "sha256:7c640b53bda8fc09b3528b9215f5bec4da5981b621b488696f0505e45a41a70f";
                 };
                 "aarch64-linux" = {
                   target = "aarch64-unknown-linux-gnu";
-                  hash = "sha256:06e24015b193560a594960cb7cd14d0fcd664aa29ed92ab7e5fcb8d72d1f9306";
+                  hash = "sha256:20cf12e00eb84155d83a9436954db97c52b2d9851d7de1344a0537c46bc5e324";
                 };
                 "x86_64-linux" = {
                   target = "x86_64-unknown-linux-gnu";
-                  hash = "sha256:1704c249c817d1025ff240fd36252b21299f89fa2eeefa9090c2d5712476784f";
+                  hash = "sha256:80c09f42155ac08ffa7d88e8d25043fdd4b1491163a8422b8cc228147b391d77";
                 };
               };
               info = targets.${pkgs.stdenv.hostPlatform.system};
             in
             pkgs.stdenvNoCC.mkDerivation {
               pname = "buck2";
-              version = "latest";
+              version = "2026-10-25";
 
               src = pkgs.fetchurl {
-                url = "https://github.com/JonasKruckenberg/buck2/releases/download/latest/buck2-${info.target}.zst";
+                url = "https://github.com/JonasKruckenberg/buck2/releases/download/2026-10-25/buck2-${info.target}.zst";
                 hash = info.hash;
               };
 
@@ -122,29 +122,29 @@
               targets = {
                 "aarch64-darwin" = {
                   target = "aarch64-apple-darwin";
-                  hash = "sha256:7486d204ce56a7f4aad6d02812ffbd4d59e4a54f345c94e37c2ac40fe29aab9b";
+                  hash = "sha256:cf6b71f59dd61aa8b0eb1459cd85c2d0bf85f330334c4a080686a8665078ea4f";
                 };
                 "x86_64-darwin" = {
                   target = "x86_64-apple-darwin";
-                  hash = "sha256:305835cd9ad6e09ac4d17107644aa84457930e24a5970e1722e819bf58248e52";
+                  hash = "sha256:bd9e5bc77fd038cb59edb610dd7ddaca27ee9307de17b1fccba3bdeefc2f7b5d";
                 };
                 "aarch64-linux" = {
                   target = "aarch64-unknown-linux-gnu";
-                  hash = "sha256:f661f68a2ebb3dd136fff2e5cae7f2ea0c897d5c20e557c86cf6ae175c437756";
+                  hash = "sha256:f428b424aabf71bf3f16483bc9987c8714abb345ca5ed99dd5c758032728b880";
                 };
                 "x86_64-linux" = {
                   target = "x86_64-unknown-linux-gnu";
-                  hash = "sha256:42166db3e3253fa33bc721987a483dfcacb0302bff8680096899f3d112ed6be0";
+                  hash = "sha256:ac067e8a3f2bc421e3623e8897f41da2a51dede03fb2e6871dd13df8999dc27d";
                 };
               };
               info = targets.${pkgs.stdenv.hostPlatform.system};
             in
             pkgs.stdenvNoCC.mkDerivation {
               pname = "rust-project";
-              version = "latest";
+              version = "2026-10-25";
 
               src = pkgs.fetchurl {
-                url = "https://github.com/JonasKruckenberg/buck2/releases/download/latest/rust-project-${info.target}.zst";
+                url = "https://github.com/JonasKruckenberg/buck2/releases/download/2026-10-25/rust-project-${info.target}.zst";
                 hash = info.hash;
               };
 

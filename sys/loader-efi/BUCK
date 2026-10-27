@@ -38,7 +38,7 @@ rust_binary(
     crate_root = "src/main.rs",
     rustc_flags = _RUSTC_FLAGS,
     deps = _DEPS,
-    target_compatible_with = ["prelude//cpu/constraints:riscv64"],
+    target_compatible_with = ["prelude//cpu:riscv64"],
     incoming_transition = "//build:loader",
     visibility = ["PUBLIC"],
 )
@@ -46,11 +46,13 @@ rust_binary(
 elf_to_efi(
     name = "_loader-efi",
     src = ":_loader-efi-raw",
+    target_compatible_with = ["prelude//cpu:riscv64"],
     visibility = [":loader"],
 )
 
 alias(
     name = "loader-efi",
     actual = ":_loader-efi",
+    target_compatible_with = ["prelude//cpu:riscv64"],
     visibility = ["PUBLIC"],
 )

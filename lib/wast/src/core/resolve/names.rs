@@ -59,7 +59,8 @@ impl<'a> Resolver<'a> {
             // For GC structure types we need to be sure to populate the
             // field namespace here as well.
             //
-            // The field namespace is relative to the struct fields are defined in
+            // The field namespace is relative to the struct fields are defined
+            // in
             InnerTypeKind::Struct(r#struct) => {
                 for (i, field) in r#struct.fields.iter().enumerate() {
                     if let Some(id) = field.id {

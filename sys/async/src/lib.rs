@@ -12,8 +12,7 @@
 //! crates, to a small extend smol also influenced the design.
 
 #![cfg_attr(not(any(test, feature = "__bench")), no_std)]
-#![feature(debug_closure_helpers)]
-#![feature(allocator_api)]
+#![feature(allocator_ext)]
 
 extern crate alloc;
 

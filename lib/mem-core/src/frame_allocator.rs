@@ -157,9 +157,9 @@ pub unsafe trait FrameAllocator {
 
         let virt = physmap.phys_to_virt(phys);
 
-        // Safety: the address is properly aligned (at least page aligned) and is either
-        // valid to access through the physical memory map or because we're in
-        // bootstrapping still and phys==virt
+        // Safety: the address is properly aligned (at least page aligned) and
+        // is either valid to access through the physical memory map or
+        // because we're in bootstrapping still and phys==virt
         unsafe {
             arch.write_bytes(virt, 0, layout.size());
         }

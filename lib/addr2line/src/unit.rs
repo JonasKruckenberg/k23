@@ -119,8 +119,8 @@ impl<R: gimli::Reader> ResUnit<R> {
     ///
     /// Returns an error when parsing the DWARF info fails.
     pub(crate) fn parse_lines(&self, sections: &gimli::Dwarf<R>) -> Result<Option<&Lines>, Error> {
-        // NB: line information is always stored in the main debug file so this does not
-        // need to handle DWOs.
+        // NB: line information is always stored in the main debug file so this
+        // does not need to handle DWOs.
         let Some(ref ilnp) = self.dw_unit.line_program else {
             return Ok(None);
         };
@@ -210,14 +210,15 @@ impl<R: gimli::Reader> ResUnits<R> {
             let Some(offset) = header.offset().to_debug_info_offset(&header) else {
                 continue;
             };
-            // We mainly want compile units, but we may need to follow references to entries
-            // within other units for function names.  We don't need anything from type
-            // units.
+            // We mainly want compile units, but we may need to follow
+            // references to entries within other units for function
+            // names.  We don't need anything from type units.
             let mut need_unit_range = match header.type_() {
                 gimli::UnitType::Type { .. } | gimli::UnitType::SplitType { .. } => continue,
                 gimli::UnitType::Partial => {
-                    // Partial units are only needed for references from other units.
-                    // They shouldn't have any address ranges.
+                    // Partial units are only needed for references from other
+                    // units. They shouldn't have any
+                    // address ranges.
                     false
                 }
                 _ => true,
@@ -266,25 +267,29 @@ impl<R: gimli::Reader> ResUnits<R> {
                     }
                 }
 
-                // Find the address ranges for the CU, using in order of preference:
+                // Find the address ranges for the CU, using in order of
+                // preference:
                 // - DW_AT_ranges
                 // - .debug_aranges
                 // - DW_AT_low_pc/DW_AT_high_pc
                 //
-                // Using DW_AT_ranges before .debug_aranges is possibly an arbitrary choice,
-                // but the feeling is that DW_AT_ranges is more likely to be reliable or
+                // Using DW_AT_ranges before .debug_aranges is possibly an
+                // arbitrary choice, but the feeling is that
+                // DW_AT_ranges is more likely to be reliable or
                 // complete if it is present.
                 //
-                // .debug_aranges must be used before DW_AT_low_pc/DW_AT_high_pc because
-                // it has been observed on macOS that DW_AT_ranges was not emitted even for
+                // .debug_aranges must be used before DW_AT_low_pc/DW_AT_high_pc
+                // because it has been observed on macOS that
+                // DW_AT_ranges was not emitted even for
                 // discontiguous CUs.
                 let i = match ranges.ranges_offset {
                     Some(_) => None,
                     None => aranges.binary_search_by_key(&offset, |x| x.0).ok(),
                 };
                 if let Some(mut i) = i {
-                    // There should be only one set per CU, but in practice multiple
-                    // sets have been observed. This is probably a compiler bug, but
+                    // There should be only one set per CU, but in practice
+                    // multiple sets have been observed.
+                    // This is probably a compiler bug, but
                     // either way we need to handle it.
                     while i > 0 && aranges[i - 1].0 == offset {
                         i -= 1;
@@ -344,8 +349,8 @@ impl<R: gimli::Reader> ResUnits<R> {
         // Sort this for faster lookup in `Self::find_range`.
         unit_ranges.sort_by_key(|i| i.range.end);
 
-        // Calculate the `min_begin` field now that we've determined the order of
-        // CUs.
+        // Calculate the `min_begin` field now that we've determined the order
+        // of CUs.
         let mut min = !0;
         for i in unit_ranges.iter_mut().rev() {
             min = min.min(i.range.begin);

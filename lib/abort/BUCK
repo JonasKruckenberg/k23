@@ -7,7 +7,7 @@ rust_library(
         "//third-party:cfg-if",
         "//third-party:log"
     ] + select({
-        "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+        "prelude//cpu:riscv64": ["//lib/riscv:riscv"],
         "DEFAULT": [],
     }),
     visibility = ["PUBLIC"],
@@ -20,7 +20,7 @@ rust_test(
     deps = [
         "//third-party:cfg-if",
     ] + select({
-        "prelude//cpu/constraints:riscv64": ["//lib/riscv:riscv"],
+        "prelude//cpu:riscv64": ["//lib/riscv:riscv"],
         "DEFAULT": [],
     }),
     target_compatible_with = [host_configuration.os, host_configuration.cpu],

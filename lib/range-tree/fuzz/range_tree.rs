@@ -1,4 +1,3 @@
-#![feature(allocator_api)]
 #![feature(range_bounds_is_empty)]
 #![no_main]
 
@@ -222,8 +221,9 @@ fn run<
                     })
                     .collect();
 
-                // add the final gap at the end. either between the last range and MAX or
-                // if no ranges exists the gap between ZERO and MAX
+                // add the final gap at the end. either between the last range
+                // and MAX or if no ranges exists the gap
+                // between ZERO and MAX
                 if let Some((last_range, _)) = vec.last() {
                     if let Some(end) = last_range.last.checked_increment() {
                         expected_gaps.push((Bound::Included(end), Bound::Unbounded));
@@ -309,12 +309,18 @@ fn run<
                             }
                         }
                         CursorMutAction::Insert { start, last, value } => {
-                            // The new entry lands at vec[index]. The model vec is sorted by
-                            // `.end` (every other action's partition_point relies on this), so
-                            // we need vec[index-1].end <= end <= vec[index].end whenever those
-                            // neighbors exist. When the fuzzer's range satisfies that, use it
-                            // directly. Otherwise duplicate a neighbor's range — sortedness is
-                            // trivially preserved and the multimap-insert path stays covered.
+                            // The new entry lands at vec[index]. The model vec
+                            // is sorted by
+                            // `.end` (every other action's partition_point
+                            // relies on this), so
+                            // we need vec[index-1].end <= end <= vec[index].end
+                            // whenever those
+                            // neighbors exist. When the fuzzer's range
+                            // satisfies that, use it
+                            // directly. Otherwise duplicate a neighbor's range
+                            // — sortedness is
+                            // trivially preserved and the multimap-insert path
+                            // stays covered.
                             let lo_ok = index == 0 || vec[index - 1].0.last <= last;
                             let hi_ok = index == vec.len() || last <= vec[index].0.last;
                             let range = if lo_ok && hi_ok {

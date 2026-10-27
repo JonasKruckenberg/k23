@@ -1011,9 +1011,9 @@ impl HeapType {
             //     HeapTypeInner::ConcreteCont(_),
             //     HeapTypeInner::Cont,
             // ) => true,
-            // (HeapTypeInner::ConcreteCont(_a), HeapTypeInner::ConcreteCont(_b)) => {
-            //     // assert!(a.comes_from_same_engine(b.engine()));
-            //     // a.engine()
+            // (HeapTypeInner::ConcreteCont(_a),
+            // HeapTypeInner::ConcreteCont(_b)) => {     // assert!(a.
+            // comes_from_same_engine(b.engine()));     // a.engine()
             //     //     .type_registry()
             //     //     .is_subtype(a.type_index(), b.type_index())
             //     todo!()
@@ -1482,8 +1482,8 @@ impl FuncType {
         let mut wasm_params = Vec::with_capacity({
             let size_hint = params.size_hint();
             let cap = size_hint.1.unwrap_or(size_hint.0);
-            // Only reserve space if we have a supertype, as that is the only time
-            // that this vec is used.
+            // Only reserve space if we have a supertype, as that is the only
+            // time that this vec is used.
             usize::from(supertype.is_some()) * cap
         });
 

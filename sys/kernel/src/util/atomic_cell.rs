@@ -49,8 +49,8 @@ fn from_raw<T>(val: *mut T) -> Option<Box<T>> {
     if val.is_null() {
         None
     } else {
-        // Safety: `from_raw` is only called on pointers created using `to_raw` which
-        // are correctly boxed pointers
+        // Safety: `from_raw` is only called on pointers created using `to_raw`
+        // which are correctly boxed pointers
         Some(unsafe { Box::from_raw(val) })
     }
 }

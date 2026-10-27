@@ -142,7 +142,8 @@ impl Wheel {
 
         // when did the current rotation of this wheel begin? since all wheels
         // represent a power-of-two number of ticks, we can determine the
-        // beginning of this rotation by masking out the bits for all lower wheels.
+        // beginning of this rotation by masking out the bits for all lower
+        // wheels.
         let rotation_start = now.0 & self.wheel_mask;
         // the next deadline is the start of the current rotation, plus the next
         // slot's value.

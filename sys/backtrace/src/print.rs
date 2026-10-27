@@ -126,9 +126,10 @@ impl BacktraceFrameFmt<'_, '_, '_> {
         if self.symbol_index == 0 {
             write!(self.fmt.fmt, "{:4}: ", self.fmt.frame_index)?;
 
-            // Print the instruction pointer. If the symbol name is None we always print
-            // the address. Those weird frames don't happen that often and are always the
-            // most interesting in a backtrace, so we need to make sure to print
+            // Print the instruction pointer. If the symbol name is None we
+            // always print the address. Those weird frames don't
+            // happen that often and are always the most interesting
+            // in a backtrace, so we need to make sure to print
             // at least the address so we have somewhere to start investigating!
             if self.fmt.format == BacktraceStyle::Full || symbol_name.is_some() {
                 write!(self.fmt.fmt, "{frame_ip:HEX_WIDTH$x?} - ")?;

@@ -60,8 +60,8 @@ impl Memory {
     }
 
     // /// Implementation of `memory.atomic.notify` for all memories.
-    // pub fn atomic_notify(&mut self, addr: u64, count: u32) -> Result<u32, Trap> {
-    //     match self.as_shared_memory() {
+    // pub fn atomic_notify(&mut self, addr: u64, count: u32) -> Result<u32,
+    // Trap> {     match self.as_shared_memory() {
     //         Some(m) => m.atomic_notify(addr, count),
     //         None => {
     //             validate_atomic_addr(&self.vmmemory(), addr, 4, 4)?;

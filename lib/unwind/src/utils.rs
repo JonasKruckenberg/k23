@@ -70,14 +70,16 @@ pub fn with_context<T, F: FnOnce(&mut arch::Registers, usize) -> T>(f: F) -> T {
         regs: &mut arch::Registers,
         ptr: *mut (),
     ) {
-        // SAFETY: This function is called exactly once; it extracts the function, call
-        // it and store the return value. This function is `extern "C"` so we
-        // don't need to worry about unwinding past it.
+        // SAFETY: This function is called exactly once; it extracts the
+        // function, call it and store the return value. This function
+        // is `extern "C"` so we don't need to worry about unwinding
+        // past it.
         unsafe {
             let data = &mut *ptr.cast::<Data<T, F>>();
 
-            // Due to the way we capture the register context the effective program counter
-            // for unwinding is the return address. TODO explain why
+            // Due to the way we capture the register context the effective
+            // program counter for unwinding is the return address.
+            // TODO explain why
             let ip = regs[arch::RA];
 
             let t = ManuallyDrop::take(&mut data.f)(regs, ip);

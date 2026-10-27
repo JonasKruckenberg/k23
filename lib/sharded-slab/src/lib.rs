@@ -516,9 +516,10 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// ```
     /// [`take`]: Slab::take
     pub fn remove(&self, idx: usize) -> bool {
-        // The `Drop` impl for `Entry` calls `remove_local` or `remove_remote` based
-        // on where the guard was dropped from. If the dropped guard was the last one,
-        // this will call `Slot::remove_value` which actually clears storage.
+        // The `Drop` impl for `Entry` calls `remove_local` or `remove_remote`
+        // based on where the guard was dropped from. If the dropped
+        // guard was the last one, this will call `Slot::remove_value`
+        // which actually clears storage.
         let tid = C::unpack_tid(idx);
 
         log::trace!("rm_deferred {:?}", tid);

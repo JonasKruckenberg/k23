@@ -167,15 +167,16 @@ pub(crate) trait SimdSearch: Int {
             let mid = base + len / 2;
 
             // This is slightly different from a normal binary search:
-            // `simd_search` requires that the last pivot be less than or equal to
-            // `search`, so we check the last pivot of the first half. This works
-            // because `len` is guaranteed to be a power of 2 and the last pivot
-            // is guaranteed to be the maximum integer value.
+            // `simd_search` requires that the last pivot be less than or equal
+            // to `search`, so we check the last pivot of the first
+            // half. This works because `len` is guaranteed to be a
+            // power of 2 and the last pivot is guaranteed to be the
+            // maximum integer value.
             //
             // Since elements in a node have a 2/3 chance of being in
-            // the first half of the node, this means we have a 2/3 chance of not
-            // needing to load the second half of the pivots into cache.
-            // Safety: `mid` is always `< pivots.len`
+            // the first half of the node, this means we have a 2/3 chance of
+            // not needing to load the second half of the pivots
+            // into cache. Safety: `mid` is always `< pivots.len`
             let pivot = unsafe { *pivots.get_unchecked(mid - 1) };
             base = hint::select_unpredictable(Self::bias_cmp(search, pivot).is_gt(), mid, base);
 

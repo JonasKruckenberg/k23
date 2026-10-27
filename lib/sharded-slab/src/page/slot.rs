@@ -226,7 +226,8 @@ where
             }
         }
 
-        // Unpack the current reference count to see if we can remove the slot now.
+        // Unpack the current reference count to see if we can remove the slot
+        // now.
         let refs = RefCount::<C>::from_packed(lifecycle);
         log::trace!("-> mark_release: marked; refs={:?};", refs);
 
@@ -290,8 +291,10 @@ where
                     log::trace!("-> advanced gen; lifecycle={:#x}; refs={:?};", actual, refs);
                     if refs.value == 0 {
                         log::trace!("-> ok to remove!");
-                        // safety: we've modified the generation of this slot and any other thread
-                        // calling this method will exit out at the generation check above in the
+                        // safety: we've modified the generation of this slot
+                        // and any other thread
+                        // calling this method will exit out at the generation
+                        // check above in the
                         // next iteration of the loop.
                         let value = mutator(Some(unsafe { &mut *self.item.get() }));
                         free.push(offset, self);
@@ -299,7 +302,8 @@ where
                     }
 
                     // Otherwise, a reference must be dropped before we can
-                    // remove the value. Spin here until there are no refs remaining...
+                    // remove the value. Spin here until there are no refs
+                    // remaining...
                     log::trace!("-> refs={:?}; spin...", refs);
 
                     // Back off
@@ -490,8 +494,8 @@ where
         offset: usize,
         free: &F,
     ) -> bool {
-        // release_with will _always_ wait until it can release the slot or just return
-        // if the slot has already been released.
+        // release_with will _always_ wait until it can release the slot or just
+        // return if the slot has already been released.
         self.release_with(generation, offset, free, |item| {
             let cleared = item.map(|inner| Clear::clear(inner)).is_some();
             log::trace!("-> cleared: {}", cleared);

@@ -49,7 +49,8 @@ pub(crate) fn platform_from_u8(b: u8) -> BootPlatform {
 }
 
 pub(crate) fn emulation_from_u8(b: u8) -> EmulationType {
-    // low nibble selects the emulation type; upper bits are flags we ignore here
+    // low nibble selects the emulation type; upper bits are flags we ignore
+    // here
     match b & 0x0F {
         0 => EmulationType::NoEmulation,
         1 => EmulationType::Floppy12,

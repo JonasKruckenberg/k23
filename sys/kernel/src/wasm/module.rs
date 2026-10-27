@@ -79,8 +79,8 @@ impl Module {
             Ok(Arc::new(code))
         })?;
 
-        // register this code memory with the trap handler, so we can correctly unwind
-        // from traps
+        // register this code memory with the trap handler, so we can correctly
+        // unwind from traps
         register_code(&code);
 
         Ok(Self(Arc::new(ModuleInner {

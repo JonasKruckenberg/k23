@@ -67,9 +67,9 @@ impl Instant {
     /// TODO elaborate
     pub fn far_future(timer: &Timer) -> Self {
         // Returns an instant roughly 30 years from now.
-        // This is used instead of `Duration::MAX` because conversion to ticks might
-        // cause an overflow but doing checked or saturating conversions in
-        // those functions is too expensive.
+        // This is used instead of `Duration::MAX` because conversion to ticks
+        // might cause an overflow but doing checked or saturating
+        // conversions in those functions is too expensive.
         Self::now(timer) + Duration::from_secs(86400 * 365 * 30)
     }
 
