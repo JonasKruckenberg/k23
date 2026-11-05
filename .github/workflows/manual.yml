@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Nix
-        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build Book
@@ -40,4 +40,4 @@ jobs:
           path: ${{ steps.book.outputs.path }}
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
